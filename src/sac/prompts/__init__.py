@@ -9,13 +9,6 @@ from sac.prompts.app import (
 )
 from sac.prompts.growth import DEFAULT_GROWTH_RULES, build_growth_prompt
 from sac.prompts.intent import DEFAULT_INTENT_RULES, get_intent_suggestion_prompt, parse_intent_suggestions
-from sac.prompts.judge import (
-    JUDGE_SYSTEM_PROMPT,
-    UI_VERIFIER_SYSTEM_PROMPT,
-    build_evaluation_prompt,
-    build_ui_verifier_prompt,
-    parse_judge_response,
-)
 from sac.prompts.search import build_search_context_prompt, get_search_query_extraction_prompt, should_enable_search
 
 __all__ = [
