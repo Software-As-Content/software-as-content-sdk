@@ -8,10 +8,26 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
+from pathlib import Path
+
+
+def _load_dotenv() -> None:
+    """Load .env file from current working directory if it exists."""
+    env_file = Path.cwd() / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip())
 
 
 def main() -> None:
+    _load_dotenv()
     parser = argparse.ArgumentParser(prog="sac", description="Software as Content SDK")
     subparsers = parser.add_subparsers(dest="command")
 
