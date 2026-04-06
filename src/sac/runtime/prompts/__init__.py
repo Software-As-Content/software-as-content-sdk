@@ -1,4 +1,4 @@
-from sac.prompts.app import (
+from sac.runtime.prompts.app import (
     AVAILABLE_MODELS,
     BASE_SYSTEM_PROMPT,
     DEFAULT_CUSTOM_INSTRUCTIONS,
@@ -7,9 +7,9 @@ from sac.prompts.app import (
     build_generation_prompt,
     get_design_system_content,
 )
-from sac.prompts.growth import DEFAULT_GROWTH_RULES, build_growth_prompt
-from sac.prompts.intent import DEFAULT_INTENT_RULES, get_intent_suggestion_prompt, parse_intent_suggestions
-from sac.prompts.search import build_search_context_prompt, get_search_query_extraction_prompt, should_enable_search
+from sac.runtime.prompts.growth import DEFAULT_GROWTH_RULES, build_growth_prompt
+from sac.runtime.prompts.intent import DEFAULT_INTENT_RULES, get_intent_suggestion_prompt, parse_intent_suggestions
+from sac.runtime.prompts.search import build_search_context_prompt, get_search_query_extraction_prompt, should_enable_search
 
 __all__ = [
     "AVAILABLE_MODELS",

@@ -7,8 +7,8 @@ generate and evolve interactive UI through conversation.
 
 from sac.sac import SaC
 from sac.conversation import Conversation
-from sac.providers.base import LLMProvider, SearchProvider
-from sac.store.base import ConversationStore
+from sac.runtime.providers.base import LLMProvider, SearchProvider
+from sac.runtime.store.base import ConversationStore
 from sac.types import (
     App,
     ConversationData,

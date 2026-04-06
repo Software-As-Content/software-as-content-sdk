@@ -30,7 +30,7 @@ load_dotenv()
 
 
 from sac import SaC  # noqa: E402
-from sac.store.memory import MemoryStore  # noqa: E402
+from sac.runtime.store.memory import MemoryStore  # noqa: E402
 
 
 async def main():
