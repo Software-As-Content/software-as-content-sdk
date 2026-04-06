@@ -5,7 +5,7 @@ An open-source Python SDK that gives any AI agent the ability to
 generate and evolve interactive UI through conversation.
 """
 
-from sac.client import SaC
+from sac.sac import SaC
 from sac.conversation import Conversation
 from sac.providers.base import LLMProvider, SearchProvider
 from sac.store.base import ConversationStore

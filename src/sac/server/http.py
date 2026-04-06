@@ -21,7 +21,7 @@ except ImportError as e:
         "Server dependencies not installed. Run: pip install sac-sdk[server]"
     ) from e
 
-from sac.client import SaC
+from sac.sac import SaC
 from sac.types import ConversationSettings
 
 

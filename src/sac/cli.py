@@ -45,7 +45,7 @@ def main() -> None:
 
 async def _generate(args: argparse.Namespace) -> None:
     import os
-    from sac.client import SaC
+    from sac.sac import SaC
 
     api_key = os.environ.get("SAC_API_KEY", "")
     if not api_key:
