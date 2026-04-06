@@ -4,6 +4,8 @@ SaC Client — the entry point that wires everything together.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from sac.conversation import Conversation
 from sac.prompts.app import DEFAULT_MODEL
 from sac.providers.base import LLMProvider, SearchProvider
@@ -22,10 +24,8 @@ class SaC:
         sac = SaC(api_key="sk-...")
         app = await sac.generate("2026 travel guide for Hangzhou")
 
-    Multi-turn:
-        conv = sac.conversation()
-        app = await conv.generate("travel guide", web_search=True)
-        app = await conv.evolve("add restaurants")
+    With file output:
+        sac = SaC(api_key="sk-...", store=MemoryStore(output_dir="output"))
     """
 
     def __init__(
@@ -55,7 +55,7 @@ class SaC:
         else:
             self._search = None
 
-        # Store: explicit or default in-memory
+        # Store: explicit or default in-memory (no file output)
         self._store: ConversationStore = store or MemoryStore()
 
         self._model = model

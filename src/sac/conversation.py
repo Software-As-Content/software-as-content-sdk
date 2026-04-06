@@ -112,7 +112,7 @@ class Conversation:
 
             self._apps.append(app)
 
-            # Record generation event
+            # Record generation event (triggers store._write_output if configured)
             await self._store.add_event(
                 GenerationEvent(
                     conversation_id=self.id,
@@ -176,7 +176,7 @@ class Conversation:
 
             self._apps.append(app)
 
-            # Record growth event
+            # Record growth event (triggers store._write_output if configured)
             await self._store.add_event(
                 GrowthEvent(
                     conversation_id=self.id,

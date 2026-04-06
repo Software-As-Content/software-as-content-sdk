@@ -2,6 +2,7 @@
 SaC SDK — local development entry point.
 
 Loads .env, runs example usage.
+Output written to output/{conversation_id}/v{version}.tsx
 
 Usage:
     python main.py
@@ -29,22 +30,16 @@ load_dotenv()
 
 
 from sac import SaC  # noqa: E402
+from sac.store.memory import MemoryStore  # noqa: E402
 
 
 async def main():
     sac = SaC(
         api_key=os.environ["SAC_API_KEY"],
         search_api_key=os.environ.get("SAC_SEARCH_API_KEY"),
+        store=MemoryStore(output_dir="output"),
     )
 
-    # --- Example 1: One-shot generate ---
-    print("=== Generate ===")
-    app = await sac.generate("a simple todo app")
-    print(f"v{app.version} | {len(app.code)} chars")
-    print(app.code[:200], "...\n")
-
-    # --- Example 2: Multi-turn conversation ---
-    print("=== Conversation ===")
     conv = sac.conversation()
 
     app = await conv.generate("2026 travel guide for Hangzhou")
@@ -53,7 +48,8 @@ async def main():
     app = await conv.evolve("add restaurant recommendations")
     print(f"v{app.version} | {len(app.code)} chars | growth: {app.growth_decision}")
 
-    print(f"\nConversation has {conv.version} versions")
+    print(f"\nConversation {conv.id} has {conv.version} versions")
+    print(f"Output: output/{conv.id}/")
 
     await sac.close()
 

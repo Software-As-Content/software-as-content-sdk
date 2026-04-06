@@ -1,22 +1,31 @@
 """
 In-Memory Conversation Store
 
-Default store implementation backed by Python dicts. Zero setup, no persistence.
+Default store implementation backed by Python dicts.
+Optionally writes generated code to disk when output_dir is set.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sac.types import ConversationData, ConversationEvent
 
 
 class MemoryStore:
-    """In-memory conversation store (default). Data is lost when the process exits."""
+    """
+    In-memory conversation store (default).
 
-    def __init__(self) -> None:
+    Args:
+        output_dir: If set, writes generated code to disk on each successful
+                    generation/growth event. Structure: {output_dir}/{conv_id}/v{n}.tsx
+    """
+
+    def __init__(self, output_dir: Path | str | None = None) -> None:
         self._conversations: dict[str, ConversationData] = {}
         self._events: dict[str, list[ConversationEvent]] = {}
+        self._output_dir = Path(output_dir) if output_dir else None
 
     async def list_conversations(self) -> list[ConversationData]:
         convs = list(self._conversations.values())
@@ -64,3 +73,17 @@ class MemoryStore:
             if event.code:
                 conv.latest_code = event.code
             conv.latest_intent = event.intent
+            self._write_output(conv_id, event)
+
+    def _write_output(self, conv_id: str, event: ConversationEvent) -> None:
+        """Write generated code to disk if output_dir is set."""
+        if self._output_dir is None:
+            return
+        # Count successful generations so far for version number
+        version = sum(
+            1 for e in self._events.get(conv_id, [])
+            if e.type in ("generation", "growth") and e.status == "success"
+        )
+        conv_dir = self._output_dir / conv_id
+        conv_dir.mkdir(parents=True, exist_ok=True)
+        (conv_dir / f"v{version}.tsx").write_text(event.code, encoding="utf-8")
