@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SaC SDK Preview</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f4; color: #1c1917; }
+  .header { padding: 16px 24px; background: #fff; border-bottom: 1px solid #e7e5e4; display: flex; align-items: center; gap: 12px; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header .version { font-size: 12px; color: #78716c; background: #f5f5f4; padding: 2px 8px; border-radius: 4px; }
+  .main { display: flex; height: calc(100vh - 57px); }
+  .sidebar { width: 400px; min-width: 400px; background: #fff; border-right: 1px solid #e7e5e4; display: flex; flex-direction: column; }
+  .input-area { padding: 16px; border-bottom: 1px solid #e7e5e4; }
+  .input-area textarea { width: 100%; height: 80px; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; }
+  .input-area textarea:focus { outline: none; border-color: #f97316; }
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+  .btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+  .btn-primary { background: #f97316; color: #fff; }
+  .btn-primary:hover { background: #ea580c; }
+  .btn-primary:disabled { background: #d6d3d1; cursor: not-allowed; }
+  .btn-secondary { background: #f5f5f4; color: #44403c; border: 1px solid #e7e5e4; }
+  .btn-secondary:hover { background: #e7e5e4; }
+  .status { padding: 16px; border-bottom: 1px solid #e7e5e4; font-size: 13px; color: #78716c; }
+  .status .label { font-weight: 500; color: #44403c; }
+  .suggestions { padding: 16px; border-bottom: 1px solid #e7e5e4; }
+  .suggestions h3 { font-size: 13px; font-weight: 500; color: #78716c; margin-bottom: 8px; }
+  .suggestion-btn { display: block; width: 100%; text-align: left; padding: 8px 12px; margin-bottom: 4px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
+  .suggestion-btn:hover { background: #fde68a; }
+  .code-area { flex: 1; overflow: auto; }
+  .code-area pre { padding: 16px; font-size: 12px; line-height: 1.5; font-family: 'SF Mono', 'Fira Code', monospace; white-space: pre-wrap; word-break: break-all; }
+  .preview-area { flex: 1; background: #fff; }
+  .preview-area iframe { width: 100%; height: 100%; border: none; }
+  .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: #78716c; font-size: 15px; }
+  .tab-bar { display: flex; border-bottom: 1px solid #e7e5e4; background: #fafaf9; }
+  .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #78716c; }
+  .tab.active { color: #f97316; border-bottom-color: #f97316; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>SaC SDK</h1>
+  <span class="version">v0.1.0</span>
+  <span id="conv-info" style="margin-left:auto; font-size:12px; color:#a8a29e;"></span>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="input-area">
+      <textarea id="intent" placeholder="Describe the UI you want to generate..."></textarea>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="gen-btn" onclick="doGenerate()">Generate</button>
+        <button class="btn btn-secondary hidden" id="evolve-btn" onclick="doEvolve()">Evolve</button>
+      </div>
+    </div>
+    <div class="status hidden" id="status-bar"></div>
+    <div class="suggestions hidden" id="suggestions-area">
+      <h3>Suggestions</h3>
+      <div id="suggestions-list"></div>
+    </div>
+    <div class="tab-bar">
+      <div class="tab active" onclick="showTab('code')">Code</div>
+    </div>
+    <div class="code-area" id="code-panel">
+      <pre id="code-display" style="color:#78716c;">Generate something to see the code here.</pre>
+    </div>
+  </div>
+
+  <div class="preview-area">
+    <div class="loading" id="placeholder">Enter an intent and click Generate</div>
+    <iframe id="preview" class="hidden"></iframe>
+  </div>
+</div>
+
+<script>
+let conversationId = null;
+let currentVersion = 0;
+
+async function doGenerate() {
+  const intent = document.getElementById('intent').value.trim();
+  if (!intent) return;
+  await run('/generate', { intent, web_search: true });
+}
+
+async function doEvolve() {
+  const intent = document.getElementById('intent').value.trim();
+  if (!intent || !conversationId) return;
+  await run('/evolve', { intent, conversation_id: conversationId });
+}
+
+async function run(endpoint, body) {
+  const btn = document.getElementById('gen-btn');
+  const evolveBtn = document.getElementById('evolve-btn');
+  btn.disabled = true;
+  evolveBtn.disabled = true;
+  showStatus('Generating...');
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      showStatus('Error: ' + (data.detail || 'Unknown error'));
+      return;
+    }
+
+    conversationId = data.conversation_id;
+    const app = data.app;
+    currentVersion = app.version;
+
+    // Update UI
+    document.getElementById('conv-info').textContent =
+      `Conversation: ${conversationId.slice(0,8)}... | v${currentVersion}`;
+    document.getElementById('code-display').textContent = app.code;
+    document.getElementById('intent').value = '';
+
+    // Show evolve button
+    evolveBtn.classList.remove('hidden');
+
+    // Show suggestions
+    const suggestions = app.suggestions || [];
+    if (suggestions.length > 0) {
+      const area = document.getElementById('suggestions-area');
+      const list = document.getElementById('suggestions-list');
+      area.classList.remove('hidden');
+      list.innerHTML = suggestions.map(s =>
+        `<button class="suggestion-btn" onclick="useSuggestion(this)" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
+      ).join('');
+    }
+
+    // Stages info
+    const stages = (app.stages || []).map(s => `${s.name}: ${s.status}`).join(' -> ');
+    showStatus(`v${currentVersion} | ${app.code.length} chars | ${stages}`);
+
+    // Render in iframe
+    renderCode(app.code);
+  } catch (e) {
+    showStatus('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    evolveBtn.disabled = false;
+  }
+}
+
+function useSuggestion(el) {
+  document.getElementById('intent').value = el.dataset.prompt;
+}
+
+function showStatus(text) {
+  const bar = document.getElementById('status-bar');
+  bar.classList.remove('hidden');
+  bar.innerHTML = text;
+}
+
+function showTab(name) {
+  // Only one tab for now
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function renderCode(code) {
+  const iframe = document.getElementById('preview');
+  const placeholder = document.getElementById('placeholder');
+  placeholder.classList.add('hidden');
+  iframe.classList.remove('hidden');
+
+  // Rewrite @/components/ui/* and @/lib/utils imports to __ui_shim__
+  let processedCode = code;
+  processedCode = processedCode.replace(
+    /from\s+["']@\/components\/ui\/[^"']+["']/g,
+    'from "__ui_shim__"'
+  );
+  processedCode = processedCode.replace(
+    /from\s+["']@\/lib\/utils["']/g,
+    'from "__ui_shim__"'
+  );
+
+  iframe.src = '/preview';
+  iframe.onload = function() {
+    iframe.contentWindow.postMessage({ type: 'render', code: processedCode }, '*');
+  };
+}
+</script>
+</body>
+</html>

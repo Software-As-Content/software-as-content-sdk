@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 try:
     from fastapi import FastAPI, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import HTMLResponse
     from pydantic import BaseModel
     from sse_starlette.sse import EventSourceResponse
 except ImportError as e:
@@ -23,6 +25,8 @@ except ImportError as e:
 
 from sac.sac import SaC
 from sac.types import ConversationSettings
+
+_STATIC_DIR = Path(__file__).parent / "static"
 
 
 # ─── Request/Response Models ──────────────────────────────────────
@@ -93,7 +97,10 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         )
         conv = _get_or_create_conv(req.conversation_id, settings)
 
-        app_result = await conv.generate(req.intent, model=req.model)
+        opts: dict[str, object] = {}
+        if req.model:
+            opts["model"] = req.model
+        app_result = await conv.generate(req.intent, **opts)
         return {
             "success": True,
             "conversation_id": conv.id,
@@ -106,7 +113,10 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Conversation not found")
         conv = _conversations[req.conversation_id]
 
-        app_result = await conv.evolve(req.intent, model=req.model)
+        opts: dict[str, object] = {}
+        if req.model:
+            opts["model"] = req.model
+        app_result = await conv.evolve(req.intent, **opts)
         return {
             "success": True,
             "conversation_id": conv.id,
@@ -142,6 +152,16 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 yield {"data": json.dumps(event.model_dump())}
 
         return EventSourceResponse(event_generator())
+
+    # ─── Web Preview UI ─────────────────────────────────────────
+
+    @app.get("/", response_class=HTMLResponse)
+    async def preview_page():
+        return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/preview", response_class=HTMLResponse)
+    async def preview_iframe():
+        return (_STATIC_DIR / "preview.html").read_text(encoding="utf-8")
 
     return app
 

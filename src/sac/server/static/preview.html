@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    #root { min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"><p style="padding:24px;color:#a8a29e;">Waiting for code...</p></div>
+
+  <script>
+    // Queue messages until Babel is ready
+    var _pendingCode = null;
+    var _babelReady = false;
+
+    window.addEventListener('message', function(ev) {
+      if (ev.data && ev.data.type === 'render') {
+        if (_babelReady) {
+          renderApp(ev.data.code);
+        } else {
+          _pendingCode = ev.data.code;
+        }
+      }
+    });
+
+    // Load Babel standalone
+    var sc = document.createElement('script');
+    sc.src = 'https://unpkg.com/@babel/standalone@7.26.10/babel.min.js';
+    sc.onload = function() {
+      _babelReady = true;
+      if (_pendingCode) {
+        renderApp(_pendingCode);
+        _pendingCode = null;
+      }
+    };
+    sc.onerror = function() {
+      document.getElementById('root').innerHTML = '<p style="padding:24px;color:red;">Failed to load Babel transpiler</p>';
+    };
+    document.head.appendChild(sc);
+
+    function renderApp(tsxCode) {
+      document.getElementById('root').innerHTML = '<p style="padding:24px;color:#a8a29e;">Rendering...</p>';
+
+      // Transpile TSX -> JS using Babel
+      var jsCode;
+      try {
+        jsCode = window.Babel.transform(tsxCode, {
+          presets: ['react', 'typescript'],
+          filename: 'App.tsx',
+        }).code;
+      } catch(e) {
+        document.getElementById('root').innerHTML = '<pre style="padding:24px;color:red;white-space:pre-wrap;">Transpile error: ' + e.message + '</pre>';
+        return;
+      }
+
+      // Build UI shim as blob URL (same origin)
+      var shimCode = `
+        const React = window.__React;
+        const e = React.createElement;
+        const fwd = (tag, base) => React.forwardRef(({ className, ...p }, ref) => e(tag, { ref, className: [base, className].filter(Boolean).join(' '), ...p }));
+        export function cn(...classes) { return classes.flat().filter(Boolean).join(' '); }
+        export const Button = fwd('button', 'px-4 py-2 rounded-lg bg-orange-500 text-white hover:bg-orange-600 font-medium text-sm cursor-pointer border-none');
+        export const Card = fwd('div', 'rounded-2xl border border-gray-200 bg-white shadow-sm');
+        export const CardHeader = fwd('div', 'p-6 pb-0');
+        export const CardTitle = fwd('h3', 'text-lg font-semibold');
+        export const CardDescription = fwd('p', 'text-sm text-gray-500 mt-1');
+        export const CardContent = fwd('div', 'p-6');
+        export const CardFooter = fwd('div', 'p-6 pt-0');
+        export const Badge = fwd('span', 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-800');
+        export const Input = React.forwardRef(({ className, ...p }, ref) => e('input', { ref, className: 'flex h-10 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm ' + (className||''), ...p }));
+        export const Textarea = React.forwardRef(({ className, ...p }, ref) => e('textarea', { ref, className: 'flex min-h-[80px] w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm ' + (className||''), ...p }));
+        export const Separator = fwd('hr', 'border-gray-200 my-4');
+        export const ScrollArea = fwd('div', 'overflow-auto');
+        export const Tabs = fwd('div', '');
+        export const TabsList = fwd('div', 'inline-flex h-10 items-center rounded-lg bg-gray-100 p-1 gap-1');
+        export const TabsTrigger = fwd('button', 'inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md cursor-pointer border-none bg-transparent hover:bg-white');
+        export const TabsContent = fwd('div', 'mt-2');
+        export const Avatar = fwd('div', 'relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gray-200');
+        export const AvatarImage = (p) => e('img', { ...p, className: 'aspect-square h-full w-full object-cover ' + (p.className||'') });
+        export const AvatarFallback = fwd('span', 'flex h-full w-full items-center justify-center rounded-full bg-gray-200 text-sm');
+        export const Progress = ({ value, className, ...p }) => e('div', { className: 'relative h-2 w-full overflow-hidden rounded-full bg-gray-100 ' + (className||''), ...p }, e('div', { className: 'h-full bg-orange-500 transition-all rounded-full', style: { width: (value||0)+'%' } }));
+        export const Select = fwd('select', 'h-10 rounded-lg border border-gray-200 px-3 text-sm');
+        export const SelectTrigger = fwd('button', 'flex h-10 w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm');
+        export const SelectValue = fwd('span', '');
+        export const SelectContent = fwd('div', '');
+        export const SelectItem = fwd('option', '');
+        export const Label = fwd('label', 'text-sm font-medium');
+        export const Switch = ({ checked, onCheckedChange, className, ...p }) => e('button', { role:'switch', 'aria-checked': checked, onClick: ()=>onCheckedChange&&onCheckedChange(!checked), className: 'relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer border-none ' + (checked?'bg-orange-500':'bg-gray-200') + ' ' + (className||''), ...p }, e('span', { className: 'inline-block h-4 w-4 rounded-full bg-white transition-transform ' + (checked?'translate-x-6':'translate-x-1') }));
+        export const Table = fwd('table', 'w-full caption-bottom text-sm');
+        export const TableHeader = fwd('thead', '');
+        export const TableBody = fwd('tbody', '');
+        export const TableRow = fwd('tr', 'border-b border-gray-200');
+        export const TableHead = fwd('th', 'h-12 px-4 text-left font-medium text-gray-500');
+        export const TableCell = fwd('td', 'p-4');
+        export const Dialog = ({ children, open }) => open ? e('div', { className: 'fixed inset-0 z-50 flex items-center justify-center bg-black/50' }, children) : null;
+        export const DialogContent = fwd('div', 'bg-white rounded-2xl p-6 shadow-lg max-w-lg w-full mx-4');
+        export const DialogHeader = fwd('div', 'mb-4');
+        export const DialogTitle = fwd('h2', 'text-lg font-semibold');
+        export const DialogDescription = fwd('p', 'text-sm text-gray-500');
+        export const DialogTrigger = fwd('button', '');
+        export const DialogClose = fwd('button', '');
+        export const Tooltip = ({ children }) => children;
+        export const TooltipContent = fwd('div', '');
+        export const TooltipProvider = ({ children }) => children;
+        export const TooltipTrigger = fwd('div', '');
+        export const Accordion = fwd('div', '');
+        export const AccordionItem = fwd('div', 'border-b border-gray-200');
+        export const AccordionTrigger = fwd('button', 'flex w-full items-center justify-between py-4 font-medium cursor-pointer border-none bg-transparent text-left');
+        export const AccordionContent = fwd('div', 'pb-4 text-sm');
+        export const Checkbox = ({ checked, onCheckedChange, className, ...p }) => e('input', { type: 'checkbox', checked, onChange: (ev) => onCheckedChange && onCheckedChange(ev.target.checked), className: 'h-4 w-4 rounded ' + (className||''), ...p });
+        export const RadioGroup = fwd('div', 'flex flex-col gap-2');
+        export const RadioGroupItem = ({ value, checked, ...p }) => e('input', { type: 'radio', value, checked, className: 'h-4 w-4', ...p });
+        export const Slider = ({ value, onValueChange, min=0, max=100, step=1, className, ...p }) => e('input', { type: 'range', value: Array.isArray(value)?value[0]:value, onChange: (ev)=>onValueChange&&onValueChange([Number(ev.target.value)]), min, max, step, className: 'w-full ' + (className||''), ...p });
+        export const Popover = ({ children }) => children;
+        export const PopoverTrigger = fwd('button', '');
+        export const PopoverContent = fwd('div', 'bg-white border border-gray-200 rounded-lg shadow-lg p-4');
+        export const Sheet = Dialog;
+        export const SheetContent = DialogContent;
+        export const SheetHeader = DialogHeader;
+        export const SheetTitle = DialogTitle;
+        export const SheetTrigger = fwd('button', '');
+        export const SheetDescription = DialogDescription;
+        export const DropdownMenu = ({ children }) => children;
+        export const DropdownMenuTrigger = fwd('button', '');
+        export const DropdownMenuContent = fwd('div', 'bg-white border border-gray-200 rounded-lg shadow-lg p-1');
+        export const DropdownMenuItem = fwd('div', 'px-3 py-2 text-sm cursor-pointer hover:bg-gray-100 rounded');
+        export const DropdownMenuSeparator = () => e('hr', { className: 'my-1 border-gray-200' });
+      `;
+      var shimBlob = URL.createObjectURL(new Blob([shimCode], { type: 'application/javascript' }));
+
+      // Replace __ui_shim__ with blob URL
+      jsCode = jsCode.replace(/__ui_shim__/g, shimBlob);
+
+      // Create import map
+      var existingMap = document.querySelector('script[type="importmap"]');
+      if (!existingMap) {
+        var im = document.createElement('script');
+        im.type = 'importmap';
+        im.textContent = JSON.stringify({
+          "imports": {
+            "react": "https://esm.sh/react@19?dev",
+            "react/": "https://esm.sh/react@19/",
+            "react-dom": "https://esm.sh/react-dom@19?dev",
+            "react-dom/": "https://esm.sh/react-dom@19/",
+            "react-dom/client": "https://esm.sh/react-dom@19/client?dev",
+            "lucide-react": "https://esm.sh/lucide-react?external=react",
+            "recharts": "https://esm.sh/recharts?external=react,react-dom",
+            "pigeon-maps": "https://esm.sh/pigeon-maps?external=react",
+            "pigeon-maps/": "https://esm.sh/pigeon-maps/&external=react"
+          }
+        });
+        document.head.insertBefore(im, document.head.firstChild);
+      }
+
+      // Create entry module
+      var entryCode = `
+        import React from "react";
+        import { useState, useEffect, useRef, useCallback, useMemo, useReducer, useContext, createContext, Fragment } from "react";
+        import ReactDOM from "react-dom/client";
+        window.__React = React;
+        window.React = React;
+        try {
+          const appBlob = URL.createObjectURL(new Blob([` + JSON.stringify(jsCode) + `], { type: 'application/javascript' }));
+          const mod = await import(appBlob);
+          const App = mod.default || Object.values(mod).find(v => typeof v === 'function');
+          if (App) {
+            ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+          } else {
+            document.getElementById('root').innerHTML = '<p style="padding:24px;color:red;">No default export found</p>';
+          }
+        } catch(err) {
+          document.getElementById('root').innerHTML = '<pre style="padding:24px;color:red;white-space:pre-wrap;">' + err.message + '\\n' + err.stack + '</pre>';
+        }
+      `;
+      var entryBlob = URL.createObjectURL(new Blob([entryCode], { type: 'application/javascript' }));
+      var ms = document.createElement('script');
+      ms.type = 'module';
+      ms.src = entryBlob;
+      document.body.appendChild(ms);
+    }
+  </script>
+</body>
+</html>
