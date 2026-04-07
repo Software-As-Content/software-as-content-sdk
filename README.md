@@ -4,7 +4,53 @@
 
 SaC is the superset of GenUI. GenUI is just `conversation.version == 1`.
 
-## Quickstart
+## Setup
+
+### Prerequisites
+
+- Python 3.11+
+- An [OpenRouter](https://openrouter.ai/) API key (for LLM access)
+- (Optional) A [Tavily](https://tavily.com/) API key (for web search)
+
+### Install
+
+```bash
+git clone <repo-url>
+cd software-as-content-sdk
+pip install -e ".[server]"
+```
+
+### Configure API Keys
+
+Create a `.env` file in the project root:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and fill in your keys:
+
+```
+# Required — OpenRouter API key (get one at https://openrouter.ai/keys)
+SAC_API_KEY=sk-or-v1-your-key-here
+
+# Optional — Tavily API key for web search (get one at https://app.tavily.com/)
+# Without this, generation still works but won't include real-time data
+SAC_SEARCH_API_KEY=tvly-your-key-here
+```
+
+### Run
+
+```bash
+# Start the HTTP server with browser preview
+python -m sac.cli serve
+
+# Open http://localhost:3000 in your browser
+```
+
+## Usage
+
+### Python Library
 
 ```python
 from sac import SaC
@@ -14,7 +60,7 @@ app = await sac.generate("2026 travel guide for Hangzhou")
 print(app.code)  # runnable TSX
 ```
 
-## Multi-turn Evolution
+### Multi-turn Evolution
 
 ```python
 conv = sac.conversation()
@@ -26,53 +72,66 @@ print(conv.version)  # 3
 print(conv.history)  # [v1, v2, v3]
 ```
 
-## Streaming
+### Streaming
 
 ```python
 async for event in conv.stream("travel guide"):
     if event.type == "stage":       # analyze / search / generate
-        print(f"Stage: {event.name} → {event.status}")
+        print(f"Stage: {event.name} -> {event.status}")
     elif event.type == "chunk":     # code fragment
         print(event.data, end="")
     elif event.type == "complete":  # final result
         render(event.app)
 ```
 
-## Custom Providers
+### Custom Providers
 
 ```python
 sac = SaC(
     llm=AnthropicProvider(api_key="..."),
     search=TavilyProvider(api_key="..."),
-    store=SQLiteStore("./sac.db"),
+    store=MemoryStore(output_dir="output"),
 )
 ```
 
-## Run as Server
+### HTTP Server
 
 ```bash
-# HTTP/SSE server (for browser frontends)
-sac serve --port 3000
+# Start with default settings
+python -m sac.cli serve
 
-# MCP server (for AI agents)
-sac serve --transport stdio
+# Custom port
+python -m sac.cli serve --port 8080
 ```
 
 ## Architecture
 
 ```
 src/sac/
-├── client.py          # SaC entry point
-├── conversation.py    # Core primitive: stateful conversation
-├── types.py           # Pydantic models (data contracts)
-├── pipeline/          # Generate + Evolve orchestration
-├── providers/         # Pluggable LLM + Search backends
-├── prompts/           # Prompt templates + strategies
-├── store/             # Conversation persistence
-└── server/            # HTTP/SSE + MCP deployment
+├── sac.py               # SaC entry point
+├── conversation.py      # Core primitive: stateful conversation
+├── types.py             # Pydantic models (data contracts)
+├── cli.py               # CLI (sac serve, sac generate)
+│
+├── runtime/             # Execution engine
+│   ├── pipeline/        #   Generate + Evolve orchestration
+│   ├── providers/       #   Pluggable LLM + Search backends
+│   ├── prompts/         #   Prompt templates
+│   └── store/           #   Conversation persistence
+│
+├── server/              # HTTP/SSE deployment
+│   └── http.py
+│
+└── renderer/            # Browser preview (independent module)
+    ├── sac-renderer.js  #   Renderer API
+    ├── preview.html     #   iframe sandbox
+    └── design-systems/  #   Pluggable design system
+        └── default/
+            ├── prompt.md    # LLM component reference
+            └── shim.js      # Browser component implementations
 ```
 
-**Core primitives:** `SaC → Conversation → App`
+**Core primitives:** `SaC -> Conversation -> App`
 
 ## What is Software as Content?
 
