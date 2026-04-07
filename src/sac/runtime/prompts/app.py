@@ -88,13 +88,14 @@ DEFAULT_CUSTOM_INSTRUCTIONS = "Create a modern, clean UI with good UX practices,
 
 # ─── Design System ─────────────────────────────────────────────────
 
-_DESIGN_SYSTEM_DIR = Path(__file__).parent / "templates"
+_DESIGN_SYSTEM_DIR = Path(__file__).parents[2] / "renderer" / "design-systems" / "default"
 
 
-def get_design_system_content() -> str:
+def get_design_system_content(path: str | Path | None = None) -> str:
     """Load the design system reference document."""
-    path = _DESIGN_SYSTEM_DIR / "design-system.md"
-    return path.read_text(encoding="utf-8")
+    if path:
+        return Path(path).read_text(encoding="utf-8")
+    return (_DESIGN_SYSTEM_DIR / "prompt.md").read_text(encoding="utf-8")
 
 
 # ─── Prompt Builders ───────────────────────────────────────────────

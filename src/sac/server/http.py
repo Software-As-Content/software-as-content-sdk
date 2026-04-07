@@ -15,7 +15,7 @@ from typing import Any
 try:
     from fastapi import FastAPI, HTTPException
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import HTMLResponse
+    from fastapi.responses import FileResponse, HTMLResponse
     from pydantic import BaseModel
     from sse_starlette.sse import EventSourceResponse
 except ImportError as e:
@@ -27,6 +27,7 @@ from sac.sac import SaC
 from sac.types import ConversationSettings
 
 _STATIC_DIR = Path(__file__).parent / "static"
+_RENDERER_DIR = Path(__file__).parent.parent / "renderer"
 
 
 # ─── Request/Response Models ──────────────────────────────────────
@@ -147,9 +148,17 @@ def create_app(sac: SaC | None = None) -> FastAPI:
     ) -> EventSourceResponse:
         conv = _get_or_create_conv(conversation_id)
 
+        opts: dict[str, object] = {}
+        if model:
+            opts["model"] = model
+
         async def event_generator():
-            async for event in conv.stream(intent, model=model):
-                yield {"data": json.dumps(event.model_dump())}
+            async for event in conv.stream(intent, **opts):
+                payload = event.model_dump()
+                # Attach conversation_id to complete events
+                if event.type == "complete":
+                    payload["conversation_id"] = conv.id
+                yield {"event": event.type, "data": json.dumps(payload)}
 
         return EventSourceResponse(event_generator())
 
@@ -159,9 +168,19 @@ def create_app(sac: SaC | None = None) -> FastAPI:
     async def preview_page():
         return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
-    @app.get("/preview", response_class=HTMLResponse)
-    async def preview_iframe():
-        return (_STATIC_DIR / "preview.html").read_text(encoding="utf-8")
+    @app.get("/renderer/{path:path}")
+    async def serve_renderer(path: str):
+        file = _RENDERER_DIR / path
+        if not file.exists() or not file.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+        suffix = file.suffix
+        media_types = {
+            ".html": "text/html",
+            ".js": "application/javascript",
+            ".md": "text/markdown",
+            ".css": "text/css",
+        }
+        return FileResponse(file, media_type=media_types.get(suffix, "application/octet-stream"))
 
     return app
 

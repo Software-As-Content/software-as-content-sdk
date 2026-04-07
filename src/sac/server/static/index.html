@@ -23,7 +23,6 @@
   .btn-secondary { background: #f5f5f4; color: #44403c; border: 1px solid #e7e5e4; }
   .btn-secondary:hover { background: #e7e5e4; }
   .status { padding: 16px; border-bottom: 1px solid #e7e5e4; font-size: 13px; color: #78716c; }
-  .status .label { font-weight: 500; color: #44403c; }
   .suggestions { padding: 16px; border-bottom: 1px solid #e7e5e4; }
   .suggestions h3 { font-size: 13px; font-weight: 500; color: #78716c; margin-bottom: 8px; }
   .suggestion-btn { display: block; width: 100%; text-align: left; padding: 8px 12px; margin-bottom: 4px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
@@ -52,8 +51,8 @@
     <div class="input-area">
       <textarea id="intent" placeholder="Describe the UI you want to generate..."></textarea>
       <div class="btn-row">
-        <button class="btn btn-primary" id="gen-btn" onclick="doGenerate()">Generate</button>
-        <button class="btn btn-secondary hidden" id="evolve-btn" onclick="doEvolve()">Evolve</button>
+        <button class="btn btn-primary" id="gen-btn">Generate</button>
+        <button class="btn btn-secondary hidden" id="evolve-btn">Evolve</button>
       </div>
     </div>
     <div class="status hidden" id="status-bar"></div>
@@ -62,7 +61,7 @@
       <div id="suggestions-list"></div>
     </div>
     <div class="tab-bar">
-      <div class="tab active" onclick="showTab('code')">Code</div>
+      <div class="tab active">Code</div>
     </div>
     <div class="code-area" id="code-panel">
       <pre id="code-display" style="color:#78716c;">Generate something to see the code here.</pre>
@@ -75,54 +74,101 @@
   </div>
 </div>
 
-<script>
+<script type="module">
+import { SaCRenderer } from '/renderer/sac-renderer.js';
+
+// ─── Renderer setup ───────────────────────────────────────────
+
+const iframe = document.getElementById('preview');
+const placeholder = document.getElementById('placeholder');
+const renderer = new SaCRenderer(iframe);
+
+renderer.on('render', () => {
+  placeholder.classList.add('hidden');
+  iframe.classList.remove('hidden');
+});
+
+renderer.on('error', (err) => {
+  showStatus(`Render error (${err.type}): ${err.message}`);
+});
+
+// ─── State ────────────────────────────────────────────────────
+
 let conversationId = null;
 let currentVersion = 0;
 
-async function doGenerate() {
+// ─── Button handlers ──────────────────────────────────────────
+
+document.getElementById('gen-btn').addEventListener('click', async () => {
   const intent = document.getElementById('intent').value.trim();
   if (!intent) return;
-  await run('/generate', { intent, web_search: true });
-}
 
-async function doEvolve() {
+  let url = '/stream?intent=' + encodeURIComponent(intent);
+  if (conversationId) url += '&conversation_id=' + encodeURIComponent(conversationId);
+  await streamGenerate(url);
+});
+
+document.getElementById('evolve-btn').addEventListener('click', async () => {
   const intent = document.getElementById('intent').value.trim();
   if (!intent || !conversationId) return;
-  await run('/evolve', { intent, conversation_id: conversationId });
-}
 
-async function run(endpoint, body) {
+  await streamGenerate(
+    '/stream?intent=' + encodeURIComponent(intent) +
+    '&conversation_id=' + encodeURIComponent(conversationId)
+  );
+});
+
+// ─── Streaming generation ─────────────────────────────────────
+
+async function streamGenerate(url) {
   const btn = document.getElementById('gen-btn');
   const evolveBtn = document.getElementById('evolve-btn');
   btn.disabled = true;
   evolveBtn.disabled = true;
   showStatus('Generating...');
 
-  try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
+  // Clear code display and prepare for streaming
+  const codeDisplay = document.getElementById('code-display');
+  codeDisplay.textContent = '';
+  codeDisplay.style.color = '';
 
-    if (!data.success) {
-      showStatus('Error: ' + (data.detail || 'Unknown error'));
-      return;
-    }
+  // Prepare iframe
+  placeholder.classList.add('hidden');
+  iframe.classList.remove('hidden');
 
-    conversationId = data.conversation_id;
-    const app = data.app;
+  const stream = renderer.createStream();
+  const es = new EventSource(url);
+
+  function done() {
+    btn.disabled = false;
+    evolveBtn.disabled = false;
+  }
+
+  es.addEventListener('stage', (e) => {
+    const event = JSON.parse(e.data);
+    showStatus(`${event.name}: ${event.status}`);
+  });
+
+  es.addEventListener('chunk', (e) => {
+    const event = JSON.parse(e.data);
+    codeDisplay.textContent += event.data;
+    stream.push(event.data);
+  });
+
+  es.addEventListener('complete', (e) => {
+    const event = JSON.parse(e.data);
+    stream.end();
+    es.close();
+
+    const app = event.app;
+    if (event.conversation_id) conversationId = event.conversation_id;
     currentVersion = app.version;
 
-    // Update UI
     document.getElementById('conv-info').textContent =
-      `Conversation: ${conversationId.slice(0,8)}... | v${currentVersion}`;
-    document.getElementById('code-display').textContent = app.code;
-    document.getElementById('intent').value = '';
+      `v${currentVersion} | ${app.code.length} chars`;
 
-    // Show evolve button
     evolveBtn.classList.remove('hidden');
+    document.getElementById('intent').value = '';
 
     // Show suggestions
     const suggestions = app.suggestions || [];
@@ -131,27 +177,35 @@ async function run(endpoint, body) {
       const list = document.getElementById('suggestions-list');
       area.classList.remove('hidden');
       list.innerHTML = suggestions.map(s =>
-        `<button class="suggestion-btn" onclick="useSuggestion(this)" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
+        `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
       ).join('');
+      list.querySelectorAll('.suggestion-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          document.getElementById('intent').value = b.dataset.prompt;
+        });
+      });
     }
 
-    // Stages info
     const stages = (app.stages || []).map(s => `${s.name}: ${s.status}`).join(' -> ');
     showStatus(`v${currentVersion} | ${app.code.length} chars | ${stages}`);
+    done();
+  });
 
-    // Render in iframe
-    renderCode(app.code);
-  } catch (e) {
-    showStatus('Error: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    evolveBtn.disabled = false;
-  }
+  es.addEventListener('error', (e) => {
+    // SSE 'error' event can be either a typed event from server or a connection error
+    try {
+      const event = JSON.parse(e.data);
+      showStatus('Error: ' + event.error);
+    } catch {
+      showStatus('Connection error');
+    }
+    stream.abort();
+    es.close();
+    done();
+  });
 }
 
-function useSuggestion(el) {
-  document.getElementById('intent').value = el.dataset.prompt;
-}
+// ─── Helpers ──────────────────────────────────────────────────
 
 function showStatus(text) {
   const bar = document.getElementById('status-bar');
@@ -159,35 +213,8 @@ function showStatus(text) {
   bar.innerHTML = text;
 }
 
-function showTab(name) {
-  // Only one tab for now
-}
-
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function renderCode(code) {
-  const iframe = document.getElementById('preview');
-  const placeholder = document.getElementById('placeholder');
-  placeholder.classList.add('hidden');
-  iframe.classList.remove('hidden');
-
-  // Rewrite @/components/ui/* and @/lib/utils imports to __ui_shim__
-  let processedCode = code;
-  processedCode = processedCode.replace(
-    /from\s+["']@\/components\/ui\/[^"']+["']/g,
-    'from "__ui_shim__"'
-  );
-  processedCode = processedCode.replace(
-    /from\s+["']@\/lib\/utils["']/g,
-    'from "__ui_shim__"'
-  );
-
-  iframe.src = '/preview';
-  iframe.onload = function() {
-    iframe.contentWindow.postMessage({ type: 'render', code: processedCode }, '*');
-  };
 }
 </script>
 </body>

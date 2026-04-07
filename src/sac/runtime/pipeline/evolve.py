@@ -19,6 +19,8 @@ from sac.runtime.prompts.growth import build_growth_prompt
 from sac.runtime.prompts.intent import get_intent_suggestion_prompt, parse_intent_suggestions
 from sac.runtime.prompts.search import get_search_query_extraction_prompt
 from sac.runtime.providers.base import LLMProvider, SearchProvider
+from typing import AsyncIterator
+
 from sac.types import (
     App,
     ConversationSettings,
@@ -26,8 +28,14 @@ from sac.types import (
     GrowthType,
     IntentSuggestion,
     Message,
+    PipelineChunkEvent,
+    PipelineCompleteEvent,
+    PipelineErrorEvent,
+    PipelineEvent,
+    PipelineStageEvent,
     SearchQuery,
     SearchResult,
+    StageStatus,
 )
 
 
@@ -117,6 +125,88 @@ async def evolve_pipeline(
         growth_decision=decision,
         stages=emitter.stages,
     )
+
+
+async def stream_evolve_pipeline(
+    new_intent: str,
+    current_code: str,
+    original_intent: str,
+    model: str,
+    llm: LLMProvider,
+    search: SearchProvider | None,
+    settings: ConversationSettings,
+    version: int = 2,
+    parent_version: int = 1,
+) -> AsyncIterator[PipelineEvent]:
+    """
+    Streaming version of evolve_pipeline.
+    Yields PipelineEvents including ChunkEvents for each LLM token.
+    """
+    system_prompt = build_final_system_prompt(
+        custom_instructions=settings.custom_instructions,
+        include_design_system=settings.use_design_system,
+    )
+
+    search_queries: list[SearchQuery] = []
+    search_results: list[SearchResult] = []
+
+    # Step 1: Search for new data
+    yield PipelineStageEvent(name="search", status=StageStatus.RUNNING)
+    try:
+        if search is not None:
+            search_queries = await _extract_search_queries(new_intent, model, llm)
+            if search_queries:
+                query_strings = [q.query for q in search_queries]
+                search_results = await search.search(query_strings)
+        yield PipelineStageEvent(name="search", status=StageStatus.COMPLETED)
+    except Exception:
+        yield PipelineStageEvent(name="search", status=StageStatus.ERROR)
+        # Search failure is non-fatal for evolve — continue with empty results
+
+    # Step 2: Stream unified growth
+    yield PipelineStageEvent(name="generate", status=StageStatus.RUNNING)
+
+    growth_prompt = build_growth_prompt(
+        current_code=current_code,
+        original_intent=original_intent,
+        new_intent=new_intent,
+        search_results=search_results,
+        system_prompt=system_prompt,
+        custom_growth_rules=settings.growth_rules or None,
+    )
+
+    # Start intent suggestions in parallel
+    suggest_task = asyncio.create_task(
+        _generate_intent_suggestions(new_intent, search_results, model, llm, settings.intent_rules)
+    )
+
+    # Stream LLM tokens
+    full_content = ""
+    try:
+        async for token in llm.stream(model, [Message(role="user", content=growth_prompt)]):
+            full_content += token
+            yield PipelineChunkEvent(data=token)
+    except Exception as exc:
+        yield PipelineStageEvent(name="generate", status=StageStatus.ERROR)
+        yield PipelineErrorEvent(error=str(exc))
+        suggest_task.cancel()
+        return
+
+    decision, code = _parse_growth_response(full_content)
+    suggestions = await suggest_task
+
+    yield PipelineStageEvent(name="generate", status=StageStatus.COMPLETED)
+    yield PipelineCompleteEvent(app=App(
+        code=code,
+        version=version,
+        intent=new_intent,
+        parent_version=parent_version,
+        model=model,
+        search_queries=search_queries,
+        search_results=search_results,
+        suggestions=suggestions,
+        growth_decision=decision,
+    ))
 
 
 # ─── Internal helpers ──────────────────────────────────────────────

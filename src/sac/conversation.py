@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
-from sac.runtime.pipeline.evolve import evolve_pipeline
-from sac.runtime.pipeline.generate import generate_pipeline
+from sac.runtime.pipeline.evolve import evolve_pipeline, stream_evolve_pipeline
+from sac.runtime.pipeline.generate import generate_pipeline, stream_generate_pipeline
 from sac.runtime.prompts.app import DEFAULT_MODEL
 from sac.runtime.providers.base import LLMProvider, SearchProvider
 from sac.runtime.store.base import ConversationStore
@@ -207,27 +207,83 @@ class Conversation:
 
     async def stream(self, intent: str, **opts: object) -> AsyncIterator[PipelineEvent]:
         """
-        Stream generation or evolution, yielding stage/chunk/complete events.
+        Stream generation or evolution with real LLM token streaming.
 
+        Yields StageEvents, ChunkEvents (per token), and a final CompleteEvent.
         Automatically decides whether to generate or evolve based on conversation state.
         """
+        model = str(opts.get("model", self.model))
         is_evolve = len(self._apps) > 0
 
-        # Yield initial stage
-        yield PipelineStageEvent(name="analyze" if not is_evolve else "search", status=StageStatus.RUNNING)
+        # Record user message
+        await self._store.add_event(
+            MessageEvent(conversation_id=self.id, role="user", content=intent)
+        )
+
+        settings = self.settings.model_copy()
+        web_search = opts.get("web_search", settings.enable_web_search)
+        if isinstance(web_search, bool):
+            settings.enable_web_search = web_search
 
         try:
             if is_evolve:
-                app = await self.evolve(intent, **opts)
+                current = self.current_app
+                assert current is not None
+                gen = stream_evolve_pipeline(
+                    new_intent=intent,
+                    current_code=current.code,
+                    original_intent=current.intent,
+                    model=model,
+                    llm=self._llm,
+                    search=self._search,
+                    settings=settings,
+                    version=self.version + 1,
+                    parent_version=current.version,
+                )
             else:
-                app = await self.generate(intent, **opts)
+                gen = stream_generate_pipeline(
+                    intent=intent,
+                    model=model,
+                    llm=self._llm,
+                    search=self._search if settings.enable_web_search else None,
+                    settings=settings,
+                    version=self.version + 1,
+                )
 
-            # Emit stage events from the pipeline
-            for stage in app.stages:
-                yield PipelineStageEvent(name=stage.name, status=stage.status)
+            async for event in gen:
+                # Intercept CompleteEvent to update state
+                if isinstance(event, PipelineCompleteEvent):
+                    self._apps.append(event.app)
+                    # Record event in store
+                    event_cls = GrowthEvent if is_evolve else GenerationEvent
+                    await self._store.add_event(
+                        event_cls(
+                            conversation_id=self.id,
+                            intent=intent,
+                            model=model,
+                            status=EventStatus.SUCCESS,
+                            code=event.app.code,
+                            stages=event.app.stages,
+                            search_queries=event.app.search_queries or None,
+                            search_results=event.app.search_results or None,
+                            intent_suggestions=event.app.suggestions or None,
+                        )
+                    )
+                    # Update title on first generation
+                    if not is_evolve and self.version == 1:
+                        title = intent[:80] + ("..." if len(intent) > 80 else "")
+                        await self._store.update_conversation(self.id, title=title)
 
-            # Emit complete
-            yield PipelineCompleteEvent(app=app)
+                yield event
 
         except Exception as exc:
+            await self._store.add_event(
+                (GrowthEvent if is_evolve else GenerationEvent)(
+                    conversation_id=self.id,
+                    intent=intent,
+                    model=model,
+                    status=EventStatus.ERROR,
+                    error=str(exc),
+                )
+            )
             yield PipelineErrorEvent(error=str(exc))
