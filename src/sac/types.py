@@ -196,6 +196,12 @@ class PipelineStageEvent(BaseModel):
     status: StageStatus
 
 
+class PipelineSearchEvent(BaseModel):
+    type: Literal["search"] = "search"
+    queries: list[SearchQuery] = Field(default_factory=list)
+    results: list[SearchResult] = Field(default_factory=list)
+
+
 class PipelineChunkEvent(BaseModel):
     type: Literal["chunk"] = "chunk"
     data: str
@@ -211,7 +217,7 @@ class PipelineErrorEvent(BaseModel):
     error: str
 
 
-PipelineEvent = PipelineStageEvent | PipelineChunkEvent | PipelineCompleteEvent | PipelineErrorEvent
+PipelineEvent = PipelineStageEvent | PipelineSearchEvent | PipelineChunkEvent | PipelineCompleteEvent | PipelineErrorEvent
 
 
 # ─── LLM Message ──────────────────────────────────────────────────

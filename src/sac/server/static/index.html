@@ -155,6 +155,24 @@ async function streamGenerate(url) {
     showStatus(`${event.name}: ${event.status}`);
   });
 
+  es.addEventListener('search', (e) => {
+    const event = JSON.parse(e.data);
+    const results = event.results || [];
+    if (results.length > 0) {
+      const searchArea = document.getElementById('suggestions-area');
+      const searchList = document.getElementById('suggestions-list');
+      searchArea.classList.remove('hidden');
+      document.querySelector('#suggestions-area h3').textContent = 'Search Results';
+      searchList.innerHTML = results.map(r =>
+        `<div style="margin-bottom:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">` +
+        `<strong>${escHtml(r.query)}</strong>` +
+        (r.answer ? `<p style="margin:4px 0 0;color:#555;">${escHtml(r.answer.substring(0, 150))}...</p>` : '') +
+        `<p style="margin:2px 0 0;color:#888;">${r.sources?.length || 0} sources</p>` +
+        `</div>`
+      ).join('');
+    }
+  });
+
   es.addEventListener('chunk', (e) => {
     const event = JSON.parse(e.data);
     codeDisplay.textContent += event.data;

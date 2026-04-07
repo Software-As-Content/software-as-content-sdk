@@ -19,6 +19,7 @@ from sac.types import (
     PipelineCompleteEvent,
     PipelineErrorEvent,
     PipelineEvent,
+    PipelineSearchEvent,
     PipelineStageEvent,
     SearchResult,
 )
@@ -38,6 +39,7 @@ __all__ = [
     # Events
     "PipelineEvent",
     "PipelineStageEvent",
+    "PipelineSearchEvent",
     "PipelineChunkEvent",
     "PipelineCompleteEvent",
     "PipelineErrorEvent",

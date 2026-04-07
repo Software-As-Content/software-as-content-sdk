@@ -32,6 +32,7 @@ from sac.types import (
     PipelineCompleteEvent,
     PipelineErrorEvent,
     PipelineEvent,
+    PipelineSearchEvent,
     PipelineStageEvent,
     SearchQuery,
     SearchResult,
@@ -159,6 +160,8 @@ async def stream_evolve_pipeline(
                 query_strings = [q.query for q in search_queries]
                 search_results = await search.search(query_strings)
         yield PipelineStageEvent(name="search", status=StageStatus.COMPLETED)
+        if search_results:
+            yield PipelineSearchEvent(queries=search_queries, results=search_results)
     except Exception:
         yield PipelineStageEvent(name="search", status=StageStatus.ERROR)
         # Search failure is non-fatal for evolve — continue with empty results

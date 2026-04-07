@@ -29,6 +29,7 @@ from sac.types import (
     PipelineCompleteEvent,
     PipelineErrorEvent,
     PipelineEvent,
+    PipelineSearchEvent,
     PipelineStageEvent,
     SearchQuery,
     SearchResult,
@@ -182,6 +183,7 @@ async def stream_generate_pipeline(
                 query_strings = [q.query for q in search_queries]
                 search_results = await search.search(query_strings)
                 yield PipelineStageEvent(name="search", status=StageStatus.COMPLETED)
+                yield PipelineSearchEvent(queries=search_queries, results=search_results)
             except Exception as exc:
                 yield PipelineStageEvent(name="search", status=StageStatus.ERROR)
                 yield PipelineErrorEvent(error=str(exc))
