@@ -12,10 +12,15 @@ import React from "react";
 
 const e = React.createElement;
 
+// Props that are valid in shadcn/Radix but not on DOM elements
+const _strip = new Set(['asChild', 'onValueChange', 'onCheckedChange', 'onSelect', 'onOpenChange', 'sideOffset', 'align', 'collapsible', 'defaultValue', 'orientation', 'decorative', 'variant', 'size']);
+
 const fwd = (tag, base) =>
-  React.forwardRef(({ className, ...p }, ref) =>
-    e(tag, { ref, className: [base, className].filter(Boolean).join(" "), ...p })
-  );
+  React.forwardRef(({ className, ...p }, ref) => {
+    const clean = {};
+    for (const k in p) { if (!_strip.has(k)) clean[k] = p[k]; }
+    return e(tag, { ref, className: [base, className].filter(Boolean).join(" "), ...clean });
+  });
 
 // ─── Utility ──────────────────────────────────────────────────────
 

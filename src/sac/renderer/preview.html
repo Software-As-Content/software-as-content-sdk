@@ -26,122 +26,161 @@
 <body>
   <div id="root"><p style="padding:24px;color:#a8a29e;">Waiting for code...</p></div>
 
+  <!-- Load Babel standalone -->
   <script>
     var _babelReady = false;
     var _pendingRender = null;
-    var _reactRoot = null;
 
-    // Load Babel
     var sc = document.createElement('script');
     sc.src = 'https://unpkg.com/@babel/standalone@7.26.10/babel.min.js';
     sc.onload = function() {
       _babelReady = true;
       if (_pendingRender) {
-        renderApp(_pendingRender.code, _pendingRender.shimUrl);
+        renderApp(_pendingRender.code, _pendingRender.shimUrl, _pendingRender.silent);
         _pendingRender = null;
       }
     };
     sc.onerror = function() {
-      postError('Failed to load Babel transpiler', 'transpile');
+      window.parent.postMessage({ type: 'render-error', error: { message: 'Failed to load Babel', type: 'transpile' } }, '*');
     };
     document.head.appendChild(sc);
+  </script>
 
-    // Listen for messages from parent
-    window.addEventListener('message', function(ev) {
-      if (!ev.data || !ev.data.type) return;
+  <!-- Bootstrap React once, then handle renders via postMessage -->
+  <script type="module">
+    import React from "react";
+    import { useState, useEffect, useRef, useCallback, useMemo, useReducer, useContext, createContext, Fragment } from "react";
+    import ReactDOM from "react-dom/client";
 
-      if (ev.data.type === 'render') {
-        if (_babelReady) {
-          renderApp(ev.data.code, ev.data.shimUrl);
-        } else {
-          _pendingRender = { code: ev.data.code, shimUrl: ev.data.shimUrl };
+    window.__React = React;
+    window.React = React;
+
+    // Persistent React root — reused across renders
+    const rootEl = document.getElementById('root');
+    let reactRoot = ReactDOM.createRoot(rootEl);
+
+    // Error boundary
+    class ErrorBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { error: null, key: 0 }; }
+      static getDerivedStateFromError(error) { return { error }; }
+      componentDidCatch(error) {
+        if (!this._silent) {
+          window.parent.postMessage({ type: 'render-error', error: { message: error.message, type: 'runtime', stack: error.stack || '' } }, '*');
         }
-      } else if (ev.data.type === 'abort') {
-        document.getElementById('root').innerHTML = '';
       }
-    });
-
-    function postError(message, type, stack) {
-      window.parent.postMessage({ type: 'render-error', error: { message: message, type: type, stack: stack || '' } }, '*');
+      render() {
+        if (this.state.error) {
+          return this._silent ? null : React.createElement('pre', {
+            style: { padding: '24px', color: 'red', whiteSpace: 'pre-wrap' }
+          }, 'Runtime error: ' + this.state.error.message);
+        }
+        return this.props.children;
+      }
     }
 
-    function postSuccess() {
-      window.parent.postMessage({ type: 'render-success' }, '*');
-    }
+    // Cache for shim blob URLs
+    const shimCache = {};
 
-    // Cache fetched shim blob URLs
-    var _shimBlobCache = {};
+    // Main render function — called from the non-module script via window
+    window.__doRender = async function(tsxCode, shimUrl, silent) {
+      // Transpile
+      if (!window.Babel) {
+        if (!silent) window.parent.postMessage({ type: 'render-error', error: { message: 'Babel not loaded', type: 'transpile' } }, '*');
+        return;
+      }
 
-    async function renderApp(tsxCode, shimUrl) {
-      // Transpile TSX -> JS using Babel
-      var jsCode;
+      let jsCode;
       try {
         jsCode = window.Babel.transform(tsxCode, {
           presets: ['react', 'typescript'],
           filename: 'App.tsx',
         }).code;
       } catch(e) {
-        window.parent.postMessage({ type: 'render-error', error: { message: e.message, type: 'transpile' } }, '*');
-        document.getElementById('root').innerHTML = '<pre style="padding:24px;color:red;white-space:pre-wrap;">Transpile error: ' + e.message + '</pre>';
+        if (!silent) {
+          window.parent.postMessage({ type: 'render-error', error: { message: e.message, type: 'transpile' } }, '*');
+          rootEl.innerHTML = '<pre style="padding:24px;color:red;white-space:pre-wrap;">Transpile error: ' + e.message + '</pre>';
+        }
         return;
       }
 
-      // Fetch shim and create blob URL (cached)
+      // Load and cache shim
       if (shimUrl) {
-        if (!_shimBlobCache[shimUrl]) {
+        if (!shimCache[shimUrl]) {
           try {
-            var res = await fetch(shimUrl);
-            var shimCode = await res.text();
-            _shimBlobCache[shimUrl] = URL.createObjectURL(new Blob([shimCode], { type: 'application/javascript' }));
+            const res = await fetch(shimUrl);
+            const shimCode = await res.text();
+            shimCache[shimUrl] = URL.createObjectURL(new Blob([shimCode], { type: 'application/javascript' }));
           } catch(e) {
-            window.parent.postMessage({ type: 'render-error', error: { message: 'Failed to load design system: ' + e.message, type: 'module-load' } }, '*');
+            if (!silent) window.parent.postMessage({ type: 'render-error', error: { message: 'Failed to load design system', type: 'module-load' } }, '*');
             return;
           }
         }
-        jsCode = jsCode.replace(/__ui_shim__/g, _shimBlobCache[shimUrl]);
+        jsCode = jsCode.replace(/__ui_shim__/g, shimCache[shimUrl]);
       }
 
-      // Create app module blob
-      var appBlob = URL.createObjectURL(new Blob([jsCode], { type: 'application/javascript' }));
+      // Dynamic import the app code
+      let appBlob;
+      try {
+        appBlob = URL.createObjectURL(new Blob([jsCode], { type: 'application/javascript' }));
+        const mod = await import(appBlob);
+        URL.revokeObjectURL(appBlob);
 
-      // Entry module imports React, then dynamically imports the app blob
-      var entryCode =
-        'import React from "react";\n' +
-        'import { useState, useEffect, useRef, useCallback, useMemo, useReducer, useContext, createContext, Fragment } from "react";\n' +
-        'import ReactDOM from "react-dom/client";\n' +
-        'window.__React = React;\n' +
-        'window.React = React;\n' +
-        'class ErrorBoundary extends React.Component {\n' +
-        '  constructor(props) { super(props); this.state = { error: null }; }\n' +
-        '  static getDerivedStateFromError(error) { return { error }; }\n' +
-        '  componentDidCatch(error) {\n' +
-        '    window.parent.postMessage({ type: "render-error", error: { message: error.message, type: "runtime", stack: error.stack || "" } }, "*");\n' +
-        '  }\n' +
-        '  render() {\n' +
-        '    if (this.state.error) return React.createElement("pre", { style: { padding: "24px", color: "red", whiteSpace: "pre-wrap" } }, "Runtime error: " + this.state.error.message);\n' +
-        '    return this.props.children;\n' +
-        '  }\n' +
-        '}\n' +
-        '(async () => {\n' +
-        '  try {\n' +
-        '    const mod = await import("' + appBlob + '");\n' +
-        '    const App = mod.default || Object.values(mod).find(v => typeof v === "function");\n' +
-        '    if (!App) { window.parent.postMessage({ type: "render-error", error: { message: "No default export found", type: "module-load" } }, "*"); return; }\n' +
-        '    const root = document.getElementById("root");\n' +
-        '    root.innerHTML = "";\n' +
-        '    ReactDOM.createRoot(root).render(React.createElement(ErrorBoundary, null, React.createElement(App)));\n' +
-        '    window.parent.postMessage({ type: "render-success" }, "*");\n' +
-        '  } catch(err) {\n' +
-        '    window.parent.postMessage({ type: "render-error", error: { message: err.message, type: "module-load", stack: err.stack || "" } }, "*");\n' +
-        '    document.getElementById("root").innerHTML = "<pre style=\\"padding:24px;color:red;white-space:pre-wrap;\\">" + err.message + "</pre>";\n' +
-        '  }\n' +
-        '})();\n';
+        const App = mod.default || Object.values(mod).find(v => typeof v === 'function');
+        if (!App) {
+          if (!silent) window.parent.postMessage({ type: 'render-error', error: { message: 'No default export found', type: 'module-load' } }, '*');
+          return;
+        }
 
-      var entryBlob = URL.createObjectURL(new Blob([entryCode], { type: 'application/javascript' }));
-      var ms = document.createElement('script');
-      ms.type = 'module';
-      ms.src = entryBlob;
-      document.body.appendChild(ms);
+        // Unmount previous and re-render
+        reactRoot.unmount();
+        rootEl.innerHTML = '';
+        reactRoot = ReactDOM.createRoot(rootEl);
+
+        const boundary = React.createElement(ErrorBoundary, null, React.createElement(App));
+        reactRoot.render(boundary);
+
+        window.parent.postMessage({ type: 'render-success' }, '*');
+      } catch(err) {
+        if (appBlob) URL.revokeObjectURL(appBlob);
+        if (!silent) {
+          window.parent.postMessage({ type: 'render-error', error: { message: err.message, type: 'module-load', stack: err.stack || '' } }, '*');
+          rootEl.innerHTML = '<pre style="padding:24px;color:red;white-space:pre-wrap;">' + err.message + '</pre>';
+        }
+      }
+    };
+
+    // Signal that the module is ready
+    window.__moduleReady = true;
+    // Process any pending render
+    if (window.__pendingModuleRender) {
+      const p = window.__pendingModuleRender;
+      window.__doRender(p.code, p.shimUrl, p.silent);
+    }
+  </script>
+
+  <!-- Message handler (non-module, runs immediately) -->
+  <script>
+    window.addEventListener('message', function(ev) {
+      if (!ev.data || !ev.data.type) return;
+
+      if (ev.data.type === 'render') {
+        renderApp(ev.data.code, ev.data.shimUrl, !!ev.data.silent);
+      } else if (ev.data.type === 'abort') {
+        document.getElementById('root').innerHTML = '';
+      }
+    });
+
+    function renderApp(code, shimUrl, silent) {
+      if (!_babelReady) {
+        _pendingRender = { code: code, shimUrl: shimUrl, silent: silent };
+        return;
+      }
+      if (window.__moduleReady && window.__doRender) {
+        window.__doRender(code, shimUrl, silent);
+      } else {
+        // Module not ready yet — queue
+        window.__pendingModuleRender = { code: code, shimUrl: shimUrl, silent: silent };
+      }
     }
   </script>
 </body>

@@ -74,8 +74,14 @@
   </div>
 </div>
 
+<!-- Load Babel in parent for streaming transpile checks -->
+<script src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
+
 <script type="module">
 import { SaCRenderer } from '/renderer/sac-renderer.js';
+
+console.log('[SaC] Module loaded');
+window.__sacModuleLoaded = true;
 
 // ─── Renderer setup ───────────────────────────────────────────
 
