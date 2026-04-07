@@ -62,32 +62,14 @@ export class SaCRenderer {
     const stream = {
       push(token) {
         buffer += token;
-
-        // Debounce: try transpile at most every 100ms
-        if (debounceTimer) return;
-        debounceTimer = setTimeout(() => {
-          debounceTimer = null;
-          const result = self._tryTranspile(self._processCode(buffer));
-          if (result.success && result.code !== lastTranspiledCode) {
-            lastTranspiledCode = result.code;
-            self._sendToIframe(result.code);
-          }
-        }, 100);
+        // Accumulate only — rendering happens at end() when code is complete.
+        // Intermediate TSX is almost never valid, so attempting render mid-stream
+        // just produces noisy errors.
       },
 
       end() {
-        if (debounceTimer) {
-          clearTimeout(debounceTimer);
-          debounceTimer = null;
-        }
         const processed = self._processCode(buffer);
-        const result = self._tryTranspile(processed);
-        if (result.success) {
-          self._sendToIframe(result.code);
-        } else {
-          // Final attempt failed — send raw and let iframe report the error
-          self._sendToIframe(processed);
-        }
+        self._sendToIframe(processed);
       },
 
       abort() {
