@@ -8,9 +8,12 @@ from __future__ import annotations
 
 from typing import AsyncIterator
 
+import json
+
 from sac.runtime.pipeline.evolve import evolve_pipeline, stream_evolve_pipeline
 from sac.runtime.pipeline.generate import generate_pipeline, stream_generate_pipeline
 from sac.runtime.prompts.app import DEFAULT_MODEL
+from sac.runtime.prompts.classify import CLASSIFY_COLD, CLASSIFY_WITH_CONTEXT
 from sac.runtime.providers.base import LLMProvider, SearchProvider
 from sac.runtime.store.base import ConversationStore
 from sac.types import (
@@ -20,12 +23,15 @@ from sac.types import (
     EventStatus,
     GenerationEvent,
     GrowthEvent,
+    Message,
     MessageEvent,
     PipelineChunkEvent,
     PipelineCompleteEvent,
     PipelineErrorEvent,
     PipelineEvent,
     PipelineStageEvent,
+    SendResult,
+    SendResultType,
     StageStatus,
 )
 
@@ -82,6 +88,74 @@ class Conversation:
     @property
     def version(self) -> int:
         return len(self._apps)
+
+    # ─── Unified Entry Point ─────────────────────────────────────────
+
+    async def send(self, message: str, **opts: object) -> SendResult:
+        """
+        Unified entry point — the natural way to interact with a conversation.
+
+        Classifies the message as chat, generate, or evolve, then routes accordingly:
+          - chat → LLM replies with natural language, no app change
+          - generate → creates a new app (first-time or fresh)
+          - evolve → updates the existing app
+
+        Returns:
+            SendResult with type, optional reply (chat), optional app (generate/evolve)
+        """
+        classification = await self._classify(message)
+
+        if classification["type"] == "chat":
+            reply = classification.get("reply", "")
+
+            # Store both user message and assistant reply
+            await self._store.add_event(
+                MessageEvent(conversation_id=self.id, role="user", content=message)
+            )
+            await self._store.add_event(
+                MessageEvent(conversation_id=self.id, role="assistant", content=reply)
+            )
+
+            return SendResult(type=SendResultType.CHAT, reply=reply)
+
+        # It's an "update" — route to generate or evolve
+        if self._apps:
+            app = await self.evolve(message, **opts)
+            return SendResult(type=SendResultType.EVOLVE, app=app)
+        else:
+            app = await self.generate(message, **opts)
+            return SendResult(type=SendResultType.GENERATE, app=app)
+
+    async def _classify(self, message: str) -> dict:
+        """Classify a message as 'chat' or 'update' using LLM."""
+        has_context = len(self._apps) > 0
+        system_prompt = CLASSIFY_WITH_CONTEXT if has_context else CLASSIFY_COLD
+
+        user_content = message
+        if has_context and self.current_app:
+            user_content = f"[Current app intent: {self.current_app.intent}]\n\nUser message: {message}"
+
+        messages = [
+            Message(role="system", content=system_prompt),
+            Message(role="user", content=user_content),
+        ]
+
+        try:
+            raw = await self._llm.complete(self.model, messages, max_tokens=256)
+            # Strip markdown fences if present
+            text = raw.strip()
+            if text.startswith("```"):
+                text = text.split("\n", 1)[-1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+            if text.startswith("json"):
+                text = text[4:].strip()
+
+            return json.loads(text)
+        except (json.JSONDecodeError, Exception):
+            # Default to update on parse failure
+            return {"type": "update"}
 
     # ─── Core Methods ──────────────────────────────────────────────
 

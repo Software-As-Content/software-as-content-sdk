@@ -36,6 +36,12 @@ class IntentType(str, Enum):
     ENHANCE = "enhance"
 
 
+class SendResultType(str, Enum):
+    CHAT = "chat"
+    GENERATE = "generate"
+    EVOLVE = "evolve"
+
+
 class EventType(str, Enum):
     MESSAGE = "message"
     GENERATION = "generation"
@@ -226,3 +232,14 @@ PipelineEvent = PipelineStageEvent | PipelineSearchEvent | PipelineChunkEvent | 
 class Message(BaseModel):
     role: Literal["system", "user", "assistant"]
     content: str
+
+
+# ─── Send Result ──────────────────────────────────────────────────
+
+
+class SendResult(BaseModel):
+    """Result of Conversation.send() — the unified entry point."""
+
+    type: SendResultType
+    reply: str | None = None        # For chat responses
+    app: App | None = None          # For generate/evolve responses

@@ -62,6 +62,15 @@ class StreamRequest(BaseModel):
     use_design_system: bool | None = None
 
 
+class SendRequest(BaseModel):
+    message: str
+    conversation_id: str | None = None
+    model: str | None = None
+    web_search: bool | None = None
+    custom_instructions: str | None = None
+    use_design_system: bool | None = None
+
+
 class UpdateConversationRequest(BaseModel):
     title: str | None = None
     settings: dict[str, Any] | None = None
@@ -185,6 +194,33 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 yield {"event": event.type, "data": json.dumps(payload)}
 
         return EventSourceResponse(event_generator())
+
+    @app.post("/send")
+    async def send_message(req: SendRequest) -> dict[str, Any]:
+        settings: ConversationSettings | None = None
+        if req.web_search is not None or req.custom_instructions is not None or req.use_design_system is not None:
+            settings = ConversationSettings(
+                custom_instructions=req.custom_instructions or "",
+                use_design_system=req.use_design_system if req.use_design_system is not None else True,
+                enable_web_search=req.web_search if req.web_search is not None else True,
+            )
+
+        conv = _get_or_create_conv(req.conversation_id, settings)
+
+        opts: dict[str, object] = {}
+        if req.model:
+            opts["model"] = req.model
+
+        result = await conv.send(req.message, **opts)
+        response: dict[str, Any] = {
+            "type": result.type.value,
+            "conversation_id": conv.id,
+        }
+        if result.reply is not None:
+            response["reply"] = result.reply
+        if result.app is not None:
+            response["app"] = result.app.model_dump()
+        return response
 
     # ─── Conversation Management ─────────────────────────────────
 

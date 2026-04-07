@@ -17,6 +17,8 @@ from sac.types import (
     ConversationSettings,
     GrowthDecision,
     IntentSuggestion,
+    SendResult,
+    SendResultType,
     PipelineChunkEvent,
     PipelineCompleteEvent,
     PipelineErrorEvent,
@@ -38,6 +40,8 @@ __all__ = [
     "SearchResult",
     "IntentSuggestion",
     "GrowthDecision",
+    "SendResult",
+    "SendResultType",
     # Events
     "PipelineEvent",
     "PipelineStageEvent",
