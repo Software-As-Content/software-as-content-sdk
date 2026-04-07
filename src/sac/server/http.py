@@ -25,6 +25,7 @@ except ImportError as e:
     ) from e
 
 from sac.runtime.prompts.app import AVAILABLE_MODELS, DEFAULT_MODEL
+from sac.runtime.store.file import FileStore
 from sac.sac import SaC
 from sac.types import ConversationSettings
 
@@ -82,10 +83,12 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         api_key = os.environ.get("SAC_API_KEY", "")
         if not api_key:
             raise ValueError("SAC_API_KEY environment variable is required")
+        data_dir = os.environ.get("SAC_DATA_DIR", ".sac")
         sac = SaC(
             api_key=api_key,
             search_api_key=os.environ.get("SAC_SEARCH_API_KEY"),
             model=os.environ.get("SAC_MODEL", DEFAULT_MODEL),
+            store=FileStore(data_dir),
         )
 
     app = FastAPI(title="SaC SDK Server", version=_VERSION)

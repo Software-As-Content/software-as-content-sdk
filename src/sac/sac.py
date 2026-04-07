@@ -12,6 +12,7 @@ from sac.runtime.providers.base import LLMProvider, SearchProvider
 from sac.runtime.providers.openrouter import OpenRouterProvider
 from sac.runtime.providers.tavily import TavilyProvider
 from sac.runtime.store.base import ConversationStore
+from sac.runtime.store.file import FileStore
 from sac.runtime.store.memory import MemoryStore
 from sac.types import App, ConversationData, ConversationSettings
 
@@ -24,8 +25,10 @@ class SaC:
         sac = SaC(api_key="sk-...")
         app = await sac.generate("2026 travel guide for Hangzhou")
 
-    With file output:
-        sac = SaC(api_key="sk-...", store=MemoryStore(output_dir="output"))
+    Store options (pick one):
+        sac = SaC(api_key="...", store=MemoryStore())          # in-memory, no persistence
+        sac = SaC(api_key="...", store=FileStore(".sac"))       # JSON files on disk
+        sac = SaC(api_key="...", store=your_custom_store)       # any ConversationStore impl
     """
 
     def __init__(
@@ -55,7 +58,11 @@ class SaC:
         else:
             self._search = None
 
-        # Store: explicit or default in-memory (no file output)
+        # Store: explicit, or default MemoryStore (no persistence)
+        # Available implementations:
+        #   MemoryStore()              — in-memory, data lost on restart
+        #   FileStore(data_dir)        — JSON files on disk, persistent
+        #   <your own>                 — implement ConversationStore protocol
         self._store: ConversationStore = store or MemoryStore()
 
         self._model = model
