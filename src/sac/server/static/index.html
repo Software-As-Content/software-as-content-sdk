@@ -11,7 +11,7 @@
   .header h1 { font-size: 18px; font-weight: 600; }
   .header .version { font-size: 12px; color: #78716c; background: #f5f5f4; padding: 2px 8px; border-radius: 4px; }
   .main { display: flex; height: calc(100vh - 57px); }
-  .sidebar { width: 400px; min-width: 400px; background: #fff; border-right: 1px solid #e7e5e4; display: flex; flex-direction: column; }
+  .sidebar { width: 420px; min-width: 420px; background: #fff; border-right: 1px solid #e7e5e4; display: flex; flex-direction: column; }
   .input-area { padding: 16px; border-bottom: 1px solid #e7e5e4; }
   .input-area textarea { width: 100%; height: 80px; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; }
   .input-area textarea:focus { outline: none; border-color: #f97316; }
@@ -22,27 +22,55 @@
   .btn-primary:disabled { background: #d6d3d1; cursor: not-allowed; }
   .btn-secondary { background: #f5f5f4; color: #44403c; border: 1px solid #e7e5e4; }
   .btn-secondary:hover { background: #e7e5e4; }
-  .status { padding: 16px; border-bottom: 1px solid #e7e5e4; font-size: 13px; color: #78716c; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+  .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+  .btn-danger:hover { background: #fecaca; }
+  .status { padding: 12px 16px; border-bottom: 1px solid #e7e5e4; font-size: 13px; color: #78716c; }
   .suggestions { padding: 16px; border-bottom: 1px solid #e7e5e4; }
   .suggestions h3 { font-size: 13px; font-weight: 500; color: #78716c; margin-bottom: 8px; }
   .suggestion-btn { display: block; width: 100%; text-align: left; padding: 8px 12px; margin-bottom: 4px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
   .suggestion-btn:hover { background: #fde68a; }
-  .code-area { flex: 1; overflow: auto; }
-  .code-area pre { padding: 16px; font-size: 12px; line-height: 1.5; font-family: 'SF Mono', 'Fira Code', monospace; white-space: pre-wrap; word-break: break-all; }
+  .tab-bar { display: flex; border-bottom: 1px solid #e7e5e4; background: #fafaf9; }
+  .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #78716c; transition: all 0.15s; }
+  .tab:hover { color: #44403c; }
+  .tab.active { color: #f97316; border-bottom-color: #f97316; }
+  .tab-content { flex: 1; overflow: auto; }
+  .hidden { display: none; }
   .preview-area { flex: 1; background: #fff; }
   .preview-area iframe { width: 100%; height: 100%; border: none; }
   .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: #78716c; font-size: 15px; }
-  .tab-bar { display: flex; border-bottom: 1px solid #e7e5e4; background: #fafaf9; }
-  .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #78716c; }
-  .tab.active { color: #f97316; border-bottom-color: #f97316; }
-  .hidden { display: none; }
+
+  /* API Explorer */
+  .api-panel { padding: 16px; }
+  .api-section { margin-bottom: 20px; }
+  .api-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #44403c; }
+  .api-result { background: #fafaf9; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow: auto; line-height: 1.5; }
+  .api-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .method-badge { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+  .method-get { background: #dbeafe; color: #1d4ed8; }
+  .method-post { background: #dcfce7; color: #16a34a; }
+  .method-patch { background: #fef3c7; color: #d97706; }
+  .method-delete { background: #fef2f2; color: #dc2626; }
+  .endpoint-path { font-size: 13px; font-family: monospace; color: #44403c; }
+  .conv-card { background: #fff; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+  .conv-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .conv-card-title { font-size: 14px; font-weight: 500; }
+  .conv-card-meta { font-size: 12px; color: #a8a29e; }
+  .conv-card-actions { display: flex; gap: 4px; margin-top: 8px; }
+  .input-sm { padding: 4px 8px; border: 1px solid #e7e5e4; border-radius: 6px; font-size: 13px; font-family: inherit; }
+  .input-sm:focus { outline: none; border-color: #f97316; }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
+  .dot-green { background: #22c55e; }
+  .dot-red { background: #ef4444; }
+  pre code { font-family: 'SF Mono', 'Fira Code', monospace; }
 </style>
 </head>
 <body>
 
 <div class="header">
   <h1>SaC SDK</h1>
-  <span class="version">v0.1.0</span>
+  <span class="version" id="version-badge">v0.1.0</span>
+  <span id="health-dot" style="margin-left: 8px; font-size: 12px; color: #a8a29e;"></span>
   <span id="conv-info" style="margin-left:auto; font-size:12px; color:#a8a29e;"></span>
 </div>
 
@@ -61,10 +89,81 @@
       <div id="suggestions-list"></div>
     </div>
     <div class="tab-bar">
-      <div class="tab active">Code</div>
+      <div class="tab active" data-tab="code">Code</div>
+      <div class="tab" data-tab="api">API</div>
+      <div class="tab" data-tab="conversations">Conversations</div>
     </div>
-    <div class="code-area" id="code-panel">
-      <pre id="code-display" style="color:#78716c;">Generate something to see the code here.</pre>
+
+    <!-- Code tab -->
+    <div class="tab-content" id="tab-code">
+      <pre id="code-display" style="padding:16px; font-size:12px; line-height:1.5; color:#78716c;">Generate something to see the code here.</pre>
+    </div>
+
+    <!-- API Explorer tab -->
+    <div class="tab-content hidden" id="tab-api">
+      <div class="api-panel">
+        <div class="api-section">
+          <div class="api-row">
+            <span class="method-badge method-get">GET</span>
+            <span class="endpoint-path">/health</span>
+            <button class="btn btn-secondary btn-sm" onclick="apiCall('GET', '/health', 'health-result')">Run</button>
+          </div>
+          <div class="api-result" id="health-result">Click "Run" to test</div>
+        </div>
+
+        <div class="api-section">
+          <div class="api-row">
+            <span class="method-badge method-get">GET</span>
+            <span class="endpoint-path">/models</span>
+            <button class="btn btn-secondary btn-sm" onclick="apiCall('GET', '/models', 'models-result')">Run</button>
+          </div>
+          <div class="api-result" id="models-result">Click "Run" to test</div>
+        </div>
+
+        <div class="api-section">
+          <div class="api-row">
+            <span class="method-badge method-get">GET</span>
+            <span class="endpoint-path">/conversations</span>
+            <button class="btn btn-secondary btn-sm" onclick="apiCall('GET', '/conversations', 'convs-result')">Run</button>
+          </div>
+          <div class="api-result" id="convs-result">Click "Run" to test</div>
+        </div>
+
+        <div class="api-section">
+          <div class="api-row">
+            <span class="method-badge method-post">POST</span>
+            <span class="endpoint-path">/generate</span>
+          </div>
+          <div style="margin-bottom:8px;">
+            <input class="input-sm" id="api-gen-intent" placeholder="intent" value="hello world" style="width:100%;">
+          </div>
+          <div class="api-row">
+            <label style="font-size:12px;color:#78716c;"><input type="checkbox" id="api-gen-search"> web_search</label>
+            <button class="btn btn-secondary btn-sm" onclick="apiGenerate()">Run</button>
+          </div>
+          <div class="api-result" id="generate-result" style="max-height:200px;">Click "Run" to test</div>
+        </div>
+
+        <div class="api-section">
+          <div class="api-row">
+            <span class="method-badge method-post">POST</span>
+            <span class="endpoint-path">/stream</span>
+            <span style="font-size:11px;color:#a8a29e;">SSE</span>
+          </div>
+          <p style="font-size:12px;color:#a8a29e;">Use the Generate button above — it uses POST /stream</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conversations tab -->
+    <div class="tab-content hidden" id="tab-conversations">
+      <div class="api-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h3 style="font-size:14px;font-weight:600;">Conversations</h3>
+          <button class="btn btn-secondary btn-sm" onclick="loadConversations()">Refresh</button>
+        </div>
+        <div id="conv-list"><p style="font-size:13px;color:#a8a29e;">Loading...</p></div>
+      </div>
     </div>
   </div>
 
@@ -79,9 +178,6 @@
 
 <script type="module">
 import { SaCRenderer } from '/renderer/sac-renderer.js';
-
-console.log('[SaC] Module loaded');
-window.__sacModuleLoaded = true;
 
 // ─── Renderer setup ───────────────────────────────────────────
 
@@ -103,131 +199,287 @@ renderer.on('error', (err) => {
 let conversationId = null;
 let currentVersion = 0;
 
+// ─── Tab switching ───────────────────────────────────────────
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.remove('hidden');
+    if (tab.dataset.tab === 'conversations') loadConversations();
+  });
+});
+
+// ─── Health check on load ────────────────────────────────────
+
+(async () => {
+  try {
+    const res = await fetch('/health');
+    const data = await res.json();
+    document.getElementById('health-dot').innerHTML =
+      `<span class="dot dot-green"></span>${data.status}`;
+    document.getElementById('version-badge').textContent = 'v' + data.version;
+  } catch {
+    document.getElementById('health-dot').innerHTML =
+      `<span class="dot dot-red"></span>offline`;
+  }
+})();
+
 // ─── Button handlers ──────────────────────────────────────────
 
 document.getElementById('gen-btn').addEventListener('click', async () => {
   const intent = document.getElementById('intent').value.trim();
   if (!intent) return;
-
-  let url = '/stream?intent=' + encodeURIComponent(intent);
-  if (conversationId) url += '&conversation_id=' + encodeURIComponent(conversationId);
-  await streamGenerate(url);
+  await streamGenerate({ intent, conversation_id: conversationId });
 });
 
 document.getElementById('evolve-btn').addEventListener('click', async () => {
   const intent = document.getElementById('intent').value.trim();
   if (!intent || !conversationId) return;
-
-  await streamGenerate(
-    '/stream?intent=' + encodeURIComponent(intent) +
-    '&conversation_id=' + encodeURIComponent(conversationId)
-  );
+  await streamGenerate({ intent, conversation_id: conversationId });
 });
 
-// ─── Streaming generation ─────────────────────────────────────
+// ─── Streaming generation (POST-based SSE) ───────────────────
 
-async function streamGenerate(url) {
+async function streamGenerate(body) {
   const btn = document.getElementById('gen-btn');
   const evolveBtn = document.getElementById('evolve-btn');
   btn.disabled = true;
   evolveBtn.disabled = true;
   showStatus('Generating...');
 
-  // Clear code display and prepare for streaming
   const codeDisplay = document.getElementById('code-display');
   codeDisplay.textContent = '';
   codeDisplay.style.color = '';
 
-  // Prepare iframe
   placeholder.classList.add('hidden');
   iframe.classList.remove('hidden');
 
   const stream = renderer.createStream();
-  const es = new EventSource(url);
 
-  function done() {
-    btn.disabled = false;
-    evolveBtn.disabled = false;
+  try {
+    const response = await fetch('/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          var currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ') && currentEvent) {
+          const data = JSON.parse(line.slice(6));
+          handleSSEEvent(currentEvent, data, stream, codeDisplay);
+          currentEvent = null;
+        }
+      }
+    }
+  } catch (err) {
+    showStatus('Connection error: ' + err.message);
+    stream.abort();
   }
 
-  es.addEventListener('stage', (e) => {
-    const event = JSON.parse(e.data);
-    showStatus(`${event.name}: ${event.status}`);
-  });
-
-  es.addEventListener('search', (e) => {
-    const event = JSON.parse(e.data);
-    const results = event.results || [];
-    if (results.length > 0) {
-      const searchArea = document.getElementById('suggestions-area');
-      const searchList = document.getElementById('suggestions-list');
-      searchArea.classList.remove('hidden');
-      document.querySelector('#suggestions-area h3').textContent = 'Search Results';
-      searchList.innerHTML = results.map(r =>
-        `<div style="margin-bottom:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">` +
-        `<strong>${escHtml(r.query)}</strong>` +
-        (r.answer ? `<p style="margin:4px 0 0;color:#555;">${escHtml(r.answer.substring(0, 150))}...</p>` : '') +
-        `<p style="margin:2px 0 0;color:#888;">${r.sources?.length || 0} sources</p>` +
-        `</div>`
-      ).join('');
-    }
-  });
-
-  es.addEventListener('chunk', (e) => {
-    const event = JSON.parse(e.data);
-    codeDisplay.textContent += event.data;
-    stream.push(event.data);
-  });
-
-  es.addEventListener('complete', (e) => {
-    const event = JSON.parse(e.data);
-    stream.end();
-    es.close();
-
-    const app = event.app;
-    if (event.conversation_id) conversationId = event.conversation_id;
-    currentVersion = app.version;
-
-    document.getElementById('conv-info').textContent =
-      `v${currentVersion} | ${app.code.length} chars`;
-
-    evolveBtn.classList.remove('hidden');
-    document.getElementById('intent').value = '';
-
-    // Show suggestions
-    const suggestions = app.suggestions || [];
-    if (suggestions.length > 0) {
-      const area = document.getElementById('suggestions-area');
-      const list = document.getElementById('suggestions-list');
-      area.classList.remove('hidden');
-      list.innerHTML = suggestions.map(s =>
-        `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
-      ).join('');
-      list.querySelectorAll('.suggestion-btn').forEach(b => {
-        b.addEventListener('click', () => {
-          document.getElementById('intent').value = b.dataset.prompt;
-        });
-      });
-    }
-
-    const stages = (app.stages || []).map(s => `${s.name}: ${s.status}`).join(' -> ');
-    showStatus(`v${currentVersion} | ${app.code.length} chars | ${stages}`);
-    done();
-  });
-
-  es.addEventListener('error', (e) => {
-    // SSE 'error' event can be either a typed event from server or a connection error
-    try {
-      const event = JSON.parse(e.data);
-      showStatus('Error: ' + event.error);
-    } catch {
-      showStatus('Connection error');
-    }
-    stream.abort();
-    es.close();
-    done();
-  });
+  btn.disabled = false;
+  evolveBtn.disabled = false;
 }
+
+function handleSSEEvent(eventType, data, stream, codeDisplay) {
+  switch (eventType) {
+    case 'stage':
+      showStatus(`${data.name}: ${data.status}`);
+      break;
+
+    case 'search': {
+      const results = data.results || [];
+      if (results.length > 0) {
+        const area = document.getElementById('suggestions-area');
+        const list = document.getElementById('suggestions-list');
+        area.classList.remove('hidden');
+        document.querySelector('#suggestions-area h3').textContent = 'Search Results';
+        list.innerHTML = results.map(r =>
+          `<div style="margin-bottom:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">` +
+          `<strong>${escHtml(r.query)}</strong>` +
+          (r.answer ? `<p style="margin:4px 0 0;color:#555;">${escHtml(r.answer.substring(0, 150))}...</p>` : '') +
+          `<p style="margin:2px 0 0;color:#888;">${r.sources?.length || 0} sources</p>` +
+          `</div>`
+        ).join('');
+      }
+      break;
+    }
+
+    case 'chunk':
+      codeDisplay.textContent += data.data;
+      stream.push(data.data);
+      break;
+
+    case 'complete': {
+      stream.end();
+      const app = data.app;
+      if (data.conversation_id) conversationId = data.conversation_id;
+      currentVersion = app.version;
+
+      document.getElementById('conv-info').textContent =
+        `v${currentVersion} | ${app.code.length} chars`;
+      document.getElementById('evolve-btn').classList.remove('hidden');
+      document.getElementById('intent').value = '';
+
+      const suggestions = app.suggestions || [];
+      if (suggestions.length > 0) {
+        const area = document.getElementById('suggestions-area');
+        const list = document.getElementById('suggestions-list');
+        area.classList.remove('hidden');
+        document.querySelector('#suggestions-area h3').textContent = 'Suggestions';
+        list.innerHTML = suggestions.map(s =>
+          `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
+        ).join('');
+        list.querySelectorAll('.suggestion-btn').forEach(b => {
+          b.addEventListener('click', () => {
+            document.getElementById('intent').value = b.dataset.prompt;
+          });
+        });
+      }
+
+      const stages = (app.stages || []).map(s => `${s.name}: ${s.status}`).join(' → ');
+      showStatus(`v${currentVersion} | ${app.code.length} chars | ${stages}`);
+      break;
+    }
+
+    case 'error':
+      showStatus('Error: ' + data.error);
+      stream.abort();
+      break;
+  }
+}
+
+// ─── API Explorer helpers ────────────────────────────────────
+
+window.apiCall = async function(method, path, resultId) {
+  const el = document.getElementById(resultId);
+  el.textContent = 'Loading...';
+  try {
+    const res = await fetch(path, { method });
+    const data = await res.json();
+    el.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    el.textContent = 'Error: ' + err.message;
+  }
+};
+
+window.apiGenerate = async function() {
+  const el = document.getElementById('generate-result');
+  const intent = document.getElementById('api-gen-intent').value.trim();
+  if (!intent) return;
+  el.textContent = 'Generating...';
+  try {
+    const res = await fetch('/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        intent,
+        web_search: document.getElementById('api-gen-search').checked,
+      }),
+    });
+    const data = await res.json();
+    // Show summary, not full code
+    const summary = {
+      success: data.success,
+      conversation_id: data.conversation_id,
+      app: {
+        version: data.app?.version,
+        intent: data.app?.intent,
+        model: data.app?.model,
+        code_length: data.app?.code?.length,
+        stages: data.app?.stages,
+        suggestions_count: data.app?.suggestions?.length || 0,
+        search_results_count: data.app?.search_results?.length || 0,
+      }
+    };
+    el.textContent = JSON.stringify(summary, null, 2);
+  } catch (err) {
+    el.textContent = 'Error: ' + err.message;
+  }
+};
+
+// ─── Conversations tab ───────────────────────────────────────
+
+window.loadConversations = async function() {
+  const container = document.getElementById('conv-list');
+  try {
+    const res = await fetch('/conversations');
+    const data = await res.json();
+    const convs = data.conversations || [];
+
+    if (convs.length === 0) {
+      container.innerHTML = '<p style="font-size:13px;color:#a8a29e;">No conversations yet. Generate something first.</p>';
+      return;
+    }
+
+    container.innerHTML = convs.map(c => `
+      <div class="conv-card" id="conv-${c.id}">
+        <div class="conv-card-header">
+          <span class="conv-card-title">${escHtml(c.title || 'Untitled')}</span>
+          <span class="conv-card-meta">v${c.event_count} events</span>
+        </div>
+        <div class="conv-card-meta">
+          ${c.id.substring(0, 8)}... | ${c.model || 'default'} | ${new Date(c.created_at).toLocaleString()}
+        </div>
+        <div class="conv-card-actions">
+          <input class="input-sm" id="rename-${c.id}" placeholder="New title" style="flex:1;">
+          <button class="btn btn-secondary btn-sm" onclick="renameConv('${c.id}')">Rename</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteConv('${c.id}')">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    container.innerHTML = `<p style="font-size:13px;color:#dc2626;">Error: ${err.message}</p>`;
+  }
+};
+
+window.renameConv = async function(id) {
+  const input = document.getElementById('rename-' + id);
+  const title = input.value.trim();
+  if (!title) return;
+  try {
+    await fetch('/conversations/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    input.value = '';
+    loadConversations();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+};
+
+window.deleteConv = async function(id) {
+  if (!confirm('Delete this conversation?')) return;
+  try {
+    await fetch('/conversations/' + id, { method: 'DELETE' });
+    if (conversationId === id) {
+      conversationId = null;
+      currentVersion = 0;
+      document.getElementById('conv-info').textContent = '';
+      document.getElementById('evolve-btn').classList.add('hidden');
+    }
+    loadConversations();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+};
 
 // ─── Helpers ──────────────────────────────────────────────────
 

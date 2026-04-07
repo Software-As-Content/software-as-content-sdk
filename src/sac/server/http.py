@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -23,11 +24,14 @@ except ImportError as e:
         "Server dependencies not installed. Run: pip install sac-sdk[server]"
     ) from e
 
+from sac.runtime.prompts.app import AVAILABLE_MODELS, DEFAULT_MODEL
 from sac.sac import SaC
 from sac.types import ConversationSettings
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _RENDERER_DIR = Path(__file__).parent.parent / "renderer"
+
+_VERSION = "0.1.0"
 
 
 # ─── Request/Response Models ──────────────────────────────────────
@@ -46,6 +50,20 @@ class EvolveRequest(BaseModel):
     intent: str
     conversation_id: str
     model: str | None = None
+
+
+class StreamRequest(BaseModel):
+    intent: str
+    conversation_id: str | None = None
+    model: str | None = None
+    web_search: bool | None = None
+    custom_instructions: str | None = None
+    use_design_system: bool | None = None
+
+
+class UpdateConversationRequest(BaseModel):
+    title: str | None = None
+    settings: dict[str, Any] | None = None
 
 
 # ─── App Factory ──────────────────────────────────────────────────
@@ -67,10 +85,10 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         sac = SaC(
             api_key=api_key,
             search_api_key=os.environ.get("SAC_SEARCH_API_KEY"),
-            model=os.environ.get("SAC_MODEL", "google/gemini-3-flash-preview"),
+            model=os.environ.get("SAC_MODEL", DEFAULT_MODEL),
         )
 
-    app = FastAPI(title="SaC SDK Server", version="0.1.0")
+    app = FastAPI(title="SaC SDK Server", version=_VERSION)
 
     app.add_middleware(
         CORSMiddleware,
@@ -88,6 +106,21 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         conv = sac.conversation(id=conv_id, settings=settings)
         _conversations[conv.id] = conv
         return conv
+
+    # ─── Health & Discovery ──────────────────────────────────────
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok", "version": _VERSION}
+
+    @app.get("/models")
+    async def list_models() -> dict[str, Any]:
+        return {
+            "models": [m.model_dump() for m in AVAILABLE_MODELS],
+            "default": DEFAULT_MODEL,
+        }
+
+    # ─── Generation ──────────────────────────────────────────────
 
     @app.post("/generate")
     async def generate(req: GenerateRequest) -> dict[str, Any]:
@@ -124,6 +157,34 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             "app": app_result.model_dump(),
         }
 
+    @app.post("/stream")
+    async def stream_generate(req: StreamRequest) -> EventSourceResponse:
+        settings: ConversationSettings | None = None
+        if req.web_search is not None or req.custom_instructions is not None or req.use_design_system is not None:
+            settings = ConversationSettings(
+                custom_instructions=req.custom_instructions or "",
+                use_design_system=req.use_design_system if req.use_design_system is not None else True,
+                enable_web_search=req.web_search if req.web_search is not None else True,
+            )
+
+        conv = _get_or_create_conv(req.conversation_id, settings)
+
+        opts: dict[str, object] = {}
+        if req.model:
+            opts["model"] = req.model
+
+        async def event_generator():
+            async for event in conv.stream(req.intent, **opts):
+                payload = event.model_dump()
+                # Attach conversation_id to complete events
+                if event.type == "complete":
+                    payload["conversation_id"] = conv.id
+                yield {"event": event.type, "data": json.dumps(payload)}
+
+        return EventSourceResponse(event_generator())
+
+    # ─── Conversation Management ─────────────────────────────────
+
     @app.get("/conversations")
     async def list_conversations() -> dict[str, Any]:
         convs = await sac._store.list_conversations()
@@ -140,27 +201,36 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             "events": [e.model_dump() for e in events],
         }
 
-    @app.get("/stream")
-    async def stream_generate(
-        intent: str,
-        conversation_id: str | None = None,
-        model: str | None = None,
-    ) -> EventSourceResponse:
-        conv = _get_or_create_conv(conversation_id)
+    @app.patch("/conversations/{conv_id}")
+    async def update_conversation(conv_id: str, req: UpdateConversationRequest) -> dict[str, Any]:
+        conv = await sac._store.get_conversation(conv_id)
+        if conv is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
 
-        opts: dict[str, object] = {}
-        if model:
-            opts["model"] = model
+        updates: dict[str, object] = {}
+        if req.title is not None:
+            updates["title"] = req.title
+        if req.settings is not None:
+            # Merge with existing settings
+            current_settings = conv.settings.model_dump()
+            current_settings.update(req.settings)
+            updates["settings"] = ConversationSettings(**current_settings)
+        if updates:
+            updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await sac._store.update_conversation(conv_id, **updates)
 
-        async def event_generator():
-            async for event in conv.stream(intent, **opts):
-                payload = event.model_dump()
-                # Attach conversation_id to complete events
-                if event.type == "complete":
-                    payload["conversation_id"] = conv.id
-                yield {"event": event.type, "data": json.dumps(payload)}
+        updated = await sac._store.get_conversation(conv_id)
+        return {"conversation": updated.model_dump() if updated else conv.model_dump()}
 
-        return EventSourceResponse(event_generator())
+    @app.delete("/conversations/{conv_id}")
+    async def delete_conversation(conv_id: str) -> dict[str, bool]:
+        conv = await sac._store.get_conversation(conv_id)
+        if conv is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        await sac._store.delete_conversation(conv_id)
+        # Also remove from active conversations cache
+        _conversations.pop(conv_id, None)
+        return {"success": True}
 
     # ─── Web Preview UI ─────────────────────────────────────────
 
