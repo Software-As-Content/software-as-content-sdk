@@ -103,7 +103,7 @@ class Conversation:
         Returns:
             SendResult with type, optional reply (chat), optional app (generate/evolve)
         """
-        classification = await self._classify(message)
+        classification = await self.classify(message)
 
         if classification["type"] == "chat":
             reply = classification.get("reply", "")
@@ -126,7 +126,7 @@ class Conversation:
             app = await self.generate(message, **opts)
             return SendResult(type=SendResultType.GENERATE, app=app)
 
-    async def _classify(self, message: str) -> dict:
+    async def classify(self, message: str) -> dict:
         """Classify a message as 'chat' or 'update' using LLM."""
         has_context = len(self._apps) > 0
         system_prompt = CLASSIFY_WITH_CONTEXT if has_context else CLASSIFY_COLD

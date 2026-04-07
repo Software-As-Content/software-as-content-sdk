@@ -197,6 +197,12 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     @app.post("/send")
     async def send_message(req: SendRequest) -> dict[str, Any]:
+        """
+        Unified entry point. Classifies the message and either:
+        - Returns a chat reply directly (type: "chat")
+        - Returns classification only (type: "generate" or "evolve") —
+          caller should then use /stream to execute
+        """
         settings: ConversationSettings | None = None
         if req.web_search is not None or req.custom_instructions is not None or req.use_design_system is not None:
             settings = ConversationSettings(
@@ -207,20 +213,30 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
         conv = _get_or_create_conv(req.conversation_id, settings)
 
-        opts: dict[str, object] = {}
-        if req.model:
-            opts["model"] = req.model
+        classification = await conv.classify(req.message)
 
-        result = await conv.send(req.message, **opts)
-        response: dict[str, Any] = {
-            "type": result.type.value,
+        if classification["type"] == "chat":
+            reply = classification.get("reply", "")
+            # Store user message and assistant reply
+            from sac.types import MessageEvent
+            await sac._store.add_event(
+                MessageEvent(conversation_id=conv.id, role="user", content=req.message)
+            )
+            await sac._store.add_event(
+                MessageEvent(conversation_id=conv.id, role="assistant", content=reply)
+            )
+            return {
+                "type": "chat",
+                "conversation_id": conv.id,
+                "reply": reply,
+            }
+
+        # It's an "update" — return classification, let frontend call /stream
+        action = "evolve" if conv.current_app else "generate"
+        return {
+            "type": action,
             "conversation_id": conv.id,
         }
-        if result.reply is not None:
-            response["reply"] = result.reply
-        if result.app is not None:
-            response["app"] = result.app.model_dump()
-        return response
 
     # ─── Conversation Management ─────────────────────────────────
 

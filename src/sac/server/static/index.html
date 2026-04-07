@@ -12,10 +12,12 @@
   .header .version { font-size: 12px; color: #78716c; background: #f5f5f4; padding: 2px 8px; border-radius: 4px; }
   .main { display: flex; height: calc(100vh - 57px); }
   .sidebar { width: 420px; min-width: 420px; background: #fff; border-right: 1px solid #e7e5e4; display: flex; flex-direction: column; }
+
+  /* Input area */
   .input-area { padding: 16px; border-bottom: 1px solid #e7e5e4; }
-  .input-area textarea { width: 100%; height: 80px; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; }
+  .input-area textarea { width: 100%; height: 60px; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; }
   .input-area textarea:focus { outline: none; border-color: #f97316; }
-  .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+  .btn-row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
   .btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
   .btn-primary { background: #f97316; color: #fff; }
   .btn-primary:hover { background: #ea580c; }
@@ -25,26 +27,44 @@
   .btn-sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
   .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
   .btn-danger:hover { background: #fecaca; }
+  .btn-ghost { background: none; border: none; color: #78716c; font-size: 12px; padding: 4px 8px; }
+  .btn-ghost:hover { color: #44403c; }
+
+  /* Status & suggestions */
   .status { padding: 12px 16px; border-bottom: 1px solid #e7e5e4; font-size: 13px; color: #78716c; }
-  .suggestions { padding: 16px; border-bottom: 1px solid #e7e5e4; }
-  .suggestions h3 { font-size: 13px; font-weight: 500; color: #78716c; margin-bottom: 8px; }
+  .suggestions { padding: 12px 16px; border-bottom: 1px solid #e7e5e4; }
+  .suggestions h3 { font-size: 12px; font-weight: 500; color: #a8a29e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
   .suggestion-btn { display: block; width: 100%; text-align: left; padding: 8px 12px; margin-bottom: 4px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
   .suggestion-btn:hover { background: #fde68a; }
+
+  /* Chat messages */
+  .chat-area { flex: 1; overflow: auto; padding: 16px; }
+  .chat-msg { margin-bottom: 12px; max-width: 90%; }
+  .chat-msg.user { margin-left: auto; }
+  .chat-msg.assistant { margin-right: auto; }
+  .chat-bubble { padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+  .chat-msg.user .chat-bubble { background: #f97316; color: #fff; border-bottom-right-radius: 4px; }
+  .chat-msg.assistant .chat-bubble { background: #f5f5f4; color: #1c1917; border-bottom-left-radius: 4px; }
+  .chat-msg.system .chat-bubble { background: #dbeafe; color: #1e40af; font-size: 12px; text-align: center; margin: 0 auto; border-radius: 8px; }
+  .chat-msg-meta { font-size: 10px; color: #a8a29e; margin-top: 2px; padding: 0 4px; }
+  .chat-msg.user .chat-msg-meta { text-align: right; }
+
+  /* Tabs */
   .tab-bar { display: flex; border-bottom: 1px solid #e7e5e4; background: #fafaf9; }
   .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #78716c; transition: all 0.15s; }
   .tab:hover { color: #44403c; }
   .tab.active { color: #f97316; border-bottom-color: #f97316; }
-  .tab-content { flex: 1; overflow: auto; }
-  .hidden { display: none; }
+  .tab-content { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+  .hidden { display: none !important; }
+
+  /* Preview */
   .preview-area { flex: 1; background: #fff; }
   .preview-area iframe { width: 100%; height: 100%; border: none; }
-  .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: #78716c; font-size: 15px; }
+  .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: #78716c; font-size: 15px; flex-direction: column; gap: 8px; }
 
   /* API Explorer */
   .api-panel { padding: 16px; }
   .api-section { margin-bottom: 20px; }
-  .api-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #44403c; }
-  .api-result { background: #fafaf9; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow: auto; line-height: 1.5; }
   .api-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   .method-badge { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; font-family: monospace; }
   .method-get { background: #dbeafe; color: #1d4ed8; }
@@ -52,7 +72,12 @@
   .method-patch { background: #fef3c7; color: #d97706; }
   .method-delete { background: #fef2f2; color: #dc2626; }
   .endpoint-path { font-size: 13px; font-family: monospace; color: #44403c; }
-  .conv-card { background: #fff; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+  .api-result { background: #fafaf9; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow: auto; line-height: 1.5; }
+
+  /* Conversation cards */
+  .conv-card { background: #fff; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; }
+  .conv-card:hover { border-color: #f97316; }
+  .conv-card.active { border-color: #f97316; background: #fff7ed; }
   .conv-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
   .conv-card-title { font-size: 14px; font-weight: 500; }
   .conv-card-meta { font-size: 12px; color: #a8a29e; }
@@ -62,7 +87,6 @@
   .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
   .dot-green { background: #22c55e; }
   .dot-red { background: #ef4444; }
-  pre code { font-family: 'SF Mono', 'Fira Code', monospace; }
 </style>
 </head>
 <body>
@@ -76,26 +100,36 @@
 
 <div class="main">
   <div class="sidebar">
-    <div class="input-area">
-      <textarea id="intent" placeholder="Describe the UI you want to generate..."></textarea>
-      <div class="btn-row">
-        <button class="btn btn-primary" id="gen-btn">Generate</button>
-        <button class="btn btn-secondary hidden" id="evolve-btn">Evolve</button>
-      </div>
-    </div>
-    <div class="status hidden" id="status-bar"></div>
-    <div class="suggestions hidden" id="suggestions-area">
-      <h3>Suggestions</h3>
-      <div id="suggestions-list"></div>
-    </div>
     <div class="tab-bar">
-      <div class="tab active" data-tab="code">Code</div>
+      <div class="tab active" data-tab="chat">Chat</div>
+      <div class="tab" data-tab="code">Code</div>
       <div class="tab" data-tab="api">API</div>
       <div class="tab" data-tab="conversations">Conversations</div>
     </div>
 
+    <!-- Chat tab -->
+    <div class="tab-content" id="tab-chat" style="display:flex;flex-direction:column;">
+      <div class="chat-area" id="chat-area">
+        <div class="chat-msg system">
+          <div class="chat-bubble">Send a message to start. I'll chat or generate UI based on your intent.</div>
+        </div>
+      </div>
+      <div class="suggestions hidden" id="suggestions-area">
+        <h3>Suggestions</h3>
+        <div id="suggestions-list"></div>
+      </div>
+      <div class="status hidden" id="status-bar"></div>
+      <div class="input-area">
+        <textarea id="intent" placeholder="Say anything — chat or describe a UI to generate..."></textarea>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="send-btn">Send</button>
+          <button class="btn btn-ghost" id="new-conv-btn" title="New conversation">+ New</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Code tab -->
-    <div class="tab-content" id="tab-code">
+    <div class="tab-content hidden" id="tab-code">
       <pre id="code-display" style="padding:16px; font-size:12px; line-height:1.5; color:#78716c;">Generate something to see the code here.</pre>
     </div>
 
@@ -110,7 +144,6 @@
           </div>
           <div class="api-result" id="health-result">Click "Run" to test</div>
         </div>
-
         <div class="api-section">
           <div class="api-row">
             <span class="method-badge method-get">GET</span>
@@ -119,7 +152,6 @@
           </div>
           <div class="api-result" id="models-result">Click "Run" to test</div>
         </div>
-
         <div class="api-section">
           <div class="api-row">
             <span class="method-badge method-get">GET</span>
@@ -128,29 +160,26 @@
           </div>
           <div class="api-result" id="convs-result">Click "Run" to test</div>
         </div>
-
         <div class="api-section">
           <div class="api-row">
             <span class="method-badge method-post">POST</span>
-            <span class="endpoint-path">/generate</span>
+            <span class="endpoint-path">/send</span>
           </div>
           <div style="margin-bottom:8px;">
-            <input class="input-sm" id="api-gen-intent" placeholder="intent" value="hello world" style="width:100%;">
+            <input class="input-sm" id="api-send-msg" placeholder="message" value="hello" style="width:100%;">
           </div>
           <div class="api-row">
-            <label style="font-size:12px;color:#78716c;"><input type="checkbox" id="api-gen-search"> web_search</label>
-            <button class="btn btn-secondary btn-sm" onclick="apiGenerate()">Run</button>
+            <button class="btn btn-secondary btn-sm" onclick="apiSend()">Run</button>
           </div>
-          <div class="api-result" id="generate-result" style="max-height:200px;">Click "Run" to test</div>
+          <div class="api-result" id="send-result" style="max-height:200px;">Click "Run" to test</div>
         </div>
-
         <div class="api-section">
           <div class="api-row">
             <span class="method-badge method-post">POST</span>
             <span class="endpoint-path">/stream</span>
             <span style="font-size:11px;color:#a8a29e;">SSE</span>
           </div>
-          <p style="font-size:12px;color:#a8a29e;">Use the Generate button above — it uses POST /stream</p>
+          <p style="font-size:12px;color:#a8a29e;">Used automatically when generating/evolving UI via Chat tab</p>
         </div>
       </div>
     </div>
@@ -162,13 +191,16 @@
           <h3 style="font-size:14px;font-weight:600;">Conversations</h3>
           <button class="btn btn-secondary btn-sm" onclick="loadConversations()">Refresh</button>
         </div>
-        <div id="conv-list"><p style="font-size:13px;color:#a8a29e;">Loading...</p></div>
+        <div id="conv-list"><p style="font-size:13px;color:#a8a29e;">Click Refresh to load</p></div>
       </div>
     </div>
   </div>
 
   <div class="preview-area">
-    <div class="loading" id="placeholder">Enter an intent and click Generate</div>
+    <div class="loading" id="placeholder">
+      <span style="font-size:32px;">✦</span>
+      <span>Send a message to get started</span>
+    </div>
     <iframe id="preview" class="hidden"></iframe>
   </div>
 </div>
@@ -226,27 +258,68 @@ document.querySelectorAll('.tab').forEach(tab => {
   }
 })();
 
-// ─── Button handlers ──────────────────────────────────────────
+// ─── Send handler (unified entry point) ──────────────────────
 
-document.getElementById('gen-btn').addEventListener('click', async () => {
-  const intent = document.getElementById('intent').value.trim();
-  if (!intent) return;
-  await streamGenerate({ intent, conversation_id: conversationId });
+const sendBtn = document.getElementById('send-btn');
+const intentInput = document.getElementById('intent');
+
+sendBtn.addEventListener('click', () => handleSend());
+intentInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
 });
 
-document.getElementById('evolve-btn').addEventListener('click', async () => {
-  const intent = document.getElementById('intent').value.trim();
-  if (!intent || !conversationId) return;
-  await streamGenerate({ intent, conversation_id: conversationId });
+document.getElementById('new-conv-btn').addEventListener('click', () => {
+  conversationId = null;
+  currentVersion = 0;
+  document.getElementById('conv-info').textContent = '';
+  document.getElementById('chat-area').innerHTML =
+    '<div class="chat-msg system"><div class="chat-bubble">New conversation started.</div></div>';
+  placeholder.classList.remove('hidden');
+  iframe.classList.add('hidden');
+  hideSuggestions();
+  hideStatus();
 });
+
+async function handleSend() {
+  const message = intentInput.value.trim();
+  if (!message || sendBtn.disabled) return;
+
+  sendBtn.disabled = true;
+  intentInput.value = '';
+  addChatMsg('user', message);
+  showStatus('Thinking...');
+
+  try {
+    // First, classify via /send
+    const res = await fetch('/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, conversation_id: conversationId }),
+    });
+    const data = await res.json();
+
+    if (data.conversation_id) conversationId = data.conversation_id;
+
+    if (data.type === 'chat') {
+      // Chat response — just show the reply
+      addChatMsg('assistant', data.reply || '...');
+      hideStatus();
+    } else {
+      // Generate or evolve — stream it
+      addChatMsg('system', data.type === 'generate' ? 'Generating UI...' : 'Evolving UI...');
+      await streamGenerate({ intent: message, conversation_id: conversationId });
+    }
+  } catch (err) {
+    addChatMsg('system', 'Error: ' + err.message);
+    hideStatus();
+  }
+
+  sendBtn.disabled = false;
+}
 
 // ─── Streaming generation (POST-based SSE) ───────────────────
 
 async function streamGenerate(body) {
-  const btn = document.getElementById('gen-btn');
-  const evolveBtn = document.getElementById('evolve-btn');
-  btn.disabled = true;
-  evolveBtn.disabled = true;
   showStatus('Generating...');
 
   const codeDisplay = document.getElementById('code-display');
@@ -257,6 +330,8 @@ async function streamGenerate(body) {
   iframe.classList.remove('hidden');
 
   const stream = renderer.createStream();
+  let codeBuffer = '';
+  let inCodeFence = false;
 
   try {
     const response = await fetch('/stream', {
@@ -268,6 +343,7 @@ async function streamGenerate(body) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let currentEvent = null;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -279,10 +355,12 @@ async function streamGenerate(body) {
 
       for (const line of lines) {
         if (line.startsWith('event: ')) {
-          var currentEvent = line.slice(7).trim();
+          currentEvent = line.slice(7).trim();
         } else if (line.startsWith('data: ') && currentEvent) {
-          const data = JSON.parse(line.slice(6));
-          handleSSEEvent(currentEvent, data, stream, codeDisplay);
+          try {
+            const data = JSON.parse(line.slice(6));
+            handleSSEEvent(currentEvent, data, stream, codeDisplay);
+          } catch {}
           currentEvent = null;
         }
       }
@@ -292,9 +370,11 @@ async function streamGenerate(body) {
     stream.abort();
   }
 
-  btn.disabled = false;
-  evolveBtn.disabled = false;
+  sendBtn.disabled = false;
 }
+
+// Track code fence stripping state per stream
+let fenceState = { started: false, firstLine: true };
 
 function handleSSEEvent(eventType, data, stream, codeDisplay) {
   switch (eventType) {
@@ -310,20 +390,23 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
         area.classList.remove('hidden');
         document.querySelector('#suggestions-area h3').textContent = 'Search Results';
         list.innerHTML = results.map(r =>
-          `<div style="margin-bottom:8px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">` +
+          `<div style="margin-bottom:6px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">` +
           `<strong>${escHtml(r.query)}</strong>` +
-          (r.answer ? `<p style="margin:4px 0 0;color:#555;">${escHtml(r.answer.substring(0, 150))}...</p>` : '') +
-          `<p style="margin:2px 0 0;color:#888;">${r.sources?.length || 0} sources</p>` +
+          `<span style="margin-left:8px;color:#888;">${r.sources?.length || 0} sources</span>` +
           `</div>`
         ).join('');
       }
       break;
     }
 
-    case 'chunk':
-      codeDisplay.textContent += data.data;
-      stream.push(data.data);
+    case 'chunk': {
+      let chunk = data.data;
+      // Display raw in code panel
+      codeDisplay.textContent += chunk;
+      // Stream to renderer (it handles fence stripping internally)
+      stream.push(chunk);
       break;
+    }
 
     case 'complete': {
       stream.end();
@@ -331,11 +414,17 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
       if (data.conversation_id) conversationId = data.conversation_id;
       currentVersion = app.version;
 
+      // Update header
       document.getElementById('conv-info').textContent =
         `v${currentVersion} | ${app.code.length} chars`;
-      document.getElementById('evolve-btn').classList.remove('hidden');
-      document.getElementById('intent').value = '';
 
+      // Update code display with clean code
+      codeDisplay.textContent = app.code;
+
+      // Show completion in chat
+      addChatMsg('system', `v${currentVersion} generated (${app.code.length} chars)`);
+
+      // Show suggestions
       const suggestions = app.suggestions || [];
       if (suggestions.length > 0) {
         const area = document.getElementById('suggestions-area');
@@ -347,21 +436,36 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
         ).join('');
         list.querySelectorAll('.suggestion-btn').forEach(b => {
           b.addEventListener('click', () => {
-            document.getElementById('intent').value = b.dataset.prompt;
+            intentInput.value = b.dataset.prompt;
+            intentInput.focus();
           });
         });
       }
 
-      const stages = (app.stages || []).map(s => `${s.name}: ${s.status}`).join(' → ');
-      showStatus(`v${currentVersion} | ${app.code.length} chars | ${stages}`);
+      const stages = (app.stages || []).map(s =>
+        `${s.name}: ${s.duration ? s.duration.toFixed(1) + 's' : s.status}`
+      ).join(' → ');
+      showStatus(stages);
       break;
     }
 
     case 'error':
       showStatus('Error: ' + data.error);
+      addChatMsg('system', 'Error: ' + data.error);
       stream.abort();
       break;
   }
+}
+
+// ─── Chat UI helpers ─────────────────────────────────────────
+
+function addChatMsg(role, content) {
+  const area = document.getElementById('chat-area');
+  const msg = document.createElement('div');
+  msg.className = `chat-msg ${role}`;
+  msg.innerHTML = `<div class="chat-bubble">${escHtml(content)}</div>`;
+  area.appendChild(msg);
+  area.scrollTop = area.scrollHeight;
 }
 
 // ─── API Explorer helpers ────────────────────────────────────
@@ -378,35 +482,27 @@ window.apiCall = async function(method, path, resultId) {
   }
 };
 
-window.apiGenerate = async function() {
-  const el = document.getElementById('generate-result');
-  const intent = document.getElementById('api-gen-intent').value.trim();
-  if (!intent) return;
-  el.textContent = 'Generating...';
+window.apiSend = async function() {
+  const el = document.getElementById('send-result');
+  const message = document.getElementById('api-send-msg').value.trim();
+  if (!message) return;
+  el.textContent = 'Sending...';
   try {
-    const res = await fetch('/generate', {
+    const res = await fetch('/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        intent,
-        web_search: document.getElementById('api-gen-search').checked,
-      }),
+      body: JSON.stringify({ message }),
     });
     const data = await res.json();
-    // Show summary, not full code
-    const summary = {
-      success: data.success,
-      conversation_id: data.conversation_id,
-      app: {
-        version: data.app?.version,
-        intent: data.app?.intent,
-        model: data.app?.model,
-        code_length: data.app?.code?.length,
-        stages: data.app?.stages,
-        suggestions_count: data.app?.suggestions?.length || 0,
-        search_results_count: data.app?.search_results?.length || 0,
-      }
-    };
+    const summary = { ...data };
+    if (summary.app) {
+      summary.app = {
+        version: data.app.version,
+        intent: data.app.intent,
+        code_length: data.app.code?.length,
+        model: data.app.model,
+      };
+    }
     el.textContent = JSON.stringify(summary, null, 2);
   } catch (err) {
     el.textContent = 'Error: ' + err.message;
@@ -423,28 +519,75 @@ window.loadConversations = async function() {
     const convs = data.conversations || [];
 
     if (convs.length === 0) {
-      container.innerHTML = '<p style="font-size:13px;color:#a8a29e;">No conversations yet. Generate something first.</p>';
+      container.innerHTML = '<p style="font-size:13px;color:#a8a29e;">No conversations yet.</p>';
       return;
     }
 
     container.innerHTML = convs.map(c => `
-      <div class="conv-card" id="conv-${c.id}">
+      <div class="conv-card ${c.id === conversationId ? 'active' : ''}" onclick="loadConv('${c.id}')">
         <div class="conv-card-header">
           <span class="conv-card-title">${escHtml(c.title || 'Untitled')}</span>
-          <span class="conv-card-meta">v${c.event_count} events</span>
+          <span class="conv-card-meta">${c.event_count} events</span>
         </div>
         <div class="conv-card-meta">
-          ${c.id.substring(0, 8)}... | ${c.model || 'default'} | ${new Date(c.created_at).toLocaleString()}
+          ${c.id.substring(0, 8)}... | ${new Date(c.updated_at).toLocaleString()}
         </div>
-        <div class="conv-card-actions">
-          <input class="input-sm" id="rename-${c.id}" placeholder="New title" style="flex:1;">
-          <button class="btn btn-secondary btn-sm" onclick="renameConv('${c.id}')">Rename</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteConv('${c.id}')">Delete</button>
+        <div class="conv-card-actions" onclick="event.stopPropagation()">
+          <input class="input-sm" id="rename-${c.id}" placeholder="Rename" style="flex:1;" onclick="event.stopPropagation()">
+          <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); renameConv('${c.id}')">Rename</button>
+          <button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deleteConv('${c.id}')">Delete</button>
         </div>
       </div>
     `).join('');
   } catch (err) {
     container.innerHTML = `<p style="font-size:13px;color:#dc2626;">Error: ${err.message}</p>`;
+  }
+};
+
+window.loadConv = async function(id) {
+  try {
+    const res = await fetch('/conversations/' + id);
+    const data = await res.json();
+    const conv = data.conversation;
+    const events = data.events || [];
+
+    conversationId = id;
+    currentVersion = conv.event_count;
+    document.getElementById('conv-info').textContent = escHtml(conv.title || 'Untitled');
+
+    // Rebuild chat from events
+    const chatArea = document.getElementById('chat-area');
+    chatArea.innerHTML = '';
+
+    for (const evt of events) {
+      if (evt.type === 'message') {
+        addChatMsg(evt.role, evt.content);
+      } else if (evt.type === 'generation' && evt.status === 'success') {
+        addChatMsg('system', `v${events.filter(e => e.type === 'generation' || e.type === 'growth').indexOf(evt) + 1} generated`);
+      } else if (evt.type === 'growth' && evt.status === 'success') {
+        addChatMsg('system', `Evolved`);
+      }
+    }
+
+    // Render latest code if available
+    if (conv.latest_code) {
+      const codeDisplay = document.getElementById('code-display');
+      codeDisplay.textContent = conv.latest_code;
+      codeDisplay.style.color = '';
+      placeholder.classList.add('hidden');
+      iframe.classList.remove('hidden');
+      renderer.render(conv.latest_code);
+    }
+
+    // Switch to chat tab
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+    document.querySelector('[data-tab="chat"]').classList.add('active');
+    document.getElementById('tab-chat').classList.remove('hidden');
+
+    chatArea.scrollTop = chatArea.scrollHeight;
+  } catch (err) {
+    alert('Error loading conversation: ' + err.message);
   }
 };
 
@@ -473,7 +616,10 @@ window.deleteConv = async function(id) {
       conversationId = null;
       currentVersion = 0;
       document.getElementById('conv-info').textContent = '';
-      document.getElementById('evolve-btn').classList.add('hidden');
+      document.getElementById('chat-area').innerHTML =
+        '<div class="chat-msg system"><div class="chat-bubble">Conversation deleted.</div></div>';
+      placeholder.classList.remove('hidden');
+      iframe.classList.add('hidden');
     }
     loadConversations();
   } catch (err) {
@@ -489,8 +635,16 @@ function showStatus(text) {
   bar.innerHTML = text;
 }
 
+function hideStatus() {
+  document.getElementById('status-bar').classList.add('hidden');
+}
+
+function hideSuggestions() {
+  document.getElementById('suggestions-area').classList.add('hidden');
+}
+
 function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 </body>
