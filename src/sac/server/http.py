@@ -313,7 +313,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 # ─── Standalone runner ────────────────────────────────────────────
 
 
-def run(host: str = "0.0.0.0", port: int = 3000) -> None:
+def run(host: str = "0.0.0.0", port: int = 8000) -> None:
     """Run the server with uvicorn."""
     import uvicorn
 

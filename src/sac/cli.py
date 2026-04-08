@@ -34,7 +34,7 @@ def main() -> None:
     # sac serve
     serve_parser = subparsers.add_parser("serve", help="Start the SaC HTTP/SSE server")
     serve_parser.add_argument("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
-    serve_parser.add_argument("--port", type=int, default=3000, help="Port to listen on (default: 3000)")
+    serve_parser.add_argument("--port", type=int, default=8000, help="Port to listen on (default: 8000)")
     serve_parser.add_argument("--transport", choices=["http", "stdio"], default="http", help="Transport mode")
 
     # sac generate

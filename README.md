@@ -45,7 +45,7 @@ SAC_SEARCH_API_KEY=tvly-your-key-here
 # Start the HTTP server with browser preview
 python -m sac.cli serve
 
-# Open http://localhost:3000 in your browser
+# Open http://localhost:8000 in your browser
 ```
 
 ## Usage

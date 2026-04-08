@@ -19,10 +19,10 @@ SaC SDK HTTP Server (python -m sac.cli serve)
 ## Start the Server
 
 ```bash
-python -m sac.cli serve --port 3000
+python -m sac.cli serve --port 8000
 ```
 
-The server runs at `http://localhost:3000` with CORS enabled for all origins.
+The server runs at `http://localhost:8000` with CORS enabled for all origins.
 
 ---
 
@@ -58,7 +58,7 @@ function useGenerate() {
     const params = new URLSearchParams({ intent });
     if (conversationId) params.set('conversation_id', conversationId);
 
-    const es = new EventSource(`http://localhost:3000/stream?${params}`);
+    const es = new EventSource(`http://localhost:8000/stream?${params}`);
 
     es.addEventListener('stage', (e) => {
       const { name, status } = JSON.parse(e.data);
@@ -107,7 +107,7 @@ function streamGenerate(intent, conversationId, callbacks) {
   const params = new URLSearchParams({ intent });
   if (conversationId) params.set('conversation_id', conversationId);
 
-  const es = new EventSource(`http://localhost:3000/stream?${params}`);
+  const es = new EventSource(`http://localhost:8000/stream?${params}`);
 
   es.addEventListener('stage', (e) => {
     callbacks.onStage?.(JSON.parse(e.data));
@@ -156,7 +156,7 @@ For simpler integrations where streaming isn't needed.
 ### POST /generate
 
 ```js
-const res = await fetch('http://localhost:3000/generate', {
+const res = await fetch('http://localhost:8000/generate', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -178,7 +178,7 @@ const { success, conversation_id, app } = await res.json();
 ### POST /evolve
 
 ```js
-const res = await fetch('http://localhost:3000/evolve', {
+const res = await fetch('http://localhost:8000/evolve', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -254,11 +254,11 @@ The SDK ships a standalone renderer module that handles all of this:
 <iframe id="preview"></iframe>
 
 <script type="module">
-import { SaCRenderer } from 'http://localhost:3000/renderer/sac-renderer.js';
+import { SaCRenderer } from 'http://localhost:8000/renderer/sac-renderer.js';
 
 const renderer = new SaCRenderer(document.getElementById('preview'), {
-  previewUrl: 'http://localhost:3000/renderer/preview.html',
-  designSystem: 'http://localhost:3000/renderer/design-systems/default/shim.js',
+  previewUrl: 'http://localhost:8000/renderer/preview.html',
+  designSystem: 'http://localhost:8000/renderer/design-systems/default/shim.js',
 });
 
 renderer.on('render', () => console.log('Rendered!'));
@@ -297,14 +297,14 @@ import { SandpackProvider, SandpackPreview } from '@codesandbox/sandpack-react';
 ### GET /conversations
 
 ```js
-const { conversations } = await fetch('http://localhost:3000/conversations').then(r => r.json());
+const { conversations } = await fetch('http://localhost:8000/conversations').then(r => r.json());
 // conversations: [{ id, title, created_at, updated_at, model, event_count, ... }]
 ```
 
 ### GET /conversations/:id
 
 ```js
-const { conversation, events } = await fetch(`http://localhost:3000/conversations/${id}`).then(r => r.json());
+const { conversation, events } = await fetch(`http://localhost:8000/conversations/${id}`).then(r => r.json());
 // events: array of MessageEvent, GenerationEvent, GrowthEvent, ErrorEvent
 ```
 
