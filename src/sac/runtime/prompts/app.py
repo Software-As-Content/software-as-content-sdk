@@ -77,6 +77,8 @@ BUTTON ACTIONS:
 - For external links, use normal <a href="..." target="_blank"> tags
 - Simple rule: if the button needs NEW DATA or a DIFFERENT VIEW of content, use __sac_action.
   If it just rearranges what's already on screen, use React state.
+- IMPORTANT: The action string MUST be in the SAME LANGUAGE as the user's original request.
+  If the user spoke Chinese, write the action in Chinese. If English, write in English.
 
 EXAMPLE FORMAT:
 ```tsx
