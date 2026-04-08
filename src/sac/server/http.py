@@ -237,6 +237,12 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             }
 
         # It's an "update" — return classification, let frontend call /stream
+        # Set title from first message if not already set
+        conv_data = await sac._store.get_conversation(conv.id)
+        if conv_data and not conv_data.title:
+            title = req.message[:80] + ("..." if len(req.message) > 80 else "")
+            await sac._store.update_conversation(conv.id, title=title)
+
         action = "evolve" if conv.current_app else "generate"
         return {
             "type": action,
