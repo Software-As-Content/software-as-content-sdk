@@ -225,6 +225,11 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             await sac._store.add_event(
                 MessageEvent(conversation_id=conv.id, role="assistant", content=reply)
             )
+            # Set title from first message if not already set
+            conv_data = await sac._store.get_conversation(conv.id)
+            if conv_data and not conv_data.title:
+                title = req.message[:80] + ("..." if len(req.message) > 80 else "")
+                await sac._store.update_conversation(conv.id, title=title)
             return {
                 "type": "chat",
                 "conversation_id": conv.id,
