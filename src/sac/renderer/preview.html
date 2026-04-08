@@ -26,6 +26,14 @@
 <body>
   <div id="root"><p style="padding:24px;color:#a8a29e;">Waiting for code...</p></div>
 
+  <!-- SaC Action Bridge: allows generated app buttons to trigger evolve -->
+  <script>
+    window.__sac_action = function(intent) {
+      if (typeof intent !== 'string' || !intent.trim()) return;
+      window.parent.postMessage({ type: 'sac-action', intent: intent.trim() }, '*');
+    };
+  </script>
+
   <!-- Load Babel standalone -->
   <script>
     var _babelReady = false;

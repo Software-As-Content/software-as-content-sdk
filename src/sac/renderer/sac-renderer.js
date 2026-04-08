@@ -25,7 +25,7 @@ export class SaCRenderer {
     this._iframe = iframeElement;
     this._previewUrl = options.previewUrl || '/renderer/preview.html';
     this._designSystem = options.designSystem || '/renderer/design-systems/default/shim.js';
-    this._listeners = { render: [], error: [] };
+    this._listeners = { render: [], error: [], action: [] };
     this._iframeReady = null;
 
     this._messageHandler = (ev) => {
@@ -34,6 +34,8 @@ export class SaCRenderer {
         this._emit('render');
       } else if (ev.data.type === 'render-error') {
         this._emit('error', ev.data.error);
+      } else if (ev.data.type === 'sac-action') {
+        this._emit('action', { intent: ev.data.intent });
       }
     };
     window.addEventListener('message', this._messageHandler);
@@ -132,7 +134,7 @@ export class SaCRenderer {
 
   destroy() {
     window.removeEventListener('message', this._messageHandler);
-    this._listeners = { render: [], error: [] };
+    this._listeners = { render: [], error: [], action: [] };
   }
 
   // ─── Internal ─────────────────────────────────────────────────

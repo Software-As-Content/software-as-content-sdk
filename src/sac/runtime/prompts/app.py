@@ -67,6 +67,17 @@ MAP USAGE (pigeon-maps):
     <Marker anchor={[40.7128, -74.006]} color="#f97316" width={36} />
   </Map>
 
+BUTTON ACTIONS:
+- For buttons that should trigger further exploration, drill-down, or new data loading,
+  use: onClick={() => window.__sac_action("description of what should happen")}
+- The action string should be a natural language intent describing the desired outcome,
+  e.g., "Show detailed pricing for Val Thorens including lift passes and accommodation"
+- For buttons that are purely UI-internal (tab switching, accordion toggle, modal open/close, filtering),
+  use normal React state — do NOT use __sac_action
+- For external links, use normal <a href="..." target="_blank"> tags
+- Simple rule: if the button needs NEW DATA or a DIFFERENT VIEW of content, use __sac_action.
+  If it just rearranges what's already on screen, use React state.
+
 EXAMPLE FORMAT:
 ```tsx
 import * as React from "react";
