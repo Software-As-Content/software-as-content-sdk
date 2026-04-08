@@ -570,14 +570,37 @@ window.loadConv = async function(id) {
     const chatArea = document.getElementById('chat-area');
     chatArea.innerHTML = '';
 
+    let lastSuggestions = [];
     for (const evt of events) {
       if (evt.type === 'message') {
         addChatMsg(evt.role, evt.content);
       } else if (evt.type === 'generation' && evt.status === 'success') {
-        addChatMsg('system', `v${events.filter(e => e.type === 'generation' || e.type === 'growth').indexOf(evt) + 1} generated`);
+        const ver = events.filter(e => (e.type === 'generation' || e.type === 'growth') && e.status === 'success').indexOf(evt) + 1;
+        addChatMsg('system', `v${ver} generated`);
+        if (evt.intent_suggestions?.length) lastSuggestions = evt.intent_suggestions;
       } else if (evt.type === 'growth' && evt.status === 'success') {
         addChatMsg('system', `Evolved`);
+        if (evt.intent_suggestions?.length) lastSuggestions = evt.intent_suggestions;
       }
+    }
+
+    // Show suggestions from the last generation/growth event
+    if (lastSuggestions.length > 0) {
+      const area = document.getElementById('suggestions-area');
+      const list = document.getElementById('suggestions-list');
+      area.classList.remove('hidden');
+      document.querySelector('#suggestions-area h3').textContent = 'Suggestions';
+      list.innerHTML = lastSuggestions.map(s =>
+        `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
+      ).join('');
+      list.querySelectorAll('.suggestion-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          intentInput.value = b.dataset.prompt;
+          intentInput.focus();
+        });
+      });
+    } else {
+      hideSuggestions();
     }
 
     // Render latest code if available
