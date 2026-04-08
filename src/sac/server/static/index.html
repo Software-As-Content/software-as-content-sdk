@@ -226,6 +226,11 @@ function createRenderer() {
   r.on('error', (err) => {
     showStatus(`Render error (${err.type}): ${err.message}`);
   });
+  r.on('action', ({ intent }) => {
+    if (!conversationId || !intent) return;
+    addChatMsg('user', intent);
+    streamGenerate({ intent, conversation_id: conversationId });
+  });
   return r;
 }
 
