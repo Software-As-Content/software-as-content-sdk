@@ -215,16 +215,25 @@ import { SaCRenderer } from '/renderer/sac-renderer.js';
 
 const iframe = document.getElementById('preview');
 const placeholder = document.getElementById('placeholder');
-const renderer = new SaCRenderer(iframe);
+let renderer = createRenderer();
 
-renderer.on('render', () => {
-  placeholder.classList.add('hidden');
-  iframe.classList.remove('hidden');
-});
+function createRenderer() {
+  const r = new SaCRenderer(iframe);
+  r.on('render', () => {
+    placeholder.classList.add('hidden');
+    iframe.classList.remove('hidden');
+  });
+  r.on('error', (err) => {
+    showStatus(`Render error (${err.type}): ${err.message}`);
+  });
+  return r;
+}
 
-renderer.on('error', (err) => {
-  showStatus(`Render error (${err.type}): ${err.message}`);
-});
+function resetRenderer() {
+  // Destroy old renderer and recreate
+  if (renderer && renderer.destroy) renderer.destroy();
+  renderer = createRenderer();
+}
 
 // ─── State ────────────────────────────────────────────────────
 
@@ -276,8 +285,10 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
     '<div class="chat-msg system"><div class="chat-bubble">New conversation started.</div></div>';
   placeholder.classList.remove('hidden');
   iframe.classList.add('hidden');
+  resetRenderer();
   hideSuggestions();
   hideStatus();
+  document.getElementById('code-display').textContent = '';
 });
 
 async function handleSend() {
