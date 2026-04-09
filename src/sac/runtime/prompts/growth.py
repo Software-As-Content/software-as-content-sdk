@@ -86,7 +86,8 @@ Decide how to integrate the new content:
 ```json
 {{
   "growthType": "extend_current" | "new_page",
-  "reason": "Brief explanation"
+  "reason": "Brief explanation",
+  "changes": "User-facing summary of what changed (same language as user intent)"
 }}
 ```
 
@@ -99,4 +100,5 @@ IMPORTANT:
 - Keep ALL existing functionality intact
 - Integrate the new data naturally
 - Maintain consistent styling
-- Output BOTH the JSON decision AND the complete code"""
+- Output BOTH the JSON decision AND the complete code
+- Add a small "NEW" badge (e.g. <Badge>NEW</Badge>) next to newly added tabs, sections, or major content blocks so the user can instantly spot what's new. Remove any such badges from previously existing content."""

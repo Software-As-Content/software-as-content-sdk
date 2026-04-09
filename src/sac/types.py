@@ -91,6 +91,7 @@ class StageSnapshot(BaseModel):
 class GrowthDecision(BaseModel):
     growth_type: GrowthType = GrowthType.EXTEND_CURRENT
     reason: str = ""
+    changes: str = ""
 
 
 class ModelOption(BaseModel):

@@ -251,6 +251,7 @@ def _parse_growth_response(response: str) -> tuple[GrowthDecision, str]:
                 decision = GrowthDecision(
                     growth_type=GrowthType(growth_type),
                     reason=parsed.get("reason", "No reason provided"),
+                    changes=parsed.get("changes", ""),
                 )
         except (json.JSONDecodeError, KeyError, ValueError):
             pass
