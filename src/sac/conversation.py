@@ -59,6 +59,33 @@ class Conversation:
         self._store = store
         self._apps: list[App] = []
 
+    async def _load_from_store(self) -> None:
+        """Load conversation state from store, rebuilding _apps from events."""
+        stored = await self._store.get_conversation(self._data.id)
+        if not stored:
+            return
+
+        # Restore conversation metadata
+        self._data.title = stored.title
+        self._data.model = stored.model or self._data.model
+        if stored.settings:
+            self._data.settings = stored.settings
+
+        # Rebuild _apps from generation/growth events
+        events = await self._store.get_events(self._data.id)
+        self._apps = []
+        for event in events:
+            if hasattr(event, 'code') and event.code and hasattr(event, 'status'):
+                if event.status == EventStatus.SUCCESS:
+                    version = len(self._apps) + 1
+                    intent = event.intent if hasattr(event, 'intent') else ""
+                    self._apps.append(App(
+                        version=version,
+                        intent=intent,
+                        code=event.code,
+                        model=event.model if hasattr(event, 'model') else "",
+                    ))
+
     # ─── Properties ────────────────────────────────────────────────
 
     @property

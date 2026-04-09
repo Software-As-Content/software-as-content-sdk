@@ -65,8 +65,11 @@ class FileStore:
         return self._conversations.get(id)
 
     async def create_conversation(self, conv: ConversationData) -> None:
-        self._conversations[conv.id] = conv
         conv_dir = self._dir / conv.id
+        # Don't overwrite existing conversation data
+        if conv.id in self._conversations:
+            return
+        self._conversations[conv.id] = conv
         conv_dir.mkdir(parents=True, exist_ok=True)
         self._save_index()
         self._save_events(conv.id, [])

@@ -36,6 +36,9 @@ class MemoryStore:
         return self._conversations.get(id)
 
     async def create_conversation(self, conv: ConversationData) -> None:
+        # Don't overwrite existing conversation data
+        if conv.id in self._conversations:
+            return
         self._conversations[conv.id] = conv
         self._events[conv.id] = []
 

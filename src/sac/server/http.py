@@ -112,10 +112,13 @@ def create_app(sac: SaC | None = None) -> FastAPI:
     # Keep track of active conversations
     _conversations: dict[str, Any] = {}
 
-    def _get_or_create_conv(conv_id: str | None, settings: ConversationSettings | None = None) -> Any:
+    async def _get_or_create_conv(conv_id: str | None, settings: ConversationSettings | None = None) -> Any:
         if conv_id and conv_id in _conversations:
             return _conversations[conv_id]
         conv = sac.conversation(id=conv_id, settings=settings)
+        # If an existing conv_id was provided, load state from store
+        if conv_id:
+            await conv._load_from_store()
         _conversations[conv.id] = conv
         return conv
 
@@ -141,7 +144,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             use_design_system=req.use_design_system,
             enable_web_search=req.web_search,
         )
-        conv = _get_or_create_conv(req.conversation_id, settings)
+        conv = await _get_or_create_conv(req.conversation_id, settings)
 
         opts: dict[str, object] = {}
         if req.model:
@@ -179,7 +182,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 enable_web_search=req.web_search if req.web_search is not None else True,
             )
 
-        conv = _get_or_create_conv(req.conversation_id, settings)
+        conv = await _get_or_create_conv(req.conversation_id, settings)
 
         opts: dict[str, object] = {}
         if req.model:
@@ -211,7 +214,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 enable_web_search=req.web_search if req.web_search is not None else True,
             )
 
-        conv = _get_or_create_conv(req.conversation_id, settings)
+        conv = await _get_or_create_conv(req.conversation_id, settings)
 
         classification = await conv.classify(req.message)
 
