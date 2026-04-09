@@ -134,6 +134,7 @@ class ConversationData(BaseModel):
     """Conversation metadata (stored in the store)."""
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = ""
     title: str = ""
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())

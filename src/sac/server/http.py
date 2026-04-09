@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import FileResponse, HTMLResponse
     from pydantic import BaseModel
@@ -112,10 +112,16 @@ def create_app(sac: SaC | None = None) -> FastAPI:
     # Keep track of active conversations
     _conversations: dict[str, Any] = {}
 
-    async def _get_or_create_conv(conv_id: str | None, settings: ConversationSettings | None = None) -> Any:
+    def _get_user_id(request: Request) -> str:
+        """Extract user ID from X-User-Id header, default to 'anonymous'."""
+        return request.headers.get("x-user-id", "anonymous")
+
+    async def _get_or_create_conv(conv_id: str | None, settings: ConversationSettings | None = None, user_id: str = "") -> Any:
         if conv_id and conv_id in _conversations:
             return _conversations[conv_id]
         conv = sac.conversation(id=conv_id, settings=settings)
+        if user_id:
+            conv._data.user_id = user_id
         # If an existing conv_id was provided, load state from store
         if conv_id:
             await conv._load_from_store()
@@ -138,13 +144,13 @@ def create_app(sac: SaC | None = None) -> FastAPI:
     # ─── Generation ──────────────────────────────────────────────
 
     @app.post("/generate")
-    async def generate(req: GenerateRequest) -> dict[str, Any]:
+    async def generate(req: GenerateRequest, request: Request) -> dict[str, Any]:
         settings = ConversationSettings(
             custom_instructions=req.custom_instructions,
             use_design_system=req.use_design_system,
             enable_web_search=req.web_search,
         )
-        conv = await _get_or_create_conv(req.conversation_id, settings)
+        conv = await _get_or_create_conv(req.conversation_id, settings, user_id=_get_user_id(request))
 
         opts: dict[str, object] = {}
         if req.model:
@@ -173,7 +179,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         }
 
     @app.post("/stream")
-    async def stream_generate(req: StreamRequest) -> EventSourceResponse:
+    async def stream_generate(req: StreamRequest, request: Request) -> EventSourceResponse:
         settings: ConversationSettings | None = None
         if req.web_search is not None or req.custom_instructions is not None or req.use_design_system is not None:
             settings = ConversationSettings(
@@ -182,7 +188,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 enable_web_search=req.web_search if req.web_search is not None else True,
             )
 
-        conv = await _get_or_create_conv(req.conversation_id, settings)
+        conv = await _get_or_create_conv(req.conversation_id, settings, user_id=_get_user_id(request))
 
         opts: dict[str, object] = {}
         if req.model:
@@ -199,7 +205,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         return EventSourceResponse(event_generator())
 
     @app.post("/send")
-    async def send_message(req: SendRequest) -> dict[str, Any]:
+    async def send_message(req: SendRequest, request: Request) -> dict[str, Any]:
         """
         Unified entry point. Classifies the message and either:
         - Returns a chat reply directly (type: "chat")
@@ -214,7 +220,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 enable_web_search=req.web_search if req.web_search is not None else True,
             )
 
-        conv = await _get_or_create_conv(req.conversation_id, settings)
+        conv = await _get_or_create_conv(req.conversation_id, settings, user_id=_get_user_id(request))
 
         classification = await conv.classify(req.message)
 
@@ -255,8 +261,9 @@ def create_app(sac: SaC | None = None) -> FastAPI:
     # ─── Conversation Management ─────────────────────────────────
 
     @app.get("/conversations")
-    async def list_conversations() -> dict[str, Any]:
-        convs = await sac._store.list_conversations()
+    async def list_conversations(request: Request) -> dict[str, Any]:
+        user_id = _get_user_id(request)
+        convs = await sac._store.list_conversations(user_id=user_id)
         return {"conversations": [c.model_dump() for c in convs]}
 
     @app.get("/conversations/{conv_id}")

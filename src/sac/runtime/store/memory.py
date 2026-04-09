@@ -27,8 +27,10 @@ class MemoryStore:
         self._events: dict[str, list[ConversationEvent]] = {}
         self._output_dir = Path(output_dir) if output_dir else None
 
-    async def list_conversations(self) -> list[ConversationData]:
+    async def list_conversations(self, user_id: str = "") -> list[ConversationData]:
         convs = list(self._conversations.values())
+        if user_id:
+            convs = [c for c in convs if c.user_id == user_id]
         convs.sort(key=lambda c: c.updated_at, reverse=True)
         return convs
 
