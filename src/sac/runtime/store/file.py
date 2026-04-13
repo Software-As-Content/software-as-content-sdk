@@ -4,10 +4,11 @@ File-based Conversation Store
 Persists conversations and events as JSON files on disk.
 Structure:
     {data_dir}/
-        conversations.json          ← conversation metadata index
-        {conv_id}/
-            events.json             ← event history
-            v1.tsx, v2.tsx, ...     ← generated code snapshots
+        {user_id}/
+            conversations.json          ← per-user conversation metadata index
+            {conv_id}/
+                events.json             ← event history
+                v1.tsx, v2.tsx, ...     ← generated code snapshots
 """
 
 from __future__ import annotations
@@ -37,60 +38,71 @@ _EVENT_CLASSES: dict[str, type[ConversationEvent]] = {
 
 class FileStore:
     """
-    File-based conversation store.
+    File-based conversation store with per-user directory isolation.
 
-    Stores conversation metadata in a single index file and events
-    per conversation in individual directories. Generated code is also
-    written as .tsx files for easy inspection.
+    Data is partitioned by user_id so each user has their own directory
+    containing a conversations.json index and conversation subdirectories.
 
     Args:
-        data_dir: Directory to store all data. Created if it doesn't exist.
+        data_dir: Root directory to store all data. Created if it doesn't exist.
     """
 
     def __init__(self, data_dir: Path | str = ".sac") -> None:
         self._dir = Path(data_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
-        self._index_path = self._dir / "conversations.json"
-        self._conversations: dict[str, ConversationData] = {}
-        self._load_index()
+        # Per-user caches: user_id -> {conv_id -> ConversationData}
+        self._users: dict[str, dict[str, ConversationData]] = {}
+        # Reverse lookup: conv_id -> user_id
+        self._conv_to_user: dict[str, str] = {}
+        self._migrate_flat_layout()
 
     # ─── ConversationStore Protocol ───────────────────────────────
 
     async def list_conversations(self, user_id: str = "") -> list[ConversationData]:
-        convs = list(self._conversations.values())
-        if user_id:
-            convs = [c for c in convs if c.user_id == user_id]
+        if not user_id:
+            return []
+        convs = list(self._get_user_index(user_id).values())
         convs.sort(key=lambda c: c.updated_at, reverse=True)
         return convs
 
     async def get_conversation(self, id: str) -> ConversationData | None:
-        return self._conversations.get(id)
+        user_id = self._conv_to_user.get(id)
+        if user_id is None:
+            return None
+        return self._get_user_index(user_id).get(id)
 
     async def create_conversation(self, conv: ConversationData) -> None:
-        conv_dir = self._dir / conv.id
-        # Don't overwrite existing conversation data
-        if conv.id in self._conversations:
+        user_id = conv.user_id or "anonymous"
+        user_convs = self._get_user_index(user_id)
+        if conv.id in user_convs:
             return
-        self._conversations[conv.id] = conv
+        user_convs[conv.id] = conv
+        self._conv_to_user[conv.id] = user_id
+        conv_dir = self._user_dir(user_id) / conv.id
         conv_dir.mkdir(parents=True, exist_ok=True)
-        self._save_index()
+        self._save_user_index(user_id)
         self._save_events(conv.id, [])
 
     async def update_conversation(self, id: str, **updates: object) -> None:
-        conv = self._conversations.get(id)
+        user_id = self._conv_to_user.get(id)
+        if user_id is None:
+            return
+        conv = self._get_user_index(user_id).get(id)
         if conv is None:
             return
         for key, value in updates.items():
             if hasattr(conv, key):
                 setattr(conv, key, value)
         conv.updated_at = datetime.now(timezone.utc).isoformat()
-        self._save_index()
+        self._save_user_index(user_id)
 
     async def delete_conversation(self, id: str) -> None:
-        self._conversations.pop(id, None)
-        self._save_index()
-        # Remove conversation directory
-        conv_dir = self._dir / id
+        user_id = self._conv_to_user.pop(id, None)
+        if user_id is None:
+            return
+        self._get_user_index(user_id).pop(id, None)
+        self._save_user_index(user_id)
+        conv_dir = self._user_dir(user_id) / id
         if conv_dir.exists():
             import shutil
             shutil.rmtree(conv_dir)
@@ -100,12 +112,15 @@ class FileStore:
 
     async def add_event(self, event: ConversationEvent) -> None:
         conv_id = event.conversation_id
+        user_id = self._conv_to_user.get(conv_id)
+        if user_id is None:
+            return
+
         events = self._load_events(conv_id)
         events.append(event)
         self._save_events(conv_id, events)
 
-        # Auto-update conversation metadata
-        conv = self._conversations.get(conv_id)
+        conv = self._get_user_index(user_id).get(conv_id)
         if conv is None:
             return
 
@@ -118,37 +133,66 @@ class FileStore:
                 self._write_code(conv_id, events)
             conv.latest_intent = event.intent
 
-        self._save_index()
+        self._save_user_index(user_id)
 
     # ─── Private helpers ──────────────────────────────────────────
 
-    def _load_index(self) -> None:
-        """Load conversation index from disk."""
-        if not self._index_path.exists():
+    def _user_dir(self, user_id: str) -> Path:
+        """Get the directory for a specific user."""
+        d = self._dir / user_id
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _user_index_path(self, user_id: str) -> Path:
+        return self._user_dir(user_id) / "conversations.json"
+
+    def _get_user_index(self, user_id: str) -> dict[str, ConversationData]:
+        """Get or load the conversation index for a user."""
+        if user_id not in self._users:
+            self._load_user_index(user_id)
+        return self._users[user_id]
+
+    def _load_user_index(self, user_id: str) -> None:
+        """Load a user's conversation index from disk."""
+        self._users[user_id] = {}
+        path = self._user_index_path(user_id)
+        if not path.exists():
             return
         try:
-            data = json.loads(self._index_path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
             for item in data:
                 conv = ConversationData(**item)
-                self._conversations[conv.id] = conv
+                self._users[user_id][conv.id] = conv
+                self._conv_to_user[conv.id] = user_id
         except (json.JSONDecodeError, Exception):
             pass
 
-    def _save_index(self) -> None:
-        """Save conversation index to disk."""
-        data = [c.model_dump() for c in self._conversations.values()]
-        self._index_path.write_text(
+    def _save_user_index(self, user_id: str) -> None:
+        """Save a user's conversation index to disk."""
+        convs = self._users.get(user_id, {})
+        data = [c.model_dump() for c in convs.values()]
+        self._user_index_path(user_id).write_text(
             json.dumps(data, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
 
-    def _events_path(self, conv_id: str) -> Path:
-        return self._dir / conv_id / "events.json"
+    def _conv_dir(self, conv_id: str) -> Path | None:
+        """Get the directory for a conversation."""
+        user_id = self._conv_to_user.get(conv_id)
+        if user_id is None:
+            return None
+        return self._user_dir(user_id) / conv_id
+
+    def _events_path(self, conv_id: str) -> Path | None:
+        d = self._conv_dir(conv_id)
+        if d is None:
+            return None
+        return d / "events.json"
 
     def _load_events(self, conv_id: str) -> list[ConversationEvent]:
         """Load events from disk."""
         path = self._events_path(conv_id)
-        if not path.exists():
+        if path is None or not path.exists():
             return []
         try:
             raw_list: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
@@ -164,25 +208,78 @@ class FileStore:
 
     def _save_events(self, conv_id: str, events: list[ConversationEvent]) -> None:
         """Save events to disk."""
-        conv_dir = self._dir / conv_id
-        conv_dir.mkdir(parents=True, exist_ok=True)
+        d = self._conv_dir(conv_id)
+        if d is None:
+            return
+        d.mkdir(parents=True, exist_ok=True)
         data = [e.model_dump() for e in events]
-        self._events_path(conv_id).write_text(
+        (d / "events.json").write_text(
             json.dumps(data, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
 
     def _write_code(self, conv_id: str, events: list[ConversationEvent]) -> None:
         """Write generated code as .tsx file."""
+        d = self._conv_dir(conv_id)
+        if d is None:
+            return
         version = sum(
             1 for e in events
             if e.type in ("generation", "growth") and e.status == "success"
         )
-        conv_dir = self._dir / conv_id
-        conv_dir.mkdir(parents=True, exist_ok=True)
+        d.mkdir(parents=True, exist_ok=True)
         code = ""
         for e in events:
             if e.type in ("generation", "growth") and e.status == "success" and e.code:
                 code = e.code
         if code:
-            (conv_dir / f"v{version}.tsx").write_text(code, encoding="utf-8")
+            (d / f"v{version}.tsx").write_text(code, encoding="utf-8")
+
+    def _migrate_flat_layout(self) -> None:
+        """Auto-migrate from old flat layout to per-user layout.
+
+        Old layout had a single conversations.json at root and conv dirs
+        directly under data_dir. This moves them into user subdirectories.
+        """
+        old_index = self._dir / "conversations.json"
+        if not old_index.exists():
+            return
+
+        try:
+            data = json.loads(old_index.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, Exception):
+            return
+
+        if not data:
+            old_index.unlink(missing_ok=True)
+            return
+
+        import shutil
+
+        for item in data:
+            conv = ConversationData(**item)
+            user_id = conv.user_id or "anonymous"
+            user_convs = self._get_user_index(user_id)
+
+            if conv.id in user_convs:
+                continue
+
+            # Move conversation directory
+            old_conv_dir = self._dir / conv.id
+            new_conv_dir = self._user_dir(user_id) / conv.id
+            if old_conv_dir.exists() and not new_conv_dir.exists():
+                shutil.move(str(old_conv_dir), str(new_conv_dir))
+
+            user_convs[conv.id] = conv
+            self._conv_to_user[conv.id] = user_id
+
+        # Save per-user indexes
+        migrated_users: set[str] = set()
+        for item in data:
+            user_id = item.get("user_id") or "anonymous"
+            migrated_users.add(user_id)
+        for uid in migrated_users:
+            self._save_user_index(uid)
+
+        # Remove old flat index
+        old_index.unlink(missing_ok=True)
