@@ -14,58 +14,6 @@ Before coding, understand the context and commit to a BOLD aesthetic direction:
 
 **CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
 
-## Design Style Guidelines
-
-### Colors
-- **Primary text**: "#171717"
-- **Secondary text**: "#737373"
-- **Page background**: "#00000014" (8% black opacity)
-- **Card/container background**: "#FFFFFF"
-- **Borders**: "#E5E7EB" or "#0000001A"
-- **Icon background**: "#F3F4F6"
-- **Accent color**: "#EE5C2A" (orange-red)
-
-### Border Radius
-- **Small elements** (buttons, icons): "rounded-lg" (8px)
-- **Medium elements** (icon containers): "rounded-xl" (12px)
-- **Large elements** (cards, info items): "rounded-2xl" (16px)
-
-### Typography
-- **Extra small**: "text-xs" (12px) - labels, timestamps
-- **Small**: "text-sm" (14px) - descriptions, secondary info
-- **Base**: "text-base" (16px) - body text
-- **Large**: "text-lg" (18px) - card titles
-- **Font weights**: "font-medium" for emphasis, "font-semibold" for headings
-
-### Spacing
-- **Inner padding**: "px-3 py-2" (12px × 8px)
-- **Section gaps**: "gap-6" (24px)
-- **Sidebar width**: "w-80" (320px)
-- **Max content width**: "max-w-6xl" (1152px)
-- **Page horizontal padding**: "px-6" (24px)
-
-### Avatar Sizes
-- **Small**: "h-8 w-8" (32px)
-- **Medium**: "h-9 w-9" (36px)
-- **Large**: "h-11 w-11" (44px)
-
-### Icon Sizes
-- Standard icons: "14px - 16px"
-- Icon container: "h-9 w-9" (36px) with "rounded-xl" background
-
-### Layout Patterns
-- Sidebar + main content two-column structure
-- Use "Card" components for content sections
-- Use "Tabs" for content switching within cards
-- Info items use rounded border cards with icon + label + value pattern
-- Grid layout: "grid-cols-[1fr_1fr]" for equal two-column content
-
-### Component Styling
-- **Info items**: "rounded-2xl border border-[#E5E7EB] bg-white px-3 py-2"
-- **Icon containers**: "rounded-xl bg-[#F3F4F6] text-[#737373]"
-- **Highlight dots**: "h-1.5 w-1.5 rounded-full bg-[#EE5C2A]"
-- **Progress bars**: "w-20" (80px) width
-
 ## Design Tokens & Theme Guidelines
 
 Before using the components, follow these theme guidelines to ensure visual consistency.
@@ -112,40 +60,9 @@ Before using the components, follow these theme guidelines to ensure visual cons
 - **Padding**: Consistent spacing using Tailwind's scale (p-2, p-3, p-4, etc.)
 - **Gaps**: Use `gap-2`, `gap-3`, `gap-4` for flex/grid layouts
 
-### Component Styling Patterns
+### Component Usage Rule
 
-**Buttons:**
-```tsx
-// Primary button
-<button className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-md font-medium transition-colors">
-  Primary Action
-</button>
-
-// Secondary button
-<button className="bg-stone-100 hover:bg-stone-200 text-stone-700 px-4 py-2 rounded-md font-medium transition-colors">
-  Secondary
-</button>
-
-// Outline button
-<button className="border border-stone-300 hover:bg-stone-50 text-stone-700 px-4 py-2 rounded-md font-medium transition-colors">
-  Outline
-</button>
-```
-
-**Cards:**
-```tsx
-<div className="bg-white border border-stone-200 rounded-lg p-6 shadow-sm">
-  {/* Card content */}
-</div>
-```
-
-**Inputs:**
-```tsx
-<input 
-  className="w-full px-3 py-2 border border-stone-300 rounded-md text-stone-700 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-  placeholder="Enter text..."
-/>
-```
+**ALWAYS use the components documented below** (`Button`, `Card`, `Input`, `Select`, etc.) from `@/components/ui/*`. Do NOT write raw `<button>`, `<input>`, `<select>` with inline Tailwind classes — the design system components already encapsulate the correct styling, variants, and interaction states. Raw HTML is only acceptable for layout primitives (`<div>`, `<section>`, `<nav>`, etc.).
 
 **Focus States:**
 - Use `focus:ring-2 focus:ring-orange-500` for focus indicators
@@ -333,27 +250,6 @@ import { Button } from "@/components/ui/button"
 <Button variant="ghost">Ghost</Button>
 <Button variant="link">Link</Button>
 <Button size="icon"><ChevronRight /></Button>
-```
-
-## Calendar
-
-A date field component that allows users to enter and edit date.
-
-### Import
-```tsx
-import { Calendar } from "@/components/ui/calendar"
-```
-
-### Usage
-```tsx
-const [date, setDate] = React.useState<Date | undefined>(new Date())
-
-<Calendar
-  mode="single"
-  selected={date}
-  onSelect={setDate}
-  className="rounded-md border"
-/>
 ```
 
 ## Card
@@ -560,65 +456,6 @@ import {
 </HoverCard>
 ```
 
-## Input Group
-
-A composable input component that allows adding buttons, icons, and text addons.
-
-### Import
-```tsx
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupButton,
-  InputGroupInput,
-  InputGroupText,
-} from "@/components/ui/input-group"
-```
-
-### Usage
-```tsx
-<InputGroup>
-  <InputGroupAddon>
-    <SearchIcon />
-  </InputGroupAddon>
-  <InputGroupInput placeholder="Search..." />
-  <InputGroupAddon>
-    <InputGroupButton>Search</InputGroupButton>
-  </InputGroupAddon>
-</InputGroup>
-```
-
-## Input OTP
-
-Accessible one-time password component with copy paste support.
-
-### Import
-```tsx
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSeparator,
-  InputOTPSlot,
-} from "@/components/ui/input-otp"
-```
-
-### Usage
-```tsx
-<InputOTP maxLength={6}>
-  <InputOTPGroup>
-    <InputOTPSlot index={0} />
-    <InputOTPSlot index={1} />
-    <InputOTPSlot index={2} />
-  </InputOTPGroup>
-  <InputOTPSeparator />
-  <InputOTPGroup>
-    <InputOTPSlot index={3} />
-    <InputOTPSlot index={4} />
-    <InputOTPSlot index={5} />
-  </InputOTPGroup>
-</InputOTP>
-```
-
 ## Input
 
 Displays a form input field or a component that looks like an input field.
@@ -696,7 +533,6 @@ import {
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
-  navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
 ```
 
@@ -927,27 +763,6 @@ import {
 </Sheet>
 ```
 
-## Sidebar
-
-A composable, themeable, and accessible sidebar component.
-
-### Import
-```tsx
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
-```
-
-### Usage
-```tsx
-<SidebarProvider>
-  <AppSidebar />
-  <main>
-    <SidebarTrigger />
-    {children}
-  </main>
-</SidebarProvider>
-```
-
 ## Skeleton
 
 Use to show a placeholder while content is loading.
@@ -974,88 +789,6 @@ import { Slider } from "@/components/ui/slider"
 ### Usage
 ```tsx
 <Slider defaultValue={[33]} max={100} step={1} />
-```
-
-## Sonner
-
-An opinionated toast component for React.
-
-### Import
-```tsx
-import { Toaster } from "@/components/ui/sonner"
-import { toast } from "sonner"
-```
-
-### Usage
-```tsx
-// Add <Toaster /> to your app root
-<Button onClick={() => toast("Event has been created")}>
-  Show Toast
-</Button>
-```
-
-## Source
-
-A composable component for displaying a single source link with a hover card preview.
-
-### Import
-```tsx
-import {
-  Source,
-  SourceContent,
-  SourceTrigger,
-} from "@/components/ui/source"
-```
-
-### Usage
-```tsx
-<Source href="https://example.com/article">
-  <SourceTrigger label="Example" showFavicon />
-  <SourceContent
-    title="Example Article"
-    description="This is an example article description that appears in the hover card."
-  />
-</Source>
-```
-
-## Sources
-
-A composable component for displaying multiple sources with a hover card that shows all sources in a list.
-
-### Import
-```tsx
-import {
-  Sources,
-  SourcesContent,
-  SourcesTrigger,
-  type SourcesItem,
-} from "@/components/ui/sources"
-```
-
-### Usage
-```tsx
-const sources: SourcesItem[] = [
-  {
-    href: "https://example.com/article1",
-    title: "First Article",
-    description: "Description of the first article",
-    label: "Article 1",
-  },
-  {
-    href: "https://example.com/article2",
-    title: "Second Article",
-    description: "Description of the second article",
-  },
-];
-
-<Sources sources={sources}>
-  <SourcesTrigger label="2 sources" showFavicon maxVisible={3} />
-  <SourcesContent
-    title="Sources"
-    description="References for this content"
-    showFavicon
-  />
-</Sources>
 ```
 
 ## Spinner
