@@ -12,126 +12,58 @@ Before coding, understand the context and commit to a BOLD aesthetic direction:
 - **Constraints**: Technical requirements (framework, performance, accessibility).
 - **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember?
 
-**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
+**CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work — the key is intentionality, not intensity.
 
 ## Design Tokens & Theme Guidelines
 
-Before using the components, follow these theme guidelines to ensure visual consistency.
-
 ### Color Palette
 
-**Base Colors (Stone)** - Use warm gray tones:
-- `stone-50` (#fafaf9) - Backgrounds, cards
-- `stone-100` (#f5f5f4) - Secondary backgrounds, hover states
-- `stone-200` (#e7e5e4) - Borders, dividers
-- `stone-300` (#d6d3d1) - Disabled states
-- `stone-400` (#a8a29e) - Placeholder text
-- `stone-500` (#78716c) - Muted text
-- `stone-600` (#57534e) - Secondary text
-- `stone-700` (#44403c) - Primary text
-- `stone-800` (#292524) - Headings
-- `stone-900` (#1c1917) - High contrast text
+**Main page background: ALWAYS pure white (`bg-white` / `#ffffff`).** Never use `stone-50` or any tinted color for the top-level page / app container background — the app must read as a clean white surface. Stone tones are for text, borders, and secondary contrast only.
 
-**Accent Colors (Orange)** - Use for primary actions and highlights:
-- `orange-500` (#f97316) - Primary buttons, links, focus rings
-- `orange-600` (#ea580c) - Hover states for primary elements
-- `orange-700` (#c2410c) - Active/pressed states
+**Base (Stone)** — warm gray tones for text and subtle contrast:
+`stone-100` hover · `stone-200` border · `stone-400` placeholder · `stone-500` muted · `stone-700` body · `stone-900` heading.
 
-**Semantic Colors:**
-- Success: `green-500` / `green-600`
-- Warning: `amber-500` / `amber-600`
-- Error: `red-500` / `red-600`
-- Info: `blue-500` / `blue-600`
+**Accent (Orange)** — primary actions, links, focus rings:
+`orange-500` primary · `orange-600` hover · `orange-700` active.
+
+**Semantic**: `green-500/600` success · `amber-500/600` warning · `red-500/600` error · `blue-500/600` info.
 
 ### Typography
+Font: Inter, system-ui, sans-serif. Headings `font-semibold text-stone-900`. Body `text-stone-700`. Muted `text-stone-500`. Captions `text-xs text-stone-500`.
 
-- **Font Family**: Inter, system-ui, sans-serif
-- **Headings**: `font-semibold` or `font-bold`, `text-stone-900`
-- **Body Text**: `font-normal`, `text-stone-700`
-- **Muted Text**: `text-stone-500`
-- **Small/Caption**: `text-sm` or `text-xs`, `text-stone-500`
-
-### Spacing & Layout
-
-- **Border Radius**: Use smaller radius for a clean look
-  - Small elements: `rounded-sm` (0.125rem)
-  - Medium elements: `rounded-md` (0.375rem)
-  - Large elements: `rounded-lg` (0.5rem)
-- **Padding**: Consistent spacing using Tailwind's scale (p-2, p-3, p-4, etc.)
-- **Gaps**: Use `gap-2`, `gap-3`, `gap-4` for flex/grid layouts
+### Spacing & Radius
+Radius: `rounded-sm` (small) · `rounded-md` (default) · `rounded-lg` (large). Padding & gaps use Tailwind's standard scale (`p-2`, `p-3`, `p-4`, `gap-2`, `gap-3`, `gap-4`).
 
 ### Component Usage Rule
 
 **ALWAYS use the components documented below** (`Button`, `Card`, `Input`, `Select`, etc.) from `@/components/ui/*`. Do NOT write raw `<button>`, `<input>`, `<select>` with inline Tailwind classes — the design system components already encapsulate the correct styling, variants, and interaction states. Raw HTML is only acceptable for layout primitives (`<div>`, `<section>`, `<nav>`, etc.).
 
-**Focus States:**
-- Use `focus:ring-2 focus:ring-orange-500` for focus indicators
-- Use `focus:border-transparent` when using ring
-
-**Hover States:**
-- Buttons: Darken by one shade (e.g., `hover:bg-orange-600`)
-- Cards/Items: `hover:bg-stone-50` or `hover:bg-stone-100`
-
-**Transitions:**
-- Always add `transition-colors` or `transition-all` for smooth interactions
+**Interaction states**: focus with `focus:ring-2 focus:ring-orange-500 focus:border-transparent`. Hover darkens by one shade (`hover:bg-orange-600`) for buttons, lightens (`hover:bg-stone-50`) for cards. Always add `transition-colors`.
 
 ---
 
 ## Accordion
-
-A vertically stacked set of interactive headings that each reveal a section of content.
-
-### Import
 ```tsx
-import { 
-  Accordion, 
-  AccordionContent, 
-  AccordionItem, 
-  AccordionTrigger 
-} from "@/components/ui/accordion"
-```
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 
-### Usage
-```tsx
 <Accordion type="single" collapsible>
   <AccordionItem value="item-1">
-    <AccordionTrigger>Is it accessible?</AccordionTrigger>
-    <AccordionContent>
-      Yes. It adheres to the WAI-ARIA design pattern.
-    </AccordionContent>
+    <AccordionTrigger>Question</AccordionTrigger>
+    <AccordionContent>Answer</AccordionContent>
   </AccordionItem>
 </Accordion>
 ```
 
 ## Alert Dialog
-
-A modal dialog that interrupts the user with important content and expects a response.
-
-### Import
 ```tsx
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-```
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 
-### Usage
-```tsx
 <AlertDialog>
   <AlertDialogTrigger>Open</AlertDialogTrigger>
   <AlertDialogContent>
     <AlertDialogHeader>
-      <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-      <AlertDialogDescription>
-        This action cannot be undone.
-      </AlertDialogDescription>
+      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+      <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
     </AlertDialogHeader>
     <AlertDialogFooter>
       <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -142,525 +74,246 @@ import {
 ```
 
 ## Alert
-
-Displays a callout for user attention.
-
-### Import
 ```tsx
-import { Terminal } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-```
 
-### Usage
-```tsx
+// variants: default | destructive
 <Alert>
-  <Terminal className="h-4 w-4" />
   <AlertTitle>Heads up!</AlertTitle>
-  <AlertDescription>
-    You can add components to your app using the cli.
-  </AlertDescription>
+  <AlertDescription>Info message.</AlertDescription>
 </Alert>
 ```
 
 ## Avatar
-
-An image element with a fallback for representing the user.
-
-### Import
 ```tsx
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-```
 
-### Usage
-```tsx
 <Avatar>
-  <AvatarImage src="https://github.com/shadcn.png" />
+  <AvatarImage src="https://..." />
   <AvatarFallback>CN</AvatarFallback>
 </Avatar>
 ```
 
 ## Badge
-
-Displays a badge or a component that looks like a badge.
-
-### Import
 ```tsx
 import { Badge } from "@/components/ui/badge"
-```
 
-### Usage
-```tsx
-<Badge>Badge</Badge>
-<Badge variant="secondary">Secondary</Badge>
-<Badge variant="outline">Outline</Badge>
-<Badge variant="destructive">Destructive</Badge>
+// variants: default | secondary | destructive | outline
+<Badge variant="secondary">New</Badge>
 ```
 
 ## Breadcrumb
-
-Displays the path to the current resource using a hierarchy of links.
-
-### Import
 ```tsx
-import {
-  Breadcrumb,
-  BreadcrumbEllipsis,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb"
-```
+import { Breadcrumb, BreadcrumbEllipsis, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 
-### Usage
-```tsx
 <Breadcrumb>
   <BreadcrumbList>
-    <BreadcrumbItem>
-      <BreadcrumbLink href="/">Home</BreadcrumbLink>
-    </BreadcrumbItem>
+    <BreadcrumbItem><BreadcrumbLink href="/">Home</BreadcrumbLink></BreadcrumbItem>
     <BreadcrumbSeparator />
-    <BreadcrumbItem>
-      <BreadcrumbLink href="/components">Components</BreadcrumbLink>
-    </BreadcrumbItem>
-    <BreadcrumbSeparator />
-    <BreadcrumbItem>
-      <BreadcrumbPage>Breadcrumb</BreadcrumbPage>
-    </BreadcrumbItem>
+    <BreadcrumbItem><BreadcrumbPage>Current</BreadcrumbPage></BreadcrumbItem>
   </BreadcrumbList>
 </Breadcrumb>
 ```
 
 ## Button
-
-Displays a button or a component that looks like a button.
-
-### Import
 ```tsx
 import { Button } from "@/components/ui/button"
-```
 
-### Usage
-```tsx
-<Button variant="default">Button</Button>
-<Button variant="secondary">Secondary</Button>
-<Button variant="destructive">Destructive</Button>
-<Button variant="outline">Outline</Button>
-<Button variant="ghost">Ghost</Button>
-<Button variant="link">Link</Button>
-<Button size="icon"><ChevronRight /></Button>
+// variants: default | secondary | destructive | outline | ghost | link
+// sizes:    default | sm | lg | icon
+<Button variant="outline" size="sm">Click</Button>
 ```
 
 ## Card
-
-Displays a card with header, content, and footer.
-
-### Import
 ```tsx
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-```
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 
-### Usage
-```tsx
 <Card>
   <CardHeader>
-    <CardTitle>Card Title</CardTitle>
-    <CardDescription>Card Description</CardDescription>
+    <CardTitle>Title</CardTitle>
+    <CardDescription>Description</CardDescription>
   </CardHeader>
-  <CardContent>
-    <p>Card Content</p>
-  </CardContent>
-  <CardFooter>
-    <p>Card Footer</p>
-  </CardFooter>
+  <CardContent>Content</CardContent>
+  <CardFooter>Footer</CardFooter>
 </Card>
 ```
 
 ## Checkbox
-
-A control that allows the user to toggle between checked and not checked.
-
-### Import
 ```tsx
 import { Checkbox } from "@/components/ui/checkbox"
-```
 
-### Usage
-```tsx
 <div className="flex items-center space-x-2">
   <Checkbox id="terms" />
-  <label
-    htmlFor="terms"
-    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-  >
-    Accept terms and conditions
-  </label>
+  <Label htmlFor="terms">Accept terms</Label>
 </div>
 ```
 
 ## Collapsible
-
-An interactive component which expands/collapses a panel.
-
-### Import
 ```tsx
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-```
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
-### Usage
-```tsx
 <Collapsible>
-  <CollapsibleTrigger>Can I use this in my project?</CollapsibleTrigger>
-  <CollapsibleContent>
-    Yes. Free to use for personal and commercial projects. No attribution
-    required.
-  </CollapsibleContent>
+  <CollapsibleTrigger>Toggle</CollapsibleTrigger>
+  <CollapsibleContent>Hidden content</CollapsibleContent>
 </Collapsible>
 ```
 
 ## Dialog
-
-A window overlaid on either the primary window or another dialog window, rendering the content underneath inert.
-
-### Import
 ```tsx
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-```
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 
-### Usage
-```tsx
 <Dialog>
   <DialogTrigger>Open</DialogTrigger>
   <DialogContent>
     <DialogHeader>
-      <DialogTitle>Are you absolutely sure?</DialogTitle>
-      <DialogDescription>
-        This action cannot be undone.
-      </DialogDescription>
+      <DialogTitle>Title</DialogTitle>
+      <DialogDescription>Description</DialogDescription>
     </DialogHeader>
-    <DialogFooter>
-      <Button type="submit">Confirm</Button>
-    </DialogFooter>
+    <DialogFooter><Button type="submit">Confirm</Button></DialogFooter>
   </DialogContent>
 </Dialog>
 ```
 
 ## Drawer
-
-A drawer component for React, often used on mobile devices.
-
-### Import
 ```tsx
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from "@/components/ui/drawer"
-```
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer"
 
-### Usage
-```tsx
 <Drawer>
   <DrawerTrigger>Open</DrawerTrigger>
   <DrawerContent>
     <DrawerHeader>
-      <DrawerTitle>Are you absolutely sure?</DrawerTitle>
-      <DrawerDescription>This action cannot be undone.</DrawerDescription>
+      <DrawerTitle>Title</DrawerTitle>
+      <DrawerDescription>Description</DrawerDescription>
     </DrawerHeader>
     <DrawerFooter>
       <Button>Submit</Button>
-      <DrawerClose>
-        <Button variant="outline">Cancel</Button>
-      </DrawerClose>
+      <DrawerClose><Button variant="outline">Cancel</Button></DrawerClose>
     </DrawerFooter>
   </DrawerContent>
 </Drawer>
 ```
 
 ## Dropdown Menu
-
-Displays a menu to the user — such as a set of actions or functions — triggered by a button.
-
-### Import
 ```tsx
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-```
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
-### Usage
-```tsx
 <DropdownMenu>
   <DropdownMenuTrigger>Open</DropdownMenuTrigger>
   <DropdownMenuContent>
-    <DropdownMenuLabel>My Account</DropdownMenuLabel>
+    <DropdownMenuLabel>Account</DropdownMenuLabel>
     <DropdownMenuSeparator />
     <DropdownMenuItem>Profile</DropdownMenuItem>
     <DropdownMenuItem>Billing</DropdownMenuItem>
-    <DropdownMenuItem>Team</DropdownMenuItem>
-    <DropdownMenuItem>Subscription</DropdownMenuItem>
   </DropdownMenuContent>
 </DropdownMenu>
 ```
 
 ## Hover Card
-
-For sighted users to preview content available behind a link.
-
-### Import
 ```tsx
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card"
-```
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 
-### Usage
-```tsx
 <HoverCard>
   <HoverCardTrigger>Hover</HoverCardTrigger>
-  <HoverCardContent>
-    The React Framework – created and maintained by @vercel.
-  </HoverCardContent>
+  <HoverCardContent>Preview content</HoverCardContent>
 </HoverCard>
 ```
 
 ## Input
-
-Displays a form input field or a component that looks like an input field.
-
-### Import
 ```tsx
 import { Input } from "@/components/ui/input"
-```
 
-### Usage
-```tsx
 <Input type="email" placeholder="Email" />
 ```
 
 ## Label
-
-Renders an accessible label associated with controls.
-
-### Import
 ```tsx
 import { Label } from "@/components/ui/label"
-```
 
-### Usage
-```tsx
-<Label htmlFor="email">Your email address</Label>
+<Label htmlFor="email">Your email</Label>
 ```
 
 ## Menubar
-
-A visually persistent menu common in desktop applications that provides quick access to a consistent set of commands.
-
-### Import
 ```tsx
-import {
-  Menubar,
-  MenubarContent,
-  MenubarItem,
-  MenubarMenu,
-  MenubarSeparator,
-  MenubarShortcut,
-  MenubarTrigger,
-} from "@/components/ui/menubar"
-```
+import { Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarShortcut, MenubarTrigger } from "@/components/ui/menubar"
 
-### Usage
-```tsx
 <Menubar>
   <MenubarMenu>
     <MenubarTrigger>File</MenubarTrigger>
     <MenubarContent>
-      <MenubarItem>
-        New Tab <MenubarShortcut>⌘T</MenubarShortcut>
-      </MenubarItem>
-      <MenubarItem>New Window</MenubarItem>
+      <MenubarItem>New <MenubarShortcut>⌘N</MenubarShortcut></MenubarItem>
       <MenubarSeparator />
-      <MenubarItem>Share</MenubarItem>
-      <MenubarSeparator />
-      <MenubarItem>Print</MenubarItem>
+      <MenubarItem>Open</MenubarItem>
     </MenubarContent>
   </MenubarMenu>
 </Menubar>
 ```
 
 ## Navigation Menu
-
-A collection of links for navigating websites.
-
-### Import
 ```tsx
-import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-} from "@/components/ui/navigation-menu"
-```
+import { NavigationMenu, NavigationMenuContent, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, NavigationMenuTrigger } from "@/components/ui/navigation-menu"
 
-### Usage
-```tsx
 <NavigationMenu>
   <NavigationMenuList>
     <NavigationMenuItem>
-      <NavigationMenuTrigger>Item One</NavigationMenuTrigger>
-      <NavigationMenuContent>
-        <NavigationMenuLink>Link</NavigationMenuLink>
-      </NavigationMenuContent>
+      <NavigationMenuTrigger>Item</NavigationMenuTrigger>
+      <NavigationMenuContent><NavigationMenuLink>Link</NavigationMenuLink></NavigationMenuContent>
     </NavigationMenuItem>
   </NavigationMenuList>
 </NavigationMenu>
 ```
 
 ## Pagination
-
-Pagination with page navigation, next and previous links.
-
-### Import
 ```tsx
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination"
-```
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"
 
-### Usage
-```tsx
 <Pagination>
   <PaginationContent>
-    <PaginationItem>
-      <PaginationPrevious href="#" />
-    </PaginationItem>
-    <PaginationItem>
-      <PaginationLink href="#">1</PaginationLink>
-    </PaginationItem>
-    <PaginationItem>
-      <PaginationEllipsis />
-    </PaginationItem>
-    <PaginationItem>
-      <PaginationNext href="#" />
-    </PaginationItem>
+    <PaginationItem><PaginationPrevious href="#" /></PaginationItem>
+    <PaginationItem><PaginationLink href="#">1</PaginationLink></PaginationItem>
+    <PaginationItem><PaginationEllipsis /></PaginationItem>
+    <PaginationItem><PaginationNext href="#" /></PaginationItem>
   </PaginationContent>
 </Pagination>
 ```
 
 ## Popover
-
-Displays rich content in a portal, triggered by a button.
-
-### Import
 ```tsx
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-```
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
-### Usage
-```tsx
 <Popover>
   <PopoverTrigger>Open</PopoverTrigger>
-  <PopoverContent>Place content for the popover here.</PopoverContent>
+  <PopoverContent>Content</PopoverContent>
 </Popover>
 ```
 
 ## Progress
-
-Displays an indicator showing the completion progress of a task, typically displayed as a progress bar.
-
-### Import
 ```tsx
 import { Progress } from "@/components/ui/progress"
-```
 
-### Usage
-```tsx
 <Progress value={33} />
 ```
 
 ## Radio Group
-
-A set of checkable buttons—known as radio buttons—where no more than one of the buttons can be checked at a time.
-
-### Import
 ```tsx
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-```
 
-### Usage
-```tsx
-<RadioGroup defaultValue="option-one">
+<RadioGroup defaultValue="a">
   <div className="flex items-center space-x-2">
-    <RadioGroupItem value="option-one" id="option-one" />
-    <Label htmlFor="option-one">Option One</Label>
+    <RadioGroupItem value="a" id="a" />
+    <Label htmlFor="a">Option A</Label>
   </div>
   <div className="flex items-center space-x-2">
-    <RadioGroupItem value="option-two" id="option-two" />
-    <Label htmlFor="option-two">Option Two</Label>
+    <RadioGroupItem value="b" id="b" />
+    <Label htmlFor="b">Option B</Label>
   </div>
 </RadioGroup>
 ```
 
 ## Resizable
-
-Accessible resizable panel groups and layouts with keyboard support.
-
-### Import
 ```tsx
-import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable"
-```
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 
-### Usage
-```tsx
 <ResizablePanelGroup direction="horizontal">
   <ResizablePanel>One</ResizablePanel>
   <ResizableHandle />
@@ -669,286 +322,142 @@ import {
 ```
 
 ## Scroll Area
-
-Augments native scroll functionality for custom, cross-browser styling.
-
-### Import
 ```tsx
 import { ScrollArea } from "@/components/ui/scroll-area"
-```
 
-### Usage
-```tsx
-<ScrollArea className="h-[200px] w-[350px] rounded-md border p-4">
-  Jokester began sneaking into the castle in the middle of the night and leaving
-  jokes all over the place: under the king's pillow, in his soup, even in the
-  royal toilet. The king was furious, but he couldn't seem to stop Jokester. And
-  then, one day, the people of the kingdom discovered that the jokes were
-  actually funny, and they started laughing. And then the king started laughing,
-  and then everyone was laughing.
-</ScrollArea>
+<ScrollArea className="h-[200px] w-[350px] rounded-md border p-4">Long content...</ScrollArea>
 ```
 
 ## Select
-
-Displays a list of options for the user to pick from—triggered by a button.
-
-### Import
 ```tsx
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-```
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-### Usage
-```tsx
 <Select>
-  <SelectTrigger className="w-[180px]">
-    <SelectValue placeholder="Theme" />
-  </SelectTrigger>
+  <SelectTrigger className="w-[180px]"><SelectValue placeholder="Theme" /></SelectTrigger>
   <SelectContent>
     <SelectItem value="light">Light</SelectItem>
     <SelectItem value="dark">Dark</SelectItem>
-    <SelectItem value="system">System</SelectItem>
   </SelectContent>
 </Select>
 ```
 
 ## Separator
-
-Visually or semantically separates content.
-
-### Import
 ```tsx
 import { Separator } from "@/components/ui/separator"
-```
 
-### Usage
-```tsx
 <Separator />
 ```
 
 ## Sheet
-
-Extends the Dialog component to display content that complements the main screen.
-
-### Import
 ```tsx
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
-```
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 
-### Usage
-```tsx
 <Sheet>
   <SheetTrigger>Open</SheetTrigger>
   <SheetContent>
     <SheetHeader>
-      <SheetTitle>Are you absolutely sure?</SheetTitle>
-      <SheetDescription>
-        This action cannot be undone.
-      </SheetDescription>
+      <SheetTitle>Title</SheetTitle>
+      <SheetDescription>Description</SheetDescription>
     </SheetHeader>
   </SheetContent>
 </Sheet>
 ```
 
 ## Skeleton
-
-Use to show a placeholder while content is loading.
-
-### Import
 ```tsx
 import { Skeleton } from "@/components/ui/skeleton"
-```
 
-### Usage
-```tsx
 <Skeleton className="w-[100px] h-[20px] rounded-full" />
 ```
 
 ## Slider
-
-An input where the user selects a value from within a given range.
-
-### Import
 ```tsx
 import { Slider } from "@/components/ui/slider"
-```
 
-### Usage
-```tsx
 <Slider defaultValue={[33]} max={100} step={1} />
 ```
 
 ## Spinner
-
-A loading spinner component.
-
-### Import
 ```tsx
 import { Spinner } from "@/components/ui/spinner"
-```
 
-### Usage
-```tsx
 <Spinner />
 ```
 
 ## Switch
-
-A control that allows the user to toggle between checked and not checked.
-
-### Import
 ```tsx
 import { Switch } from "@/components/ui/switch"
-```
 
-### Usage
-```tsx
 <Switch />
 ```
 
 ## Table
-
-A responsive table component.
-
-### Import
 ```tsx
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-```
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-### Usage
-```tsx
 <Table>
-  <TableCaption>A list of your recent invoices.</TableCaption>
+  <TableCaption>Invoices</TableCaption>
   <TableHeader>
     <TableRow>
-      <TableHead className="w-[100px]">Invoice</TableHead>
-      <TableHead>Status</TableHead>
-      <TableHead>Method</TableHead>
-      <TableHead className="text-right">Amount</TableHead>
+      <TableHead>Invoice</TableHead>
+      <TableHead>Amount</TableHead>
     </TableRow>
   </TableHeader>
   <TableBody>
     <TableRow>
-      <TableCell className="font-medium">INV001</TableCell>
-      <TableCell>Paid</TableCell>
-      <TableCell>Credit Card</TableCell>
-      <TableCell className="text-right">$250.00</TableCell>
+      <TableCell>INV001</TableCell>
+      <TableCell>$250.00</TableCell>
     </TableRow>
   </TableBody>
 </Table>
 ```
 
 ## Tabs
-
-A set of layered sections of content—known as tab panels—that are displayed one at a time.
-
-### Import
 ```tsx
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-```
 
-### Usage
-```tsx
-<Tabs defaultValue="account" className="w-[400px]">
+<Tabs defaultValue="account">
   <TabsList>
     <TabsTrigger value="account">Account</TabsTrigger>
     <TabsTrigger value="password">Password</TabsTrigger>
   </TabsList>
-  <TabsContent value="account">Make changes to your account here.</TabsContent>
-  <TabsContent value="password">Change your password here.</TabsContent>
+  <TabsContent value="account">Account content</TabsContent>
+  <TabsContent value="password">Password content</TabsContent>
 </Tabs>
 ```
 
 ## Textarea
-
-Displays a form textarea or a component that looks like a textarea.
-
-### Import
 ```tsx
 import { Textarea } from "@/components/ui/textarea"
-```
 
-### Usage
-```tsx
-<Textarea />
+<Textarea placeholder="Type here..." />
 ```
 
 ## Toggle Group
-
-A set of two-state buttons that can be toggled on or off.
-
-
-### Import
 ```tsx
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-```
 
-### Usage
-```tsx
 <ToggleGroup type="single">
   <ToggleGroupItem value="a">A</ToggleGroupItem>
   <ToggleGroupItem value="b">B</ToggleGroupItem>
-  <ToggleGroupItem value="c">C</ToggleGroupItem>
 </ToggleGroup>
 ```
 
 ## Toggle
-
-A two-state button that can be either on or off.
-
-### Import
 ```tsx
 import { Toggle } from "@/components/ui/toggle"
-```
 
-### Usage
-```tsx
 <Toggle>Toggle</Toggle>
 ```
 
 ## Tooltip
-
-A popup that displays information related to an element when the element receives keyboard focus or the mouse hovers over it.
-
-### Import
 ```tsx
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-```
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
-### Usage
-```tsx
 <TooltipProvider>
   <Tooltip>
     <TooltipTrigger>Hover</TooltipTrigger>
-    <TooltipContent>
-      <p>Add to library</p>
-    </TooltipContent>
+    <TooltipContent>Info</TooltipContent>
   </Tooltip>
 </TooltipProvider>
 ```
