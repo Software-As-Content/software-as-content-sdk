@@ -13,6 +13,7 @@ import asyncio
 import json
 import re
 
+from sac.runtime.pipeline._tsx_filter import TsxChunkFilter
 from sac.runtime.pipeline.events import PipelineEmitter
 from sac.runtime.prompts.app import build_final_system_prompt
 from sac.runtime.prompts.growth import build_growth_prompt
@@ -183,12 +184,22 @@ async def stream_evolve_pipeline(
         _generate_intent_suggestions(new_intent, search_results, model, llm, settings.intent_rules)
     )
 
-    # Stream LLM tokens
+    # Stream LLM tokens — but filter them through `TsxChunkFilter` so the
+    # frontend only sees TSX code-block contents, not the JSON decision
+    # envelope that the growth prompt asks the model to emit first. The
+    # filter buffers everything until it spots a ```tsx fence, then
+    # forwards subsequent tokens verbatim. `full_content` still accumulates
+    # the raw response so `_parse_growth_response` can extract the JSON
+    # decision block below.
     full_content = ""
+    tsx_filter = TsxChunkFilter()
     try:
         async for token in llm.stream(model, [Message(role="user", content=growth_prompt)]):
             full_content += token
-            yield PipelineChunkEvent(data=token)
+            for chunk in tsx_filter.feed(token):
+                yield PipelineChunkEvent(data=chunk)
+        for chunk in tsx_filter.finalize():
+            yield PipelineChunkEvent(data=chunk)
     except Exception as exc:
         yield PipelineStageEvent(name="generate", status=StageStatus.ERROR)
         yield PipelineErrorEvent(error=str(exc))
