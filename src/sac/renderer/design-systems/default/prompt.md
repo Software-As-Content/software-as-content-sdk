@@ -413,10 +413,15 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 ```
 
 ## Tabs
+
+**⚠️ Must be fully wired — see TAB IMPLEMENTATION in the base prompt.** Do not fake a tab bar with plain buttons. Every `TabsTrigger` needs a matching `TabsContent`, and all switchable content lives inside `TabsContent` blocks. Use React state (`value` + `onValueChange`), not `defaultValue` alone.
+
 ```tsx
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-<Tabs defaultValue="account">
+const [activeTab, setActiveTab] = React.useState("account");
+
+<Tabs value={activeTab} onValueChange={setActiveTab}>
   <TabsList>
     <TabsTrigger value="account">Account</TabsTrigger>
     <TabsTrigger value="password">Password</TabsTrigger>
