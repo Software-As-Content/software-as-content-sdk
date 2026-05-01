@@ -5,23 +5,28 @@ build-backend = "hatchling.build"
 [project]
 name = "sac-sdk"
 version = "0.1.0"
-description = "Software as Content — an open-source Python SDK that gives any AI agent the ability to generate and evolve interactive UI through conversation."
+description = "Software as Content — Conversations that produce evolving software. An open-source Python SDK that gives any agent the ability to generate and evolve interactive apps through conversation."
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [
-    { name = "Software as Content" },
+    { name = "Mulong Xie", email = "mulong@mulongxie.me" },
 ]
-keywords = ["sac", "genui", "ai", "agent", "ui-generation"]
+maintainers = [
+    { name = "Dynsoft Lab" },
+]
+keywords = ["sac", "software-as-content", "genui", "agent", "ui-generation", "dynamic-software", "human-agent-interaction"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
     "pydantic>=2.0",
@@ -47,8 +52,11 @@ dev = [
 sac = "sac.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/anthropics/sac-sdk"
-Documentation = "https://github.com/anthropics/sac-sdk"
+Homepage = "https://sac.dynsoft.ai"
+Repository = "https://github.com/Software-As-Content/software-as-content-sdk"
+Documentation = "https://github.com/Software-As-Content/software-as-content-sdk#readme"
+Issues = "https://github.com/Software-As-Content/software-as-content-sdk/issues"
+Paper = "https://arxiv.org/abs/2603.21334"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sac"]
