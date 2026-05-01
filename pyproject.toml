@@ -39,8 +39,11 @@ server = [
     "uvicorn[standard]>=0.29",
     "sse-starlette>=2.0",
 ]
+mcp = [
+    "mcp>=1.0",
+]
 all = [
-    "sac-sdk[server]",
+    "sac-sdk[server,mcp]",
 ]
 dev = [
     "pytest>=8.0",
