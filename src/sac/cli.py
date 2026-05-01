@@ -47,8 +47,13 @@ def main() -> None:
 
     if args.command == "serve":
         if args.transport == "stdio":
-            print("MCP server (stdio) is not yet implemented.", file=sys.stderr)
-            sys.exit(1)
+            try:
+                from sac.server.mcp import run_stdio
+            except ImportError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                sys.exit(1)
+            run_stdio()
+            return
         from sac.server.http import run
         run(host=args.host, port=args.port)
 
