@@ -10,11 +10,10 @@ from typing import AsyncIterator
 
 import json
 
-from sac.runtime.pipeline.evolve import evolve_pipeline, stream_evolve_pipeline
-from sac.runtime.pipeline.generate import generate_pipeline, stream_generate_pipeline
+from sac.runtime.producer import CodeProducer
 from sac.runtime.prompts.app import DEFAULT_MODEL
 from sac.runtime.prompts.classify import CLASSIFY_COLD, CLASSIFY_WITH_CONTEXT
-from sac.runtime.providers.base import LLMProvider, SearchProvider
+from sac.runtime.providers.base import LLMProvider
 from sac.runtime.store.base import ConversationStore
 from sac.types import (
     App,
@@ -50,12 +49,12 @@ class Conversation:
         self,
         data: ConversationData,
         llm: LLMProvider,
-        search: SearchProvider | None,
+        producer: CodeProducer,
         store: ConversationStore,
     ) -> None:
         self._data = data
         self._llm = llm
-        self._search = search
+        self._producer = producer
         self._store = store
         self._apps: list[App] = []
 
@@ -202,12 +201,11 @@ class Conversation:
             settings.enable_web_search = web_search
 
         try:
-            app = await generate_pipeline(
+            app = await self._producer.produce(
                 intent=intent,
-                model=model,
-                llm=self._llm,
-                search=self._search if settings.enable_web_search else None,
+                prior_app=None,
                 settings=settings,
+                model=model,
                 version=self.version + 1,
             )
 
@@ -263,16 +261,12 @@ class Conversation:
         )
 
         try:
-            app = await evolve_pipeline(
-                new_intent=intent,
-                current_code=current.code,
-                original_intent=current.intent,
-                model=model,
-                llm=self._llm,
-                search=self._search,
+            app = await self._producer.produce(
+                intent=intent,
+                prior_app=current,
                 settings=self.settings,
+                model=model,
                 version=self.version + 1,
-                parent_version=current.version,
             )
 
             self._apps.append(app)
@@ -327,29 +321,14 @@ class Conversation:
             settings.enable_web_search = web_search
 
         try:
-            if is_evolve:
-                current = self.current_app
-                assert current is not None
-                gen = stream_evolve_pipeline(
-                    new_intent=intent,
-                    current_code=current.code,
-                    original_intent=current.intent,
-                    model=model,
-                    llm=self._llm,
-                    search=self._search,
-                    settings=settings,
-                    version=self.version + 1,
-                    parent_version=current.version,
-                )
-            else:
-                gen = stream_generate_pipeline(
-                    intent=intent,
-                    model=model,
-                    llm=self._llm,
-                    search=self._search if settings.enable_web_search else None,
-                    settings=settings,
-                    version=self.version + 1,
-                )
+            prior = self.current_app if is_evolve else None
+            gen = self._producer.stream(
+                intent=intent,
+                prior_app=prior,
+                settings=settings,
+                model=model,
+                version=self.version + 1,
+            )
 
             async for event in gen:
                 # Intercept CompleteEvent to update state

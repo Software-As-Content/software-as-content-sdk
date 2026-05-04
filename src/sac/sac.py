@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from sac.conversation import Conversation
+from sac.runtime.producer import CodeProducer, DefaultCodeProducer
 from sac.runtime.prompts.app import DEFAULT_MODEL
 from sac.runtime.providers.base import LLMProvider, SearchProvider
 from sac.runtime.providers.openrouter import OpenRouterProvider
@@ -38,6 +39,7 @@ class SaC:
         search_api_key: str | None = None,
         llm: LLMProvider | None = None,
         search: SearchProvider | None = None,
+        producer: CodeProducer | None = None,
         store: ConversationStore | None = None,
         model: str = DEFAULT_MODEL,
         settings: ConversationSettings | None = None,
@@ -50,13 +52,22 @@ class SaC:
         else:
             raise ValueError("Either 'api_key' or 'llm' provider must be provided.")
 
-        # Search provider: explicit, or default Tavily if key given
+        # Search provider: explicit, or default Tavily if key given.
+        # Kept on SaC only as a convenience for constructing DefaultCodeProducer
+        # below. The protocol layer itself does not know about search.
         if search is not None:
             self._search: SearchProvider | None = search
         elif search_api_key:
             self._search = TavilyProvider(search_api_key)
         else:
             self._search = None
+
+        # Code producer: turns intent + prior_app into a new App version.
+        # Default wraps the built-in generate/evolve pipelines; can be replaced
+        # with any CodeProducer implementation (agent loop, external service, ...).
+        self._producer: CodeProducer = producer or DefaultCodeProducer(
+            self._llm, self._search
+        )
 
         # Store: explicit, or default MemoryStore (no persistence)
         # Available implementations:
@@ -106,7 +117,7 @@ class SaC:
         return Conversation(
             data=data,
             llm=self._llm,
-            search=self._search,
+            producer=self._producer,
             store=self._store,
         )
 
