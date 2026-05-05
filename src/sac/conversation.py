@@ -189,6 +189,8 @@ class Conversation:
         """Generate a new app from an intent (first-time or fresh generation)."""
         model = str(opts.get("model", self.model))
         web_search = opts.get("web_search", self.settings.enable_web_search)
+        content = opts.get("content")
+        content = content if isinstance(content, str) else None
 
         # Record user message
         await self._store.add_event(
@@ -207,6 +209,7 @@ class Conversation:
                 settings=settings,
                 model=model,
                 version=self.version + 1,
+                content=content,
             )
 
             self._apps.append(app)
@@ -254,6 +257,8 @@ class Conversation:
         assert current is not None
 
         model = str(opts.get("model", self.model))
+        content = opts.get("content")
+        content = content if isinstance(content, str) else None
 
         # Record user message
         await self._store.add_event(
@@ -267,6 +272,7 @@ class Conversation:
                 settings=self.settings,
                 model=model,
                 version=self.version + 1,
+                content=content,
             )
 
             self._apps.append(app)
@@ -309,6 +315,8 @@ class Conversation:
         """
         model = str(opts.get("model", self.model))
         is_evolve = len(self._apps) > 0
+        content = opts.get("content")
+        content = content if isinstance(content, str) else None
 
         # Record user message
         await self._store.add_event(
@@ -328,6 +336,7 @@ class Conversation:
                 settings=settings,
                 model=model,
                 version=self.version + 1,
+                content=content,
             )
 
             async for event in gen:

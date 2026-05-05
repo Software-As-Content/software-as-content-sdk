@@ -16,7 +16,11 @@ import re
 from sac.runtime.pipeline.events import PipelineEmitter
 from sac.runtime.prompts.app import build_final_system_prompt, build_generation_prompt
 from sac.runtime.prompts.intent import get_intent_suggestion_prompt, parse_intent_suggestions
-from sac.runtime.prompts.search import build_search_context_prompt, get_search_query_extraction_prompt
+from sac.runtime.prompts.search import (
+    build_content_context_prompt,
+    build_search_context_prompt,
+    get_search_query_extraction_prompt,
+)
 from sac.runtime.providers.base import LLMProvider, SearchProvider
 from typing import AsyncIterator
 
@@ -44,11 +48,15 @@ async def generate_pipeline(
     search: SearchProvider | None,
     settings: ConversationSettings,
     version: int = 1,
+    content: str | None = None,
 ) -> App:
     """
     Run the full generation pipeline.
 
-    If web search is enabled and a search provider is available:
+    If `content` is provided (agent-supplied data), search is skipped entirely
+    and the content is injected directly into the generation prompt.
+
+    Otherwise, if web search is enabled and a search provider is available:
       1. Extract search queries from user intent
       2. Execute web searches
       3. Generate UI with real data (parallel with intent suggestions)
@@ -61,6 +69,26 @@ async def generate_pipeline(
         custom_instructions=settings.custom_instructions,
         include_design_system=settings.use_design_system,
     )
+
+    # Agent-supplied content path: skip search entirely.
+    if content is not None:
+        emitter.start("generate")
+        try:
+            content_context = build_content_context_prompt(content)
+            prompt = f"{system_prompt}\n\n{content_context}\n\nUSER INTENT: {intent}"
+            response = await llm.complete(model, [Message(role="user", content=prompt)])
+            emitter.complete("generate")
+        except Exception:
+            emitter.error("generate")
+            raise
+
+        return App(
+            code=_extract_code(response),
+            version=version,
+            intent=intent,
+            model=model,
+            stages=emitter.stages,
+        )
 
     enable_search = settings.enable_web_search and search is not None
     search_queries: list[SearchQuery] = []
@@ -151,6 +179,7 @@ async def stream_generate_pipeline(
     search: SearchProvider | None,
     settings: ConversationSettings,
     version: int = 1,
+    content: str | None = None,
 ) -> AsyncIterator[PipelineEvent]:
     """
     Streaming version of generate_pipeline.
@@ -160,6 +189,30 @@ async def stream_generate_pipeline(
         custom_instructions=settings.custom_instructions,
         include_design_system=settings.use_design_system,
     )
+
+    # Agent-supplied content path: skip search and stream directly.
+    if content is not None:
+        yield PipelineStageEvent(name="generate", status=StageStatus.RUNNING)
+        content_context = build_content_context_prompt(content)
+        prompt = f"{system_prompt}\n\n{content_context}\n\nUSER INTENT: {intent}"
+        full_content = ""
+        try:
+            async for token in llm.stream(model, [Message(role="user", content=prompt)]):
+                full_content += token
+                yield PipelineChunkEvent(data=token)
+        except Exception as exc:
+            yield PipelineStageEvent(name="generate", status=StageStatus.ERROR)
+            yield PipelineErrorEvent(error=str(exc))
+            return
+
+        yield PipelineStageEvent(name="generate", status=StageStatus.COMPLETED)
+        yield PipelineCompleteEvent(app=App(
+            code=_extract_code(full_content),
+            version=version,
+            intent=intent,
+            model=model,
+        ))
+        return
 
     enable_search = settings.enable_web_search and search is not None
     search_queries: list[SearchQuery] = []

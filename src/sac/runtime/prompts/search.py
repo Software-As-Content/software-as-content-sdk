@@ -127,6 +127,27 @@ IMPORTANT DATA USAGE RULES:
 6. USE THE PROVIDED IMAGES: When images are available in the search results, incorporate them into the UI using <img> tags with the provided URLs. Use images to enhance visual appeal and provide context. Include multiple images when feasible to create a richer, more informative UI."""
 
 
+def build_content_context_prompt(content: str) -> str:
+    """Build the prompt section wrapping content provided directly by an upstream agent.
+
+    Used when SaC is acting as the rendering layer for an agent system: the agent
+    has already produced the data; SaC's job is to lay it out as an interactive
+    app, not to re-search the web.
+    """
+    return f"""<agent-provided-content>
+The following data was supplied by the upstream agent. Use this ACTUAL data to populate the UI.
+Do NOT invent, hallucinate, or web-search for additional facts — render what is provided.
+
+{content}
+</agent-provided-content>
+
+CONTENT USAGE RULES:
+1. Treat the block above as the source of truth.
+2. Display real values from the content, not placeholders.
+3. If the content is structured (JSON / markdown / plain text), interpret it faithfully.
+4. Do NOT introduce data that isn't present in the content."""
+
+
 def should_enable_search(user_intent: str) -> bool:
     """Determine if a user intent likely needs web search."""
     patterns = [

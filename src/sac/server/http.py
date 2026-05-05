@@ -76,6 +76,25 @@ class UpdateConversationRequest(BaseModel):
     settings: dict[str, Any] | None = None
 
 
+class InboxRequest(BaseModel):
+    """Protocol contract: upstream agent posts content for SaC to render.
+
+    - `content`: the actual data the agent wants rendered (any string form).
+    - `intent`: optional human-readable label/hint for the rendering brain.
+    - `conversation_id`: omit for first call; include to evolve an existing
+      conversation. SaC decides generate vs evolve based on conversation state.
+    - `callback_url`: where SaC should POST user actions (button clicks,
+      follow-up intents). Set on first call; subsequent calls may omit.
+    - `context`: opaque metadata echoed back on callbacks; SaC does not parse.
+    """
+
+    content: str
+    intent: str | None = None
+    conversation_id: str | None = None
+    callback_url: str | None = None
+    context: dict[str, Any] | None = None
+
+
 # ─── App Factory ──────────────────────────────────────────────────
 
 
@@ -258,6 +277,39 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             "conversation_id": conv.id,
         }
 
+    # ─── Protocol: /inbox (upstream agent → SaC) ─────────────────
+
+    @app.post("/inbox")
+    async def inbox(req: InboxRequest, request: Request) -> dict[str, Any]:
+        """Receive content from an upstream agent and render it as an app.
+
+        First call (no conversation_id) → generate a new app.
+        Subsequent calls (with conversation_id) → evolve the existing app.
+
+        Returns conversation_id, the URL to view the rendered app, and the
+        produced version number.
+        """
+        conv = await _get_or_create_conv(req.conversation_id, user_id=_get_user_id(request))
+
+        # Persist callback_url on the conversation so future button clicks know
+        # where to POST. First call sets it; later calls may update it.
+        if req.callback_url:
+            await sac._store.update_conversation(conv.id, callback_url=req.callback_url)
+
+        intent = req.intent or req.content[:200]
+
+        if conv.current_app is None:
+            app_result = await conv.generate(intent, content=req.content)
+        else:
+            app_result = await conv.evolve(intent, content=req.content)
+
+        base = str(request.base_url).rstrip("/")
+        return {
+            "conversation_id": conv.id,
+            "url": f"{base}/c/{conv.id}",
+            "version": app_result.version,
+        }
+
     # ─── Conversation Management ─────────────────────────────────
 
     @app.get("/conversations")
@@ -312,6 +364,15 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def preview_page():
+        return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/c/{conv_id}", response_class=HTMLResponse)
+    async def conversation_page(conv_id: str):
+        """Pretty URL form for a specific conversation; serves the same viewer.
+
+        The static page reads the conversation id from the URL path (or `?c=`
+        query param) and auto-loads it on init.
+        """
         return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
     @app.get("/renderer/{path:path}")

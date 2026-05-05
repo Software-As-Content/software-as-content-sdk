@@ -143,6 +143,7 @@ class ConversationData(BaseModel):
     latest_code: str | None = None
     latest_intent: str | None = None
     event_count: int = 0
+    callback_url: str | None = None
 
 
 # ─── Conversation Events (discriminated union) ─────────────────────

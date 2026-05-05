@@ -685,6 +685,21 @@ function hideSuggestions() {
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// Auto-load conversation if id is present in URL: /c/{id} or /?c={id}
+(function () {
+  const m = window.location.pathname.match(/^\/c\/([^/?#]+)/);
+  const fromPath = m ? m[1] : null;
+  const fromQuery = new URLSearchParams(window.location.search).get('c');
+  const targetId = fromPath || fromQuery;
+  if (targetId) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => window.loadConv(targetId));
+    } else {
+      window.loadConv(targetId);
+    }
+  }
+})();
 </script>
 </body>
 </html>

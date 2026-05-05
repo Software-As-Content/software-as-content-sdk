@@ -51,10 +51,15 @@ async def evolve_pipeline(
     settings: ConversationSettings,
     version: int = 2,
     parent_version: int = 1,
+    content: str | None = None,
 ) -> App:
     """
     Run the evolution pipeline.
 
+    If `content` is provided (agent-supplied data), search is skipped and the
+    content is used directly as the "new data" for the growth step.
+
+    Otherwise:
     1. Extract search queries from new intent
     2. Execute searches
     3. Unified growth prompt (decision + code generation in single LLM call)
@@ -71,18 +76,19 @@ async def evolve_pipeline(
     search_results: list[SearchResult] = []
     suggestions: list[IntentSuggestion] = []
 
-    # Step 1: Search for new data
-    emitter.start("search")
-    try:
-        if search is not None:
-            search_queries = await _extract_search_queries(new_intent, model, llm)
-            if search_queries:
-                query_strings = [q.query for q in search_queries]
-                search_results = await search.search(query_strings)
-        emitter.complete("search")
-    except Exception:
-        emitter.error("search")
-        # Search failure is non-fatal for evolve — continue with empty results
+    # Step 1: Search for new data (skipped when agent supplied content)
+    if content is None:
+        emitter.start("search")
+        try:
+            if search is not None:
+                search_queries = await _extract_search_queries(new_intent, model, llm)
+                if search_queries:
+                    query_strings = [q.query for q in search_queries]
+                    search_results = await search.search(query_strings)
+            emitter.complete("search")
+        except Exception:
+            emitter.error("search")
+            # Search failure is non-fatal for evolve — continue with empty results
 
     # Step 2: Unified growth — decide AND generate in one call
     emitter.start("generate")
@@ -94,6 +100,7 @@ async def evolve_pipeline(
             search_results=search_results,
             system_prompt=system_prompt,
             custom_growth_rules=settings.growth_rules or None,
+            content=content,
         )
 
         # Start intent suggestions in parallel
@@ -139,6 +146,7 @@ async def stream_evolve_pipeline(
     settings: ConversationSettings,
     version: int = 2,
     parent_version: int = 1,
+    content: str | None = None,
 ) -> AsyncIterator[PipelineEvent]:
     """
     Streaming version of evolve_pipeline.
@@ -152,20 +160,21 @@ async def stream_evolve_pipeline(
     search_queries: list[SearchQuery] = []
     search_results: list[SearchResult] = []
 
-    # Step 1: Search for new data
-    yield PipelineStageEvent(name="search", status=StageStatus.RUNNING)
-    try:
-        if search is not None:
-            search_queries = await _extract_search_queries(new_intent, model, llm)
-            if search_queries:
-                query_strings = [q.query for q in search_queries]
-                search_results = await search.search(query_strings)
-        yield PipelineStageEvent(name="search", status=StageStatus.COMPLETED)
-        if search_results:
-            yield PipelineSearchEvent(queries=search_queries, results=search_results)
-    except Exception:
-        yield PipelineStageEvent(name="search", status=StageStatus.ERROR)
-        # Search failure is non-fatal for evolve — continue with empty results
+    # Step 1: Search for new data (skipped when agent supplied content)
+    if content is None:
+        yield PipelineStageEvent(name="search", status=StageStatus.RUNNING)
+        try:
+            if search is not None:
+                search_queries = await _extract_search_queries(new_intent, model, llm)
+                if search_queries:
+                    query_strings = [q.query for q in search_queries]
+                    search_results = await search.search(query_strings)
+            yield PipelineStageEvent(name="search", status=StageStatus.COMPLETED)
+            if search_results:
+                yield PipelineSearchEvent(queries=search_queries, results=search_results)
+        except Exception:
+            yield PipelineStageEvent(name="search", status=StageStatus.ERROR)
+            # Search failure is non-fatal for evolve — continue with empty results
 
     # Step 2: Stream unified growth
     yield PipelineStageEvent(name="generate", status=StageStatus.RUNNING)
@@ -177,6 +186,7 @@ async def stream_evolve_pipeline(
         search_results=search_results,
         system_prompt=system_prompt,
         custom_growth_rules=settings.growth_rules or None,
+        content=content,
     )
 
     # Start intent suggestions in parallel

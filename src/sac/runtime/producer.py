@@ -22,7 +22,13 @@ from sac.types import App, ConversationSettings, PipelineEvent
 
 
 class CodeProducer(Protocol):
-    """Strategy that turns (intent, prior_app, settings) into a new App version."""
+    """Strategy that turns (intent, prior_app, settings) into a new App version.
+
+    `content` (optional) is data supplied directly by an upstream agent. When
+    present, the producer should treat it as already-resolved source material
+    and avoid re-searching. The protocol layer does not interpret content; it
+    just hands it through.
+    """
 
     async def produce(
         self,
@@ -31,6 +37,7 @@ class CodeProducer(Protocol):
         settings: ConversationSettings,
         model: str,
         version: int,
+        content: str | None = None,
     ) -> App: ...
 
     def stream(
@@ -40,6 +47,7 @@ class CodeProducer(Protocol):
         settings: ConversationSettings,
         model: str,
         version: int,
+        content: str | None = None,
     ) -> AsyncIterator[PipelineEvent]: ...
 
 
@@ -64,6 +72,7 @@ class DefaultCodeProducer:
         settings: ConversationSettings,
         model: str,
         version: int,
+        content: str | None = None,
     ) -> App:
         if prior_app is None:
             return await generate_pipeline(
@@ -73,6 +82,7 @@ class DefaultCodeProducer:
                 search=self._search if settings.enable_web_search else None,
                 settings=settings,
                 version=version,
+                content=content,
             )
         return await evolve_pipeline(
             new_intent=intent,
@@ -84,6 +94,7 @@ class DefaultCodeProducer:
             settings=settings,
             version=version,
             parent_version=prior_app.version,
+            content=content,
         )
 
     def stream(
@@ -93,6 +104,7 @@ class DefaultCodeProducer:
         settings: ConversationSettings,
         model: str,
         version: int,
+        content: str | None = None,
     ) -> AsyncIterator[PipelineEvent]:
         if prior_app is None:
             return stream_generate_pipeline(
@@ -102,6 +114,7 @@ class DefaultCodeProducer:
                 search=self._search if settings.enable_web_search else None,
                 settings=settings,
                 version=version,
+                content=content,
             )
         return stream_evolve_pipeline(
             new_intent=intent,
@@ -113,4 +126,5 @@ class DefaultCodeProducer:
             settings=settings,
             version=version,
             parent_version=prior_app.version,
+            content=content,
         )

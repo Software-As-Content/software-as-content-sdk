@@ -50,12 +50,19 @@ def build_growth_prompt(
     search_results: list[SearchResult],
     system_prompt: str,
     custom_growth_rules: str | None = None,
+    content: str | None = None,
 ) -> str:
     """
     Build a unified prompt that decides growth type AND generates updated code in one call.
     This reduces latency by eliminating the separate decision step.
+
+    If `content` is provided (agent-supplied data), it replaces the search-results
+    section as the source of "new data" for this growth step.
     """
-    search_context = _format_search_results(search_results)
+    if content is not None:
+        new_data_section = content.strip()
+    else:
+        new_data_section = _format_search_results(search_results)
     growth_rules = (custom_growth_rules or "").strip() or DEFAULT_GROWTH_RULES
 
     return f"""{system_prompt}
@@ -73,8 +80,8 @@ Current Code:
 === NEW REQUEST ===
 New Intent: {new_intent}
 
-New Data Retrieved:
-{search_context}
+New Data:
+{new_data_section}
 
 === GROWTH RULES ===
 Decide how to integrate the new content:
