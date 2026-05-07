@@ -1,16 +1,26 @@
 """
-BundledAgent — the default agent that ships with SaC.
+StandaloneAgent — the default agent that ships with SaC for standalone use.
 
-Sibling-level to external agent systems (OpenClaw, LangGraph, ...). Owns:
+Sibling-level to external agent systems (OpenClaw, LangGraph, Claude Agent
+SDK, ...): they all interact with SaC's pure interaction core via the same
+protocol contract. This one just happens to live in the same Python process
+for convenience and for the standalone web UI use case.
+
+Owns:
   - search execution (extract queries → call SearchProvider → format results)
-  - intent suggestion generation
-  - classify chat-vs-update (for the standalone web UI's text input flow)
+  - intent suggestion generation (TODO: belongs in core per boundary rule;
+    deferred until the OpenClaw-adapter milestone, when external-agent /inbox
+    flows force a real design for content-grounded suggestions)
   - event recording around generate/evolve flows
 
 Calls into core via `Conversation.ingest(content, intent)` for the actual
 rendering. Search results, when present, are formatted into a content string
 and passed via the same content path that any external agent would use —
 there is no privileged in-process API.
+
+NOTE: This class's method shape (generate / evolve / stream) is NOT a protocol
+requirement. External agents only need to: (1) POST /inbox with `response`,
+(2) receive POST {callback_url} with `intent`. Roughly 30 lines of HTTP.
 """
 
 from __future__ import annotations
@@ -20,7 +30,6 @@ import json
 import re
 from typing import Any, AsyncIterator, TYPE_CHECKING
 
-from sac.builtin.prompts.classify import CLASSIFY_COLD, CLASSIFY_WITH_CONTEXT
 from sac.builtin.prompts.intent import (
     get_intent_suggestion_prompt,
     parse_intent_suggestions,
@@ -42,8 +51,6 @@ from sac.types import (
     PipelineStageEvent,
     SearchQuery,
     SearchResult,
-    SendResult,
-    SendResultType,
     StageStatus,
 )
 
@@ -51,14 +58,14 @@ if TYPE_CHECKING:
     from sac.conversation import Conversation
 
 
-class BundledAgent:
-    """The default agent. One per SaC instance; shared across conversations."""
+class StandaloneAgent:
+    """The default standalone agent. One per SaC instance; shared across conversations."""
 
     def __init__(self, llm: LLMProvider, search: SearchProvider | None) -> None:
         self._llm = llm
         self._search = search
 
-    # ─── Public methods (mirror of legacy Conversation API) ──────────
+    # ─── Public methods ──────────────────────────────────────────────
 
     async def generate(self, conv: "Conversation", intent: str, **opts: Any) -> App:
         model = str(opts.get("model", conv.model))
@@ -115,7 +122,6 @@ class BundledAgent:
                     search_results = await self._search.search(qs)  # type: ignore[union-attr]
                     composed_content = _format_search_results_as_data(search_results)
             except Exception:
-                # Search failure is non-fatal; carry on without data
                 search_queries, search_results, composed_content = [], [], None
 
         try:
@@ -125,8 +131,6 @@ class BundledAgent:
                 intent, search_results, model, self._llm, conv.settings.intent_rules
             )
 
-            # Attach agent-side artefacts to the App (these are agent outputs,
-            # not core renderer outputs, but the public App shape carries them).
             app.search_queries = search_queries
             app.search_results = search_results
             app.suggestions = suggestions
@@ -174,7 +178,6 @@ class BundledAgent:
             MessageEvent(conversation_id=conv.id, role="user", content=intent)
         )
 
-        # Agent-supplied content path
         if content_override is not None:
             try:
                 app = await conv.ingest(content=content_override, intent=intent, model=model)
@@ -201,7 +204,6 @@ class BundledAgent:
                 )
                 raise
 
-        # Standalone agentic flow
         search_queries: list[SearchQuery] = []
         search_results: list[SearchResult] = []
         composed_content: str | None = None
@@ -214,7 +216,6 @@ class BundledAgent:
                     search_results = await self._search.search(qs)
                     composed_content = _format_search_results_as_data(search_results)
             except Exception:
-                # Search failure is non-fatal for evolve — continue without data
                 search_queries, search_results, composed_content = [], [], None
 
         try:
@@ -279,9 +280,6 @@ class BundledAgent:
         )
 
         if run_search:
-            # Emit analyze stage (only the non-evolve path historically did this;
-            # evolve historically had only a "search" stage). Keep that asymmetry
-            # to match prior behavior.
             if not is_evolve:
                 yield PipelineStageEvent(name="analyze", status=StageStatus.RUNNING)
                 try:
@@ -297,7 +295,7 @@ class BundledAgent:
                 try:
                     search_queries = await _extract_search_queries(intent, model, self._llm)
                 except Exception:
-                    pass  # Non-fatal for evolve
+                    pass
 
             if search_queries:
                 if not is_evolve:
@@ -314,21 +312,18 @@ class BundledAgent:
                         yield PipelineErrorEvent(error=str(exc))
                         await self._record_error_event(conv, is_evolve, intent, model, str(exc))
                         return
-                    # evolve: non-fatal; continue
             elif is_evolve:
                 yield PipelineStageEvent(name="search", status=StageStatus.COMPLETED)
 
             if search_results:
                 composed_content = _format_search_results_as_data(search_results)
 
-        # Suggestions in parallel with code generation
         suggest_task = asyncio.create_task(
             _generate_intent_suggestions(
                 intent, search_results, model, self._llm, conv.settings.intent_rules
             )
         )
 
-        # Forward core's stream events
         try:
             async for event in conv.stream_ingest(content=composed_content, intent=intent, model=model):
                 if isinstance(event, PipelineCompleteEvent):
@@ -360,57 +355,6 @@ class BundledAgent:
             suggest_task.cancel()
             await self._record_error_event(conv, is_evolve, intent, model, str(exc))
             yield PipelineErrorEvent(error=str(exc))
-
-    async def send(self, conv: "Conversation", message: str, **opts: Any) -> SendResult:
-        """Unified entry — classify chat vs update, then dispatch."""
-        classification = await self.classify(conv, message)
-
-        if classification["type"] == "chat":
-            reply = classification.get("reply", "")
-            await conv._store.add_event(
-                MessageEvent(conversation_id=conv.id, role="user", content=message)
-            )
-            await conv._store.add_event(
-                MessageEvent(conversation_id=conv.id, role="assistant", content=reply)
-            )
-            return SendResult(type=SendResultType.CHAT, reply=reply)
-
-        if conv.current_app is not None:
-            app = await self.evolve(conv, message, **opts)
-            return SendResult(type=SendResultType.EVOLVE, app=app)
-        else:
-            app = await self.generate(conv, message, **opts)
-            return SendResult(type=SendResultType.GENERATE, app=app)
-
-    async def classify(self, conv: "Conversation", message: str) -> dict:
-        """Classify a user message as 'chat' or 'update' via LLM."""
-        has_context = conv.current_app is not None
-        system_prompt = CLASSIFY_WITH_CONTEXT if has_context else CLASSIFY_COLD
-
-        user_content = message
-        if has_context and conv.current_app:
-            user_content = (
-                f"[Current app intent: {conv.current_app.intent}]\n\nUser message: {message}"
-            )
-
-        messages = [
-            Message(role="system", content=system_prompt),
-            Message(role="user", content=user_content),
-        ]
-
-        try:
-            raw = await self._llm.complete(conv.model, messages, max_tokens=256)
-            text = raw.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[-1] if "\n" in text else text[3:]
-            if text.endswith("```"):
-                text = text[:-3]
-            text = text.strip()
-            if text.startswith("json"):
-                text = text[4:].strip()
-            return json.loads(text)
-        except (json.JSONDecodeError, Exception):
-            return {"type": "update"}
 
     # ─── Helpers ──────────────────────────────────────────────────────
 
@@ -467,7 +411,15 @@ async def _generate_intent_suggestions(
     llm: LLMProvider,
     custom_rules: str | None = None,
 ) -> list[IntentSuggestion]:
-    """Generate intent suggestions (non-critical, returns empty on failure)."""
+    """Generate intent suggestions (non-critical, returns empty on failure).
+
+    TODO(boundary): per the SaC boundary rule, content-grounded suggestions
+    belong in core (`Conversation.ingest`) so that any agent posting to /inbox
+    gets them for free. Currently lives here because the prompt expects a
+    `list[SearchResult]` shape; making it content-grounded is a small prompt
+    redesign that should land alongside the OpenClaw-adapter milestone, when
+    real external-agent content gives us the input shape to design against.
+    """
     try:
         prompt = get_intent_suggestion_prompt(intent, search_results, custom_rules)
         response = await llm.complete(model, [Message(role="user", content=prompt)])
@@ -479,9 +431,10 @@ async def _generate_intent_suggestions(
 def _format_search_results_as_data(search_results: list[SearchResult]) -> str:
     """Format search results into a content string for the renderer's data context.
 
-    Mirrors the rich source/image format previously inlined in
-    `build_search_context_prompt`, minus the wrapper. The renderer's unified
-    `build_data_context_prompt` will wrap this once, with generic instructions.
+    Mirrors the rich source/image format previously inlined in the
+    pre-refactor `build_search_context_prompt`, minus the wrapper. The
+    renderer's unified `build_data_context_prompt` will wrap this once with
+    generic instructions.
     """
     sections: list[str] = []
     for result in search_results:

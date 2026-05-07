@@ -1,21 +1,18 @@
 """
-SaC Builtin Agent
+SaC Builtin — agents that ship in-process with SaC.
 
-The "default agent" that ships with SaC for standalone use. Sibling-level to
-external agents (OpenClaw, LangGraph, Claude Agent SDK, ...): all of them
-talk to SaC's pure interaction core via the same protocol contract. This one
-just happens to live in the same Python process for convenience.
+Two pieces, deliberately kept separate:
 
-It owns:
-  - search execution (when web_search is enabled)
-  - intent suggestion generation
-  - chat-vs-update classification (for the standalone web UI's text input)
+  - `StandaloneAgent` (agent.py) — the real default agent. Sibling-level to
+    external agents (OpenClaw, LangGraph, ...). Owns search, formats data,
+    drives core via Conversation.ingest. Survives long-term.
 
-It does NOT own:
-  - rendering decisions (those live in core's renderer / pipelines)
-  - protocol routing (those live in core's /inbox + Conversation)
+  - `LegacyShim` (legacy.py) — transitional adapter for the pre-protocol-pivot
+    `send` / `classify` API surface used by sac-web and the MCP server. Goes
+    away once those consumers migrate to the dual-channel /inbox flow.
 """
 
-from sac.builtin.agent import BundledAgent
+from sac.builtin.agent import StandaloneAgent
+from sac.builtin.legacy import LegacyShim
 
-__all__ = ["BundledAgent"]
+__all__ = ["StandaloneAgent", "LegacyShim"]

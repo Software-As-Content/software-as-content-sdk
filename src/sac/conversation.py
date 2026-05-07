@@ -7,8 +7,10 @@ Owns: `ingest()` — the single core entry that turns (content, intent) into
 
 Does NOT own: search, classify, intent suggestions, send/dispatch — those
 are agent-layer concerns. Legacy `generate / evolve / stream / send /
-classify` methods are kept as thin DELEGATE shims to a BundledAgent for
-backwards compatibility (HTTP server, MCP server, Python library users).
+classify` methods are kept as thin DELEGATE shims:
+  - generate / evolve / stream → StandaloneAgent (real default agent)
+  - send / classify           → LegacyShim (transitional, removed when
+                                sac-web + MCP migrate to /inbox protocol)
 """
 
 from __future__ import annotations
@@ -30,7 +32,8 @@ from sac.types import (
 )
 
 if TYPE_CHECKING:
-    from sac.builtin.agent import BundledAgent
+    from sac.builtin.agent import StandaloneAgent
+    from sac.builtin.legacy import LegacyShim
 
 
 class Conversation:
@@ -41,7 +44,8 @@ class Conversation:
         conv = sac.conversation()
         app = await conv.ingest(content="...", intent="...")
 
-    Legacy (agent-shaped) usage — these go through the BundledAgent:
+    Agent-shaped usage — generate/evolve/stream go through StandaloneAgent;
+    send/classify go through LegacyShim:
         app = await conv.generate("travel guide for Hangzhou")
         app = await conv.evolve("add restaurants")
         result = await conv.send("looks great!")
@@ -53,13 +57,15 @@ class Conversation:
         llm: LLMProvider,
         producer: CodeProducer,
         store: ConversationStore,
-        bundled_agent: Optional["BundledAgent"] = None,
+        standalone_agent: Optional["StandaloneAgent"] = None,
+        legacy_shim: Optional["LegacyShim"] = None,
     ) -> None:
         self._data = data
         self._llm = llm
         self._producer = producer
         self._store = store
-        self._bundled_agent = bundled_agent
+        self._standalone_agent = standalone_agent
+        self._legacy_shim = legacy_shim
         self._apps: list[App] = []
 
     async def _load_from_store(self) -> None:
@@ -129,8 +135,8 @@ class Conversation:
         """Pure render: produce next App version from (content, intent).
 
         Does NOT record events, run searches, or do any agent flow. Caller is
-        responsible for surrounding bookkeeping. Used by BundledAgent (and by
-        any other agent driving core directly).
+        responsible for surrounding bookkeeping. Used by StandaloneAgent (and
+        by any other agent driving core directly).
         """
         prior = self.current_app
         app = await self._producer.produce(
@@ -166,29 +172,43 @@ class Conversation:
                 self._apps.append(event.app)
             yield event
 
-    # ─── Legacy delegates (route through BundledAgent) ──────────────
+    # ─── Delegates ──────────────────────────────────────────────────
+    #
+    # generate / evolve / stream → StandaloneAgent (real default agent)
+    # send / classify            → LegacyShim (transitional, removed when
+    #                              sac-web + MCP move to /inbox protocol)
 
-    def _agent(self) -> "BundledAgent":
-        if self._bundled_agent is None:
+    def _standalone(self) -> "StandaloneAgent":
+        if self._standalone_agent is None:
             raise RuntimeError(
-                "This conversation has no BundledAgent attached. The legacy "
-                "generate/evolve/stream/send/classify API requires one. Use "
+                "This conversation has no StandaloneAgent attached. The "
+                "generate/evolve/stream API requires one. Use "
                 "conv.ingest(content, intent) for the pure-core path, or "
-                "construct SaC normally so a BundledAgent is provided."
+                "construct SaC normally so a StandaloneAgent is provided."
             )
-        return self._bundled_agent
+        return self._standalone_agent
+
+    def _legacy(self) -> "LegacyShim":
+        if self._legacy_shim is None:
+            raise RuntimeError(
+                "This conversation has no LegacyShim attached. The send/"
+                "classify API is part of the pre-protocol-pivot legacy "
+                "surface; if you don't need it, prefer conv.ingest() and the "
+                "/inbox protocol instead."
+            )
+        return self._legacy_shim
 
     async def generate(self, intent: str, **opts: object) -> App:
-        return await self._agent().generate(self, intent, **opts)
+        return await self._standalone().generate(self, intent, **opts)
 
     async def evolve(self, intent: str, **opts: object) -> App:
-        return await self._agent().evolve(self, intent, **opts)
+        return await self._standalone().evolve(self, intent, **opts)
 
     def stream(self, intent: str, **opts: object) -> AsyncIterator[PipelineEvent]:
-        return self._agent().stream(self, intent, **opts)
+        return self._standalone().stream(self, intent, **opts)
 
     async def send(self, message: str, **opts: object) -> SendResult:
-        return await self._agent().send(self, message, **opts)
+        return await self._legacy().send(self, message, **opts)
 
     async def classify(self, message: str) -> dict:
-        return await self._agent().classify(self, message)
+        return await self._legacy().classify(self, message)
