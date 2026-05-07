@@ -77,10 +77,22 @@ class StandaloneAgent:
             MessageEvent(conversation_id=conv.id, role="user", content=intent)
         )
 
-        # Agent-supplied content path: skip search + suggestions entirely.
+        # Agent-supplied content path: skip search, but still produce suggestions
+        # (Φˢ frontend essential — every rendered version should expose follow-ups).
+        # Agent may override via `suggestions_override` opt.
         if content_override is not None:
+            suggestions_override = opts.get("suggestions_override")
             try:
                 app = await conv.ingest(content=content_override, intent=intent, model=model)
+
+                if isinstance(suggestions_override, list):
+                    suggestions = list(suggestions_override)
+                else:
+                    suggestions = await _generate_intent_suggestions(
+                        intent, [], model, self._llm, conv.settings.intent_rules
+                    )
+                app.suggestions = suggestions
+
                 await conv._store.add_event(
                     GenerationEvent(
                         conversation_id=conv.id,
@@ -89,6 +101,7 @@ class StandaloneAgent:
                         status=EventStatus.SUCCESS,
                         code=app.code,
                         stages=app.stages,
+                        intent_suggestions=suggestions or None,
                     )
                 )
                 if conv.version == 1:
@@ -179,8 +192,18 @@ class StandaloneAgent:
         )
 
         if content_override is not None:
+            suggestions_override = opts.get("suggestions_override")
             try:
                 app = await conv.ingest(content=content_override, intent=intent, model=model)
+
+                if isinstance(suggestions_override, list):
+                    suggestions = list(suggestions_override)
+                else:
+                    suggestions = await _generate_intent_suggestions(
+                        intent, [], model, self._llm, conv.settings.intent_rules
+                    )
+                app.suggestions = suggestions
+
                 await conv._store.add_event(
                     GrowthEvent(
                         conversation_id=conv.id,
@@ -189,6 +212,7 @@ class StandaloneAgent:
                         status=EventStatus.SUCCESS,
                         code=app.code,
                         stages=app.stages,
+                        intent_suggestions=suggestions or None,
                     )
                 )
                 return app
