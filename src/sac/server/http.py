@@ -7,8 +7,10 @@ Requires: pip install sac-sdk[server]
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +36,44 @@ _STATIC_DIR = Path(__file__).parent / "static"
 _RENDERER_DIR = Path(__file__).parent.parent / "renderer"
 
 _VERSION = "0.1.0"
+
+
+# ─── Pub/Sub for SSE conversation updates ────────────────────────
+
+
+class _PubSub:
+    """In-memory per-conversation event broker for SSE subscribers.
+
+    One SaC server process manages all subscribers. For multi-process
+    deployments swap this for redis/nats; the publish/subscribe surface
+    stays the same.
+    """
+
+    def __init__(self) -> None:
+        self._subs: dict[str, list[asyncio.Queue]] = defaultdict(list)
+
+    def subscribe(self, conv_id: str) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue(maxsize=64)
+        self._subs[conv_id].append(q)
+        return q
+
+    def unsubscribe(self, conv_id: str, q: asyncio.Queue) -> None:
+        if conv_id in self._subs:
+            try:
+                self._subs[conv_id].remove(q)
+            except ValueError:
+                pass
+            if not self._subs[conv_id]:
+                del self._subs[conv_id]
+
+    def publish(self, conv_id: str, event_type: str, data: dict[str, Any]) -> None:
+        payload = {"event": event_type, "data": json.dumps(data)}
+        for q in list(self._subs.get(conv_id, [])):
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                # Slow consumer — drop silently rather than block agent flow.
+                pass
 
 
 # ─── Request/Response Models ──────────────────────────────────────
@@ -147,6 +187,9 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     # Keep track of active conversations
     _conversations: dict[str, Any] = {}
+
+    # Pub/sub broker for /c/{id}/events SSE subscribers
+    pubsub = _PubSub()
 
     def _get_user_id(request: Request) -> str:
         """Extract user ID from X-User-Id header, default to 'anonymous'."""
@@ -339,6 +382,11 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                     content=req.content,
                 )
             )
+            pubsub.publish(
+                conv.id,
+                "chat",
+                {"role": "assistant", "content": req.content},
+            )
             return {
                 "conversation_id": conv.id,
                 "url": f"{base}/c/{conv.id}",
@@ -366,6 +414,15 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         else:
             app_result = await conv.evolve(intent, **opts)
 
+        pubsub.publish(
+            conv.id,
+            "version",
+            {
+                "conversation_id": conv.id,
+                "version": app_result.version,
+            },
+        )
+
         return {
             "conversation_id": conv.id,
             "url": f"{base}/c/{conv.id}",
@@ -373,7 +430,41 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             "type": "ui",
         }
 
-    # ─── Protocol: /c/{id}/action (user → SaC → agent webhook) ───
+    # ─── Protocol: /c/{id}/events (browser ← SaC live updates) ───
+
+    @app.get("/c/{conv_id}/events")
+    async def conversation_events(conv_id: str, request: Request) -> EventSourceResponse:
+        """SSE stream of conversation updates.
+
+        Emits events whenever the conversation gets new state from /inbox:
+          - `version` — new App version produced (browser should reload App)
+          - `chat`    — new assistant message (browser should append bubble)
+
+        Browser fetches initial state via GET /c/{conv_id} or similar; SSE
+        only delivers deltas. Sends a 15-second keepalive `ping` to survive
+        proxies that drop idle connections.
+        """
+        conv_data = await sac._store.get_conversation(conv_id)
+        if conv_data is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        q = pubsub.subscribe(conv_id)
+
+        async def event_generator():
+            try:
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    try:
+                        event = await asyncio.wait_for(q.get(), timeout=15.0)
+                        yield event
+                    except asyncio.TimeoutError:
+                        # Keepalive — many proxies kill idle SSE after ~30s.
+                        yield {"event": "ping", "data": "{}"}
+            finally:
+                pubsub.unsubscribe(conv_id, q)
+
+        return EventSourceResponse(event_generator())
 
     @app.post("/c/{conv_id}/action")
     async def conversation_action(conv_id: str, req: ActionRequest) -> dict[str, Any]:
