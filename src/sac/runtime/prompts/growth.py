@@ -1,15 +1,12 @@
 """
-Growth Prompts
+Growth Prompt
 
-Handles the logic for growing an agentic app by integrating new data/intent.
-Uses a single unified prompt that decides AND generates in one call.
-
-Ported from: src/lib/growth-prompts.ts
+Builds the unified prompt that decides growth type AND emits new code in one
+LLM call. Receives data via the `content` parameter (caller-provided string);
+core renderer is content-shape-agnostic.
 """
 
 from __future__ import annotations
-
-from sac.types import SearchResult
 
 DEFAULT_GROWTH_RULES = """**EXTEND CURRENT PAGE** when:
 - New data complements existing content (same domain/topic)
@@ -23,46 +20,16 @@ DEFAULT_GROWTH_RULES = """**EXTEND CURRENT PAGE** when:
 - If adding a new page, also add navigation (tabs, menu, etc.) to switch between pages"""
 
 
-def _format_search_results(search_results: list[SearchResult]) -> str:
-    """Format search results for context."""
-    if not search_results:
-        return "No search data available"
-
-    sections: list[str] = []
-    for result in search_results:
-        sources = "\n".join(
-            f"- {s.title}: {s.content[:200]}..."
-            for s in result.sources[:3]
-        )
-        section = f'Query: "{result.query}"'
-        if result.answer:
-            section += f"\nSummary: {result.answer}"
-        section += f"\nSources:\n{sources}"
-        sections.append(section)
-
-    return "\n\n".join(sections)
-
-
 def build_growth_prompt(
     current_code: str,
     original_intent: str,
     new_intent: str,
-    search_results: list[SearchResult],
     system_prompt: str,
     custom_growth_rules: str | None = None,
     content: str | None = None,
 ) -> str:
-    """
-    Build a unified prompt that decides growth type AND generates updated code in one call.
-    This reduces latency by eliminating the separate decision step.
-
-    If `content` is provided (agent-supplied data), it replaces the search-results
-    section as the source of "new data" for this growth step.
-    """
-    if content is not None:
-        new_data_section = content.strip()
-    else:
-        new_data_section = _format_search_results(search_results)
+    """Unified prompt: decide growth type AND emit new code."""
+    new_data_section = content.strip() if content else "No new data provided"
     growth_rules = (custom_growth_rules or "").strip() or DEFAULT_GROWTH_RULES
 
     return f"""{system_prompt}
