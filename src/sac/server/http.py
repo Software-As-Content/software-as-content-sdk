@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 try:
+    import httpx
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import FileResponse, HTMLResponse
@@ -85,6 +86,9 @@ class InboxRequest(BaseModel):
       conversation. SaC decides generate vs evolve based on conversation state.
     - `callback_url`: where SaC should POST user actions (button clicks,
       follow-up intents). Set on first call; subsequent calls may omit.
+    - `suggestions`: optional list of follow-up actions (label/prompt/type)
+      the agent wants to expose. If omitted, SaC's default agent generates
+      content-grounded suggestions automatically.
     - `context`: opaque metadata echoed back on callbacks; SaC does not parse.
     """
 
@@ -92,6 +96,19 @@ class InboxRequest(BaseModel):
     intent: str | None = None
     conversation_id: str | None = None
     callback_url: str | None = None
+    suggestions: list[dict[str, Any]] | None = None
+    context: dict[str, Any] | None = None
+
+
+class ActionRequest(BaseModel):
+    """User action (button click in App, or text input in chat panel) that
+    SaC forwards to the conversation's registered callback_url.
+
+    - `intent`: human-readable description of what the user did/said.
+    - `context`: opaque metadata to attach (echoed to the agent).
+    """
+
+    intent: str
     context: dict[str, Any] | None = None
 
 
@@ -330,11 +347,24 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             }
 
         # Φˢ — render new App version
+        from sac.types import IntentSuggestion
+
         intent = req.intent or req.content[:200]
+
+        opts: dict[str, object] = {"content": req.content}
+        if req.suggestions is not None:
+            try:
+                opts["suggestions_override"] = [IntentSuggestion(**s) for s in req.suggestions]
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid suggestions payload: {e}",
+                )
+
         if conv.current_app is None:
-            app_result = await conv.generate(intent, content=req.content)
+            app_result = await conv.generate(intent, **opts)
         else:
-            app_result = await conv.evolve(intent, content=req.content)
+            app_result = await conv.evolve(intent, **opts)
 
         return {
             "conversation_id": conv.id,
@@ -342,6 +372,48 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             "version": app_result.version,
             "type": "ui",
         }
+
+    # ─── Protocol: /c/{id}/action (user → SaC → agent webhook) ───
+
+    @app.post("/c/{conv_id}/action")
+    async def conversation_action(conv_id: str, req: ActionRequest) -> dict[str, Any]:
+        """Forward a user action to the agent's registered callback_url.
+
+        Called by the SaC viewer when the user clicks a button (sac-action
+        message from the iframe) or types into the chat panel. SaC just
+        relays — the agent is expected to ack quickly, do its work
+        asynchronously, then POST a new response back to /inbox.
+        """
+        conv_data = await sac._store.get_conversation(conv_id)
+        if conv_data is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        if not conv_data.callback_url:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "No callback_url registered on this conversation. The "
+                    "agent must include callback_url in its first /inbox call."
+                ),
+            )
+
+        payload: dict[str, Any] = {
+            "conversation_id": conv_id,
+            "intent": req.intent,
+        }
+        if req.context is not None:
+            payload["context"] = req.context
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                response = await client.post(conv_data.callback_url, json=payload)
+                response.raise_for_status()
+            except httpx.HTTPError as e:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Failed to reach callback_url ({conv_data.callback_url}): {e}",
+                )
+
+        return {"ok": True, "callback_url": conv_data.callback_url}
 
     # ─── Conversation Management ─────────────────────────────────
 
