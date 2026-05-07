@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from sac.builtin.agent import BundledAgent
 from sac.conversation import Conversation
 from sac.runtime.producer import CodeProducer, DefaultCodeProducer
 from sac.runtime.prompts.app import DEFAULT_MODEL
@@ -52,9 +53,9 @@ class SaC:
         else:
             raise ValueError("Either 'api_key' or 'llm' provider must be provided.")
 
-        # Search provider: explicit, or default Tavily if key given.
-        # Kept on SaC only as a convenience for constructing DefaultCodeProducer
-        # below. The protocol layer itself does not know about search.
+        # Search provider: lives at the agent layer (BundledAgent), not in core.
+        # Kept on SaC for backwards-compat constructor signatures and for use
+        # by the bundled default agent below.
         if search is not None:
             self._search: SearchProvider | None = search
         elif search_api_key:
@@ -62,12 +63,14 @@ class SaC:
         else:
             self._search = None
 
-        # Code producer: turns intent + prior_app into a new App version.
-        # Default wraps the built-in generate/evolve pipelines; can be replaced
-        # with any CodeProducer implementation (agent loop, external service, ...).
-        self._producer: CodeProducer = producer or DefaultCodeProducer(
-            self._llm, self._search
-        )
+        # Code producer: turns intent + content + prior_app into a new App version.
+        # Pure rendering — knows nothing about search.
+        self._producer: CodeProducer = producer or DefaultCodeProducer(self._llm)
+
+        # Bundled default agent — sibling to external agents (OpenClaw, etc.).
+        # Owns search execution, intent suggestions, classify. Drives core
+        # via Conversation.ingest. One per SaC; shared across conversations.
+        self._bundled_agent = BundledAgent(self._llm, self._search)
 
         # Store: explicit, or default MemoryStore (no persistence)
         # Available implementations:
@@ -119,6 +122,7 @@ class SaC:
             llm=self._llm,
             producer=self._producer,
             store=self._store,
+            bundled_agent=self._bundled_agent,
         )
 
     async def generate(self, intent: str, **opts: object) -> App:

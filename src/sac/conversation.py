@@ -1,18 +1,22 @@
 """
-Conversation — the core stateful primitive of SaC.
+Conversation — SaC's pure-interaction-layer primitive.
 
-Each Conversation instance represents a single session where UI is generated and evolved.
+Owns: id, version chain, history, callback_url, settings.
+Owns: `ingest()` — the single core entry that turns (content, intent) into
+       a new App version via the CodeProducer.
+
+Does NOT own: search, classify, intent suggestions, send/dispatch — those
+are agent-layer concerns. Legacy `generate / evolve / stream / send /
+classify` methods are kept as thin DELEGATE shims to a BundledAgent for
+backwards compatibility (HTTP server, MCP server, Python library users).
 """
 
 from __future__ import annotations
 
-from typing import AsyncIterator
-
-import json
+from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 from sac.runtime.producer import CodeProducer
 from sac.runtime.prompts.app import DEFAULT_MODEL
-from sac.runtime.prompts.classify import CLASSIFY_COLD, CLASSIFY_WITH_CONTEXT
 from sac.runtime.providers.base import LLMProvider
 from sac.runtime.store.base import ConversationStore
 from sac.types import (
@@ -20,29 +24,27 @@ from sac.types import (
     ConversationData,
     ConversationSettings,
     EventStatus,
-    GenerationEvent,
-    GrowthEvent,
-    Message,
-    MessageEvent,
-    PipelineChunkEvent,
     PipelineCompleteEvent,
-    PipelineErrorEvent,
     PipelineEvent,
-    PipelineStageEvent,
     SendResult,
-    SendResultType,
-    StageStatus,
 )
+
+if TYPE_CHECKING:
+    from sac.builtin.agent import BundledAgent
 
 
 class Conversation:
     """
-    A stateful conversation that generates and evolves UI through dialog.
+    A stateful conversation that produces and evolves App versions.
 
-    Usage:
+    Direct (core) usage:
         conv = sac.conversation()
+        app = await conv.ingest(content="...", intent="...")
+
+    Legacy (agent-shaped) usage — these go through the BundledAgent:
         app = await conv.generate("travel guide for Hangzhou")
-        app = await conv.evolve("add restaurant recommendations")
+        app = await conv.evolve("add restaurants")
+        result = await conv.send("looks great!")
     """
 
     def __init__(
@@ -51,11 +53,13 @@ class Conversation:
         llm: LLMProvider,
         producer: CodeProducer,
         store: ConversationStore,
+        bundled_agent: Optional["BundledAgent"] = None,
     ) -> None:
         self._data = data
         self._llm = llm
         self._producer = producer
         self._store = store
+        self._bundled_agent = bundled_agent
         self._apps: list[App] = []
 
     async def _load_from_store(self) -> None:
@@ -64,13 +68,11 @@ class Conversation:
         if not stored:
             return
 
-        # Restore conversation metadata
         self._data.title = stored.title
         self._data.model = stored.model or self._data.model
         if stored.settings:
             self._data.settings = stored.settings
 
-        # Rebuild _apps from generation/growth events
         events = await self._store.get_events(self._data.id)
         self._apps = []
         for event in events:
@@ -115,264 +117,78 @@ class Conversation:
     def version(self) -> int:
         return len(self._apps)
 
-    # ─── Unified Entry Point ─────────────────────────────────────────
+    # ─── Core: pure render entry ────────────────────────────────────
 
-    async def send(self, message: str, **opts: object) -> SendResult:
+    async def ingest(
+        self,
+        content: str | None,
+        intent: str,
+        *,
+        model: str | None = None,
+    ) -> App:
+        """Pure render: produce next App version from (content, intent).
+
+        Does NOT record events, run searches, or do any agent flow. Caller is
+        responsible for surrounding bookkeeping. Used by BundledAgent (and by
+        any other agent driving core directly).
         """
-        Unified entry point — the natural way to interact with a conversation.
+        prior = self.current_app
+        app = await self._producer.produce(
+            intent=intent,
+            prior_app=prior,
+            settings=self._data.settings,
+            model=model or self.model,
+            version=self.version + 1,
+            content=content,
+        )
+        self._apps.append(app)
+        return app
 
-        Classifies the message as chat, generate, or evolve, then routes accordingly:
-          - chat → LLM replies with natural language, no app change
-          - generate → creates a new app (first-time or fresh)
-          - evolve → updates the existing app
+    async def stream_ingest(
+        self,
+        content: str | None,
+        intent: str,
+        *,
+        model: str | None = None,
+    ) -> AsyncIterator[PipelineEvent]:
+        """Streaming variant of ingest. Appends App on CompleteEvent."""
+        prior = self.current_app
+        gen = self._producer.stream(
+            intent=intent,
+            prior_app=prior,
+            settings=self._data.settings,
+            model=model or self.model,
+            version=self.version + 1,
+            content=content,
+        )
+        async for event in gen:
+            if isinstance(event, PipelineCompleteEvent):
+                self._apps.append(event.app)
+            yield event
 
-        Returns:
-            SendResult with type, optional reply (chat), optional app (generate/evolve)
-        """
-        classification = await self.classify(message)
+    # ─── Legacy delegates (route through BundledAgent) ──────────────
 
-        if classification["type"] == "chat":
-            reply = classification.get("reply", "")
-
-            # Store both user message and assistant reply
-            await self._store.add_event(
-                MessageEvent(conversation_id=self.id, role="user", content=message)
+    def _agent(self) -> "BundledAgent":
+        if self._bundled_agent is None:
+            raise RuntimeError(
+                "This conversation has no BundledAgent attached. The legacy "
+                "generate/evolve/stream/send/classify API requires one. Use "
+                "conv.ingest(content, intent) for the pure-core path, or "
+                "construct SaC normally so a BundledAgent is provided."
             )
-            await self._store.add_event(
-                MessageEvent(conversation_id=self.id, role="assistant", content=reply)
-            )
-
-            return SendResult(type=SendResultType.CHAT, reply=reply)
-
-        # It's an "update" — route to generate or evolve
-        if self._apps:
-            app = await self.evolve(message, **opts)
-            return SendResult(type=SendResultType.EVOLVE, app=app)
-        else:
-            app = await self.generate(message, **opts)
-            return SendResult(type=SendResultType.GENERATE, app=app)
-
-    async def classify(self, message: str) -> dict:
-        """Classify a message as 'chat' or 'update' using LLM."""
-        has_context = len(self._apps) > 0
-        system_prompt = CLASSIFY_WITH_CONTEXT if has_context else CLASSIFY_COLD
-
-        user_content = message
-        if has_context and self.current_app:
-            user_content = f"[Current app intent: {self.current_app.intent}]\n\nUser message: {message}"
-
-        messages = [
-            Message(role="system", content=system_prompt),
-            Message(role="user", content=user_content),
-        ]
-
-        try:
-            raw = await self._llm.complete(self.model, messages, max_tokens=256)
-            # Strip markdown fences if present
-            text = raw.strip()
-            if text.startswith("```"):
-                text = text.split("\n", 1)[-1] if "\n" in text else text[3:]
-            if text.endswith("```"):
-                text = text[:-3]
-            text = text.strip()
-            if text.startswith("json"):
-                text = text[4:].strip()
-
-            return json.loads(text)
-        except (json.JSONDecodeError, Exception):
-            # Default to update on parse failure
-            return {"type": "update"}
-
-    # ─── Core Methods ──────────────────────────────────────────────
+        return self._bundled_agent
 
     async def generate(self, intent: str, **opts: object) -> App:
-        """Generate a new app from an intent (first-time or fresh generation)."""
-        model = str(opts.get("model", self.model))
-        web_search = opts.get("web_search", self.settings.enable_web_search)
-        content = opts.get("content")
-        content = content if isinstance(content, str) else None
-
-        # Record user message
-        await self._store.add_event(
-            MessageEvent(conversation_id=self.id, role="user", content=intent)
-        )
-
-        # Override search setting if explicitly passed
-        settings = self.settings.model_copy()
-        if isinstance(web_search, bool):
-            settings.enable_web_search = web_search
-
-        try:
-            app = await self._producer.produce(
-                intent=intent,
-                prior_app=None,
-                settings=settings,
-                model=model,
-                version=self.version + 1,
-                content=content,
-            )
-
-            self._apps.append(app)
-
-            # Record generation event (triggers store._write_output if configured)
-            await self._store.add_event(
-                GenerationEvent(
-                    conversation_id=self.id,
-                    intent=intent,
-                    model=model,
-                    status=EventStatus.SUCCESS,
-                    code=app.code,
-                    stages=app.stages,
-                    search_queries=app.search_queries or None,
-                    search_results=app.search_results or None,
-                    intent_suggestions=app.suggestions or None,
-                )
-            )
-
-            # Update title on first generation
-            if self.version == 1:
-                title = intent[:80] + ("..." if len(intent) > 80 else "")
-                await self._store.update_conversation(self.id, title=title)
-
-            return app
-
-        except Exception as exc:
-            await self._store.add_event(
-                GenerationEvent(
-                    conversation_id=self.id,
-                    intent=intent,
-                    model=model,
-                    status=EventStatus.ERROR,
-                    error=str(exc),
-                )
-            )
-            raise
+        return await self._agent().generate(self, intent, **opts)
 
     async def evolve(self, intent: str, **opts: object) -> App:
-        """Evolve the current app with a new intent."""
-        if not self._apps:
-            raise ValueError("No app to evolve. Call generate() first.")
+        return await self._agent().evolve(self, intent, **opts)
 
-        current = self.current_app
-        assert current is not None
+    def stream(self, intent: str, **opts: object) -> AsyncIterator[PipelineEvent]:
+        return self._agent().stream(self, intent, **opts)
 
-        model = str(opts.get("model", self.model))
-        content = opts.get("content")
-        content = content if isinstance(content, str) else None
+    async def send(self, message: str, **opts: object) -> SendResult:
+        return await self._agent().send(self, message, **opts)
 
-        # Record user message
-        await self._store.add_event(
-            MessageEvent(conversation_id=self.id, role="user", content=intent)
-        )
-
-        try:
-            app = await self._producer.produce(
-                intent=intent,
-                prior_app=current,
-                settings=self.settings,
-                model=model,
-                version=self.version + 1,
-                content=content,
-            )
-
-            self._apps.append(app)
-
-            # Record growth event (triggers store._write_output if configured)
-            await self._store.add_event(
-                GrowthEvent(
-                    conversation_id=self.id,
-                    intent=intent,
-                    model=model,
-                    status=EventStatus.SUCCESS,
-                    code=app.code,
-                    stages=app.stages,
-                    search_queries=app.search_queries or None,
-                    search_results=app.search_results or None,
-                    intent_suggestions=app.suggestions or None,
-                )
-            )
-
-            return app
-
-        except Exception as exc:
-            await self._store.add_event(
-                GrowthEvent(
-                    conversation_id=self.id,
-                    intent=intent,
-                    model=model,
-                    status=EventStatus.ERROR,
-                    error=str(exc),
-                )
-            )
-            raise
-
-    async def stream(self, intent: str, **opts: object) -> AsyncIterator[PipelineEvent]:
-        """
-        Stream generation or evolution with real LLM token streaming.
-
-        Yields StageEvents, ChunkEvents (per token), and a final CompleteEvent.
-        Automatically decides whether to generate or evolve based on conversation state.
-        """
-        model = str(opts.get("model", self.model))
-        is_evolve = len(self._apps) > 0
-        content = opts.get("content")
-        content = content if isinstance(content, str) else None
-
-        # Record user message
-        await self._store.add_event(
-            MessageEvent(conversation_id=self.id, role="user", content=intent)
-        )
-
-        settings = self.settings.model_copy()
-        web_search = opts.get("web_search", settings.enable_web_search)
-        if isinstance(web_search, bool):
-            settings.enable_web_search = web_search
-
-        try:
-            prior = self.current_app if is_evolve else None
-            gen = self._producer.stream(
-                intent=intent,
-                prior_app=prior,
-                settings=settings,
-                model=model,
-                version=self.version + 1,
-                content=content,
-            )
-
-            async for event in gen:
-                # Intercept CompleteEvent to update state
-                if isinstance(event, PipelineCompleteEvent):
-                    self._apps.append(event.app)
-                    # Record event in store
-                    event_cls = GrowthEvent if is_evolve else GenerationEvent
-                    await self._store.add_event(
-                        event_cls(
-                            conversation_id=self.id,
-                            intent=intent,
-                            model=model,
-                            status=EventStatus.SUCCESS,
-                            code=event.app.code,
-                            stages=event.app.stages,
-                            search_queries=event.app.search_queries or None,
-                            search_results=event.app.search_results or None,
-                            intent_suggestions=event.app.suggestions or None,
-                        )
-                    )
-                    # Update title on first generation
-                    if not is_evolve and self.version == 1:
-                        title = intent[:80] + ("..." if len(intent) > 80 else "")
-                        await self._store.update_conversation(self.id, title=title)
-
-                yield event
-
-        except Exception as exc:
-            await self._store.add_event(
-                (GrowthEvent if is_evolve else GenerationEvent)(
-                    conversation_id=self.id,
-                    intent=intent,
-                    model=model,
-                    status=EventStatus.ERROR,
-                    error=str(exc),
-                )
-            )
-            yield PipelineErrorEvent(error=str(exc))
+    async def classify(self, message: str) -> dict:
+        return await self._agent().classify(self, message)
