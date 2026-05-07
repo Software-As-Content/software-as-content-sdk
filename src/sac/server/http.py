@@ -281,33 +281,66 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     @app.post("/inbox")
     async def inbox(req: InboxRequest, request: Request) -> dict[str, Any]:
-        """Receive content from an upstream agent and render it as an app.
+        """Receive content from an upstream agent and render it.
 
-        First call (no conversation_id) → generate a new app.
-        Subsequent calls (with conversation_id) → evolve the existing app.
+        SaC inspects the response shape and dispatches to one of two channels:
+          - Φⁿˡ (chat) — short / conversational response → assistant message
+            in the NL chat panel; no new App version.
+          - Φˢ  (ui)   — substantive content → render as new App version
+            (generate first, evolve subsequently).
 
-        Returns conversation_id, the URL to view the rendered app, and the
-        produced version number.
+        The chat-vs-ui decision currently reuses the LegacyShim classifier
+        (small extra LLM call). A future fused-LLM-call milestone collapses
+        this into one call alongside code generation.
+
+        Returns conversation_id, the URL to view, version (null for chat-
+        only responses), and `type` indicating which channel was used.
         """
+        from sac.types import MessageEvent
+
         conv = await _get_or_create_conv(req.conversation_id, user_id=_get_user_id(request))
 
-        # Persist callback_url on the conversation so future button clicks know
+        # Persist callback_url on the conversation so future user actions know
         # where to POST. First call sets it; later calls may update it.
         if req.callback_url:
             await sac._store.update_conversation(conv.id, callback_url=req.callback_url)
 
-        intent = req.intent or req.content[:200]
+        base = str(request.base_url).rstrip("/")
 
+        # Classify response shape: chat (NL) vs update (Φˢ render).
+        classification = await sac._legacy_shim.classify(conv, req.content)
+
+        if classification["type"] == "chat":
+            # Show the agent's content directly as an assistant message in
+            # the NL channel. We ignore classify's generated `reply` field —
+            # that was meant for the legacy "assistant replies to user
+            # message" flow; here the agent IS the message.
+            await sac._store.add_event(
+                MessageEvent(
+                    conversation_id=conv.id,
+                    role="assistant",
+                    content=req.content,
+                )
+            )
+            return {
+                "conversation_id": conv.id,
+                "url": f"{base}/c/{conv.id}",
+                "version": None,
+                "type": "chat",
+            }
+
+        # Φˢ — render new App version
+        intent = req.intent or req.content[:200]
         if conv.current_app is None:
             app_result = await conv.generate(intent, content=req.content)
         else:
             app_result = await conv.evolve(intent, content=req.content)
 
-        base = str(request.base_url).rstrip("/")
         return {
             "conversation_id": conv.id,
             "url": f"{base}/c/{conv.id}",
             "version": app_result.version,
+            "type": "ui",
         }
 
     # ─── Conversation Management ─────────────────────────────────
