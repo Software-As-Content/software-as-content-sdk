@@ -204,6 +204,13 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         # If an existing conv_id was provided, load state from store
         if conv_id:
             await conv._load_from_store()
+        else:
+            # Brand-new conversation: `sac.conversation()` schedules creation
+            # as a fire-and-forget task. Explicitly await it here so the conv
+            # is fully registered in the store BEFORE any subsequent
+            # update_conversation calls (e.g. callback_url persistence in
+            # /inbox). create_conversation is idempotent — safe to call again.
+            await sac._store.create_conversation(conv._data)
         _conversations[conv.id] = conv
         return conv
 

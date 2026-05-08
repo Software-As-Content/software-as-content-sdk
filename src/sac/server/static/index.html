@@ -229,7 +229,7 @@ function createRenderer() {
   r.on('action', ({ intent }) => {
     if (!conversationId || !intent) return;
     addChatMsg('user', intent);
-    streamGenerate({ intent, conversation_id: conversationId });
+    routeUserIntent(intent);
   });
   return r;
 }
@@ -244,6 +244,8 @@ function resetRenderer() {
 
 let conversationId = null;
 let currentVersion = 0;
+let callbackUrl = null;       // null = standalone mode; set = external-agent mode
+let eventSource = null;        // SSE subscription to /c/{id}/events
 
 // ─── Tab switching ───────────────────────────────────────────
 
@@ -285,6 +287,8 @@ intentInput.addEventListener('keydown', (e) => {
 document.getElementById('new-conv-btn').addEventListener('click', () => {
   conversationId = null;
   currentVersion = 0;
+  callbackUrl = null;
+  if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('conv-info').textContent = '';
   document.getElementById('chat-area').innerHTML =
     '<div class="chat-msg system"><div class="chat-bubble">New conversation started.</div></div>';
@@ -303,10 +307,33 @@ async function handleSend() {
   sendBtn.disabled = true;
   intentInput.value = '';
   addChatMsg('user', message);
-  showStatus('Thinking...');
 
+  // External-agent mode: forward to /c/{id}/action; agent posts result back
+  // to /inbox; SSE delivers it. No local streamGenerate path.
+  if (callbackUrl && conversationId) {
+    showStatus('Sent to agent, waiting...');
+    try {
+      const res = await fetch(`/c/${conversationId}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intent: message }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        addChatMsg('system', `Forwarding failed (HTTP ${res.status}): ${detail}`);
+        hideStatus();
+      }
+    } catch (err) {
+      addChatMsg('system', 'Error: ' + err.message);
+      hideStatus();
+    }
+    sendBtn.disabled = false;
+    return;
+  }
+
+  // Standalone mode (no callback registered): legacy classify + local stream
+  showStatus('Thinking...');
   try {
-    // First, classify via /send
     const res = await fetch('/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -314,14 +341,15 @@ async function handleSend() {
     });
     const data = await res.json();
 
-    if (data.conversation_id) conversationId = data.conversation_id;
+    if (data.conversation_id && data.conversation_id !== conversationId) {
+      conversationId = data.conversation_id;
+      setupEventSource(conversationId);  // subscribe so we still see live updates if agent appears later
+    }
 
     if (data.type === 'chat') {
-      // Chat response — just show the reply
       addChatMsg('assistant', data.reply || '...');
       hideStatus();
     } else {
-      // Generate or evolve — stream it
       addChatMsg('system', data.type === 'generate' ? 'Generating UI...' : 'Evolving UI...');
       await streamGenerate({ intent: message, conversation_id: conversationId });
     }
@@ -331,6 +359,115 @@ async function handleSend() {
   }
 
   sendBtn.disabled = false;
+}
+
+// Routes any user-originated intent (button click in App, suggestion click,
+// etc.) to either the external agent (via /c/{id}/action) or the local
+// stream pipeline.
+async function routeUserIntent(intent) {
+  if (callbackUrl) {
+    showStatus('Sent to agent, waiting...');
+    try {
+      const res = await fetch(`/c/${conversationId}/action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intent }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        addChatMsg('system', `Forwarding failed (HTTP ${res.status}): ${detail}`);
+        hideStatus();
+      }
+    } catch (err) {
+      addChatMsg('system', 'Error: ' + err.message);
+      hideStatus();
+    }
+  } else {
+    streamGenerate({ intent, conversation_id: conversationId });
+  }
+}
+
+// ─── SSE: subscribe to /c/{id}/events ────────────────────────
+
+function setupEventSource(convId) {
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+  if (!convId) return;
+
+  const es = new EventSource(`/c/${convId}/events`);
+  eventSource = es;
+
+  es.addEventListener('version', async (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    // New App version pushed by an agent — fetch latest code and re-render.
+    try {
+      const res = await fetch('/conversations/' + convId);
+      const { conversation } = await res.json();
+      if (conversation && conversation.latest_code) {
+        currentVersion = data.version || conversation.event_count || currentVersion;
+        document.getElementById('conv-info').textContent =
+          `v${currentVersion} | ${conversation.latest_code.length} chars`;
+        document.getElementById('code-display').textContent = conversation.latest_code;
+        placeholder.classList.add('hidden');
+        iframe.classList.remove('hidden');
+        renderer.render(conversation.latest_code);
+        addChatMsg('system', `v${currentVersion} updated`);
+        hideStatus();
+
+        // Refresh suggestions from the latest event
+        const evRes = await fetch('/conversations/' + convId);
+        const evData = await evRes.json();
+        const events = evData.events || [];
+        const last = [...events].reverse().find(
+          (ev) => (ev.type === 'generation' || ev.type === 'growth') && ev.status === 'success'
+        );
+        renderSuggestions(last?.intent_suggestions || []);
+      }
+    } catch (err) {
+      console.warn('Failed to apply version event', err);
+    }
+  });
+
+  es.addEventListener('chat', (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    addChatMsg(data.role || 'assistant', data.content || '');
+    hideStatus();
+  });
+
+  es.addEventListener('ping', () => {
+    // keepalive — ignore
+  });
+
+  es.onerror = (err) => {
+    // EventSource auto-reconnects; just log.
+    console.warn('SSE connection issue, will retry', err);
+  };
+}
+
+function renderSuggestions(suggestions) {
+  const area = document.getElementById('suggestions-area');
+  const list = document.getElementById('suggestions-list');
+  if (!suggestions || suggestions.length === 0) {
+    area.classList.add('hidden');
+    return;
+  }
+  area.classList.remove('hidden');
+  document.querySelector('#suggestions-area h3').textContent = 'Suggestions';
+  list.innerHTML = suggestions.map(s =>
+    `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
+  ).join('');
+  list.querySelectorAll('.suggestion-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      // Suggestion clicks go through the same routing as everything else.
+      const intent = b.dataset.prompt;
+      addChatMsg('user', intent);
+      routeUserIntent(intent);
+    });
+  });
 }
 
 // ─── Streaming generation (POST-based SSE) ───────────────────
@@ -569,7 +706,10 @@ window.loadConv = async function(id) {
 
     conversationId = id;
     currentVersion = conv.event_count;
-    document.getElementById('conv-info').textContent = escHtml(conv.title || 'Untitled');
+    callbackUrl = conv.callback_url || null;  // determines routing mode
+    setupEventSource(id);                      // subscribe to live updates
+    document.getElementById('conv-info').textContent = escHtml(conv.title || 'Untitled')
+      + (callbackUrl ? ' · agent-driven' : '');
 
     // Rebuild chat from events
     const chatArea = document.getElementById('chat-area');
@@ -590,23 +730,7 @@ window.loadConv = async function(id) {
     }
 
     // Show suggestions from the last generation/growth event
-    if (lastSuggestions.length > 0) {
-      const area = document.getElementById('suggestions-area');
-      const list = document.getElementById('suggestions-list');
-      area.classList.remove('hidden');
-      document.querySelector('#suggestions-area h3').textContent = 'Suggestions';
-      list.innerHTML = lastSuggestions.map(s =>
-        `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
-      ).join('');
-      list.querySelectorAll('.suggestion-btn').forEach(b => {
-        b.addEventListener('click', () => {
-          intentInput.value = b.dataset.prompt;
-          intentInput.focus();
-        });
-      });
-    } else {
-      hideSuggestions();
-    }
+    renderSuggestions(lastSuggestions);
 
     // Render latest code if available
     if (conv.latest_code) {
