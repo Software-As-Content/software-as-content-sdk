@@ -246,6 +246,7 @@ let conversationId = null;
 let currentVersion = 0;
 let callbackUrl = null;       // null = standalone mode; set = external-agent mode
 let eventSource = null;        // SSE subscription to /c/{id}/events
+let pendingAction = false;     // true while waiting for agent/stream response
 
 // ─── Tab switching ───────────────────────────────────────────
 
@@ -302,14 +303,15 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
 
 async function handleSend() {
   const message = intentInput.value.trim();
-  if (!message || sendBtn.disabled) return;
+  if (!message || pendingAction) return;
 
-  sendBtn.disabled = true;
+  setPending(true);
   intentInput.value = '';
   addChatMsg('user', message);
 
   // External-agent mode: forward to /c/{id}/action; agent posts result back
   // to /inbox; SSE delivers it. No local streamGenerate path.
+  // pendingAction stays true — cleared when SSE delivers version/chat event.
   if (callbackUrl && conversationId) {
     showStatus('Sent to agent, waiting...');
     try {
@@ -322,12 +324,14 @@ async function handleSend() {
         const detail = await res.text().catch(() => '');
         addChatMsg('system', `Forwarding failed (HTTP ${res.status}): ${detail}`);
         hideStatus();
+        setPending(false);
       }
+      // On success: don't clear pending — wait for SSE event
     } catch (err) {
       addChatMsg('system', 'Error: ' + err.message);
       hideStatus();
+      setPending(false);
     }
-    sendBtn.disabled = false;
     return;
   }
 
@@ -343,28 +347,32 @@ async function handleSend() {
 
     if (data.conversation_id && data.conversation_id !== conversationId) {
       conversationId = data.conversation_id;
-      setupEventSource(conversationId);  // subscribe so we still see live updates if agent appears later
+      setupEventSource(conversationId);
     }
 
     if (data.type === 'chat') {
       addChatMsg('assistant', data.reply || '...');
       hideStatus();
+      setPending(false);
     } else {
       addChatMsg('system', data.type === 'generate' ? 'Generating UI...' : 'Evolving UI...');
       await streamGenerate({ intent: message, conversation_id: conversationId });
+      // streamGenerate clears pending on complete/error
     }
   } catch (err) {
     addChatMsg('system', 'Error: ' + err.message);
     hideStatus();
+    setPending(false);
   }
-
-  sendBtn.disabled = false;
 }
 
 // Routes any user-originated intent (button click in App, suggestion click,
 // etc.) to either the external agent (via /c/{id}/action) or the local
 // stream pipeline.
 async function routeUserIntent(intent) {
+  if (pendingAction) return;  // debounce — wait for current action to finish
+  setPending(true);
+
   if (callbackUrl) {
     showStatus('Sent to agent, waiting...');
     try {
@@ -377,13 +385,17 @@ async function routeUserIntent(intent) {
         const detail = await res.text().catch(() => '');
         addChatMsg('system', `Forwarding failed (HTTP ${res.status}): ${detail}`);
         hideStatus();
+        setPending(false);
       }
+      // On success: don't clear pending — wait for SSE event
     } catch (err) {
       addChatMsg('system', 'Error: ' + err.message);
       hideStatus();
+      setPending(false);
     }
   } else {
-    streamGenerate({ intent, conversation_id: conversationId });
+    await streamGenerate({ intent, conversation_id: conversationId });
+    // streamGenerate clears pending on complete/error
   }
 }
 
@@ -416,6 +428,7 @@ function setupEventSource(convId) {
         renderer.render(conversation.latest_code);
         addChatMsg('system', `v${currentVersion} updated`);
         hideStatus();
+        setPending(false);
 
         // Refresh suggestions from the latest event
         const evRes = await fetch('/conversations/' + convId);
@@ -436,6 +449,7 @@ function setupEventSource(convId) {
     try { data = JSON.parse(e.data); } catch { return; }
     addChatMsg(data.role || 'assistant', data.content || '');
     hideStatus();
+    setPending(false);
   });
 
   es.addEventListener('ping', () => {
@@ -521,9 +535,8 @@ async function streamGenerate(body) {
   } catch (err) {
     showStatus('Connection error: ' + err.message);
     stream.abort();
+    setPending(false);
   }
-
-  sendBtn.disabled = false;
 }
 
 // Track code fence stripping state per stream
@@ -589,8 +602,9 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
         ).join('');
         list.querySelectorAll('.suggestion-btn').forEach(b => {
           b.addEventListener('click', () => {
-            intentInput.value = b.dataset.prompt;
-            intentInput.focus();
+            const intent = b.dataset.prompt;
+            addChatMsg('user', intent);
+            routeUserIntent(intent);
           });
         });
       }
@@ -599,6 +613,7 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
         `${s.name}: ${s.duration ? s.duration.toFixed(1) + 's' : s.status}`
       ).join(' → ');
       showStatus(stages);
+      setPending(false);
       break;
     }
 
@@ -606,6 +621,7 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
       showStatus('Error: ' + data.error);
       addChatMsg('system', 'Error: ' + data.error);
       stream.abort();
+      setPending(false);
       break;
   }
 }
@@ -804,6 +820,17 @@ function hideStatus() {
 
 function hideSuggestions() {
   document.getElementById('suggestions-area').classList.add('hidden');
+}
+
+function setPending(value) {
+  pendingAction = value;
+  sendBtn.disabled = value;
+  // Disable/enable suggestion buttons
+  document.querySelectorAll('.suggestion-btn').forEach(b => {
+    b.disabled = value;
+    b.style.opacity = value ? '0.5' : '';
+    b.style.pointerEvents = value ? 'none' : '';
+  });
 }
 
 function escHtml(s) {
