@@ -70,55 +70,10 @@ class StandaloneAgent:
     async def generate(self, conv: "Conversation", intent: str, **opts: Any) -> App:
         model = str(opts.get("model", conv.model))
         web_search_opt = opts.get("web_search", conv.settings.enable_web_search)
-        content_override = opts.get("content")
-        content_override = content_override if isinstance(content_override, str) else None
 
         await conv._store.add_event(
             MessageEvent(conversation_id=conv.id, role="user", content=intent)
         )
-
-        # Agent-supplied content path: skip search, but still produce suggestions
-        # (Φˢ frontend essential — every rendered version should expose follow-ups).
-        # Agent may override via `suggestions_override` opt.
-        if content_override is not None:
-            suggestions_override = opts.get("suggestions_override")
-            try:
-                app = await conv.ingest(content=content_override, intent=intent, model=model)
-
-                if isinstance(suggestions_override, list):
-                    suggestions = list(suggestions_override)
-                else:
-                    suggestions = await _generate_intent_suggestions(
-                        intent, [], model, self._llm, conv.settings.intent_rules
-                    )
-                app.suggestions = suggestions
-
-                await conv._store.add_event(
-                    GenerationEvent(
-                        conversation_id=conv.id,
-                        intent=intent,
-                        model=model,
-                        status=EventStatus.SUCCESS,
-                        code=app.code,
-                        stages=app.stages,
-                        intent_suggestions=suggestions or None,
-                    )
-                )
-                if conv.version == 1:
-                    title = intent[:80] + ("..." if len(intent) > 80 else "")
-                    await conv._store.update_conversation(conv.id, title=title)
-                return app
-            except Exception as exc:
-                await conv._store.add_event(
-                    GenerationEvent(
-                        conversation_id=conv.id,
-                        intent=intent,
-                        model=model,
-                        status=EventStatus.ERROR,
-                        error=str(exc),
-                    )
-                )
-                raise
 
         # Standalone agentic flow: search (if enabled) + suggestions
         enable_search = bool(web_search_opt) and self._search is not None
@@ -184,49 +139,10 @@ class StandaloneAgent:
             raise ValueError("No app to evolve. Call generate() first.")
 
         model = str(opts.get("model", conv.model))
-        content_override = opts.get("content")
-        content_override = content_override if isinstance(content_override, str) else None
 
         await conv._store.add_event(
             MessageEvent(conversation_id=conv.id, role="user", content=intent)
         )
-
-        if content_override is not None:
-            suggestions_override = opts.get("suggestions_override")
-            try:
-                app = await conv.ingest(content=content_override, intent=intent, model=model)
-
-                if isinstance(suggestions_override, list):
-                    suggestions = list(suggestions_override)
-                else:
-                    suggestions = await _generate_intent_suggestions(
-                        intent, [], model, self._llm, conv.settings.intent_rules
-                    )
-                app.suggestions = suggestions
-
-                await conv._store.add_event(
-                    GrowthEvent(
-                        conversation_id=conv.id,
-                        intent=intent,
-                        model=model,
-                        status=EventStatus.SUCCESS,
-                        code=app.code,
-                        stages=app.stages,
-                        intent_suggestions=suggestions or None,
-                    )
-                )
-                return app
-            except Exception as exc:
-                await conv._store.add_event(
-                    GrowthEvent(
-                        conversation_id=conv.id,
-                        intent=intent,
-                        model=model,
-                        status=EventStatus.ERROR,
-                        error=str(exc),
-                    )
-                )
-                raise
 
         search_queries: list[SearchQuery] = []
         search_results: list[SearchResult] = []
@@ -286,8 +202,6 @@ class StandaloneAgent:
         """Streaming variant. Yields stage/chunk/complete events."""
         model = str(opts.get("model", conv.model))
         is_evolve = conv.current_app is not None
-        content_override = opts.get("content")
-        content_override = content_override if isinstance(content_override, str) else None
         web_search_opt = opts.get("web_search", conv.settings.enable_web_search)
 
         await conv._store.add_event(
@@ -296,10 +210,9 @@ class StandaloneAgent:
 
         search_queries: list[SearchQuery] = []
         search_results: list[SearchResult] = []
-        composed_content: str | None = content_override
+        composed_content: str | None = None
         run_search = (
-            content_override is None
-            and self._search is not None
+            self._search is not None
             and (is_evolve or bool(web_search_opt))
         )
 

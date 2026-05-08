@@ -401,25 +401,89 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 "type": "chat",
             }
 
-        # Φˢ — render new App version
-        from sac.types import IntentSuggestion
+        # Φˢ — render new App version directly via conv.ingest()
+        # No StandaloneAgent detour — /inbox owns event recording here.
+        from sac.types import (
+            EventStatus,
+            GenerationEvent,
+            GrowthEvent,
+            IntentSuggestion,
+        )
+        from sac.builtin.prompts.intent import (
+            get_intent_suggestion_prompt,
+            parse_intent_suggestions,
+        )
+        from sac.types import Message as SaCMessage
 
         intent = req.intent or req.content[:200]
+        is_evolve = conv.current_app is not None
 
-        opts: dict[str, object] = {"content": req.content}
-        if req.suggestions is not None:
-            try:
-                opts["suggestions_override"] = [IntentSuggestion(**s) for s in req.suggestions]
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid suggestions payload: {e}",
+        # Record user intent as a message event
+        await sac._store.add_event(
+            MessageEvent(conversation_id=conv.id, role="user", content=intent)
+        )
+
+        try:
+            app_result = await conv.ingest(
+                content=req.content, intent=intent
+            )
+
+            # Suggestions: use agent-provided override, or generate defaults
+            if req.suggestions is not None:
+                try:
+                    suggestions = [IntentSuggestion(**s) for s in req.suggestions]
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Invalid suggestions payload: {e}",
+                    )
+            else:
+                try:
+                    prompt = get_intent_suggestion_prompt(
+                        intent, [], conv.settings.intent_rules
+                    )
+                    response = await sac._llm.complete(
+                        conv.model,
+                        [SaCMessage(role="user", content=prompt)],
+                    )
+                    suggestions = parse_intent_suggestions(response)
+                except Exception:
+                    suggestions = []
+
+            app_result.suggestions = suggestions
+
+            event_cls = GrowthEvent if is_evolve else GenerationEvent
+            await sac._store.add_event(
+                event_cls(
+                    conversation_id=conv.id,
+                    intent=intent,
+                    model=conv.model,
+                    status=EventStatus.SUCCESS,
+                    code=app_result.code,
+                    stages=app_result.stages,
+                    intent_suggestions=suggestions or None,
                 )
+            )
 
-        if conv.current_app is None:
-            app_result = await conv.generate(intent, **opts)
-        else:
-            app_result = await conv.evolve(intent, **opts)
+            # Set title from first generation
+            if not is_evolve and conv.version == 1:
+                title = intent[:80] + ("..." if len(intent) > 80 else "")
+                await sac._store.update_conversation(conv.id, title=title)
+
+        except HTTPException:
+            raise
+        except Exception as exc:
+            event_cls = GrowthEvent if is_evolve else GenerationEvent
+            await sac._store.add_event(
+                event_cls(
+                    conversation_id=conv.id,
+                    intent=intent,
+                    model=conv.model,
+                    status=EventStatus.ERROR,
+                    error=str(exc),
+                )
+            )
+            raise HTTPException(status_code=500, detail=str(exc))
 
         pubsub.publish(
             conv.id,
