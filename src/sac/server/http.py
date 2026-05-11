@@ -10,10 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 try:
     import httpx
@@ -36,6 +38,101 @@ _STATIC_DIR = Path(__file__).parent / "static"
 _RENDERER_DIR = Path(__file__).parent.parent / "renderer"
 
 _VERSION = "0.1.0"
+
+
+# ─── OpenClaw Gateway WebSocket RPC ─────────────────────────────
+
+
+async def _openclaw_gateway_send(
+    ws_url: str,
+    token: str,
+    session_key: str,
+    message: str,
+    timeout: float = 30.0,
+) -> dict[str, Any]:
+    """Send a message to an OpenClaw agent session via Gateway WebSocket RPC.
+
+    Implements the connect-request-disconnect pattern:
+      1. Connect to gateway WebSocket
+      2. Receive connect.challenge event
+      3. Send connect request with auth token
+      4. Receive hello-ok response
+      5. Send sessions.send request
+      6. Receive response and disconnect
+
+    Args:
+        ws_url: Gateway WebSocket URL (e.g. "ws://127.0.0.1:18789")
+        token: Gateway auth token
+        session_key: Target session key (e.g. "agent:main:main")
+        message: Message text to send
+        timeout: Overall timeout in seconds
+    """
+    try:
+        import websockets
+    except ImportError:
+        raise RuntimeError(
+            "websockets package required for OpenClaw callback. "
+            "Install with: pip install websockets"
+        )
+
+    async with websockets.connect(ws_url, max_size=25 * 1024 * 1024) as ws:
+        # Step 1: Receive connect.challenge
+        raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+        challenge = json.loads(raw)
+        if challenge.get("event") != "connect.challenge":
+            raise RuntimeError(f"Expected connect.challenge, got: {challenge}")
+
+        # Step 2: Send connect request
+        connect_id = str(uuid.uuid4())
+        await ws.send(json.dumps({
+            "type": "req",
+            "id": connect_id,
+            "method": "connect",
+            "params": {
+                "minProtocol": 3,
+                "maxProtocol": 3,
+                "client": {
+                    "id": "gateway-client",
+                    "version": "0.1.0",
+                    "platform": "sac-sdk",
+                    "mode": "backend",
+                },
+                "caps": [],
+                "role": "operator",
+                "scopes": ["operator.write"],
+                "auth": {"token": token},
+            },
+        }))
+
+        # Step 3: Receive hello-ok
+        raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+        hello = json.loads(raw)
+        if not (hello.get("type") == "res" and hello.get("ok")):
+            raise RuntimeError(f"Gateway auth failed: {hello}")
+
+        # Step 4: Send sessions.send
+        send_id = str(uuid.uuid4())
+        await ws.send(json.dumps({
+            "type": "req",
+            "id": send_id,
+            "method": "sessions.send",
+            "params": {
+                "key": session_key,
+                "message": message,
+                "idempotencyKey": str(uuid.uuid4()),
+            },
+        }))
+
+        # Step 5: Wait for response (skip events/ticks)
+        while True:
+            raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+            frame = json.loads(raw)
+            if frame.get("type") == "res" and frame.get("id") == send_id:
+                if frame.get("ok"):
+                    return frame.get("payload", {})
+                else:
+                    raise RuntimeError(f"sessions.send failed: {frame.get('error')}")
+            # Skip unsolicited events (ticks, etc.)
 
 
 # ─── Pub/Sub for SSE conversation updates ────────────────────────
@@ -136,6 +233,8 @@ class InboxRequest(BaseModel):
     intent: str | None = None
     conversation_id: str | None = None
     callback_url: str | None = None
+    callback_format: str | None = None  # "default" | "openclaw_taskflow"
+    callback_auth: str | None = None    # e.g. "Bearer <token>"
     suggestions: list[dict[str, Any]] | None = None
     context: dict[str, Any] | None = None
 
@@ -367,10 +466,17 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
         conv = await _get_or_create_conv(req.conversation_id, user_id=_get_user_id(request))
 
-        # Persist callback_url on the conversation so future user actions know
-        # where to POST. First call sets it; later calls may update it.
+        # Persist callback settings on the conversation so future user actions
+        # know where and how to POST. First call sets them; later calls may update.
+        callback_updates: dict[str, Any] = {}
         if req.callback_url:
-            await sac._store.update_conversation(conv.id, callback_url=req.callback_url)
+            callback_updates["callback_url"] = req.callback_url
+        if req.callback_format:
+            callback_updates["callback_format"] = req.callback_format
+        if req.callback_auth:
+            callback_updates["callback_auth"] = req.callback_auth
+        if callback_updates:
+            await sac._store.update_conversation(conv.id, **callback_updates)
 
         base = str(request.base_url).rstrip("/")
 
@@ -538,7 +644,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         return EventSourceResponse(event_generator())
 
     @app.post("/c/{conv_id}/action")
-    async def conversation_action(conv_id: str, req: ActionRequest) -> dict[str, Any]:
+    async def conversation_action(conv_id: str, req: ActionRequest, request: Request) -> dict[str, Any]:
         """Forward a user action to the agent's registered callback_url.
 
         Called by the SaC viewer when the user clicks a button (sac-action
@@ -558,22 +664,94 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 ),
             )
 
-        payload: dict[str, Any] = {
-            "conversation_id": conv_id,
-            "intent": req.intent,
-        }
-        if req.context is not None:
-            payload["context"] = req.context
+        # Route callback based on format
+        sac_url = str(request.base_url).rstrip("/")
+        fmt = conv_data.callback_format or "default"
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        if fmt == "openclaw_gateway":
+            # OpenClaw Gateway: send message via WebSocket RPC.
+            # callback_url format: ws://host:port?session=<session_key>
+            # callback_auth format: Bearer <gateway_token>
+            parsed = urlparse(conv_data.callback_url)
+            qs = parse_qs(parsed.query)
+            session_key = (qs.get("session") or ["agent:main:main"])[0]
+            # Reconstruct clean WebSocket URL without query params
+            ws_url = f"{parsed.scheme}://{parsed.netloc}"
+
+            token = ""
+            if conv_data.callback_auth:
+                # Strip "Bearer " prefix if present
+                auth = conv_data.callback_auth
+                token = auth.removeprefix("Bearer ").strip()
+
+            message = (
+                f"SaC user action on conversation {conv_id}: "
+                f"{req.intent}\n\n"
+                f"Use the sac-interaction skill to POST updated content "
+                f"to {sac_url}/inbox with conversation_id \"{conv_id}\"."
+            )
+
             try:
-                response = await client.post(conv_data.callback_url, json=payload)
-                response.raise_for_status()
-            except httpx.HTTPError as e:
+                await _openclaw_gateway_send(
+                    ws_url=ws_url,
+                    token=token,
+                    session_key=session_key,
+                    message=message,
+                )
+            except Exception as e:
                 raise HTTPException(
                     status_code=502,
-                    detail=f"Failed to reach callback_url ({conv_data.callback_url}): {e}",
+                    detail=f"Failed to send to OpenClaw gateway ({ws_url}): {e}",
                 )
+
+        elif fmt == "openclaw_taskflow":
+            # Legacy: OpenClaw webhook TaskFlow creation (kept for compat).
+            payload: dict[str, Any] = {
+                "action": "create_flow",
+                "goal": (
+                    f"SaC user action on conversation {conv_id}: "
+                    f"{req.intent}\n\n"
+                    f"Use the sac-interaction skill to POST updated content "
+                    f"to {sac_url}/inbox with conversation_id \"{conv_id}\"."
+                ),
+            }
+            headers: dict[str, str] = {"Content-Type": "application/json"}
+            if conv_data.callback_auth:
+                headers["Authorization"] = conv_data.callback_auth
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                try:
+                    response = await client.post(
+                        conv_data.callback_url, json=payload, headers=headers
+                    )
+                    response.raise_for_status()
+                except httpx.HTTPError as e:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Failed to reach callback_url ({conv_data.callback_url}): {e}",
+                    )
+
+        else:
+            # Default SaC protocol format (HTTP POST)
+            payload_default: dict[str, Any] = {
+                "conversation_id": conv_id,
+                "intent": req.intent,
+            }
+            if req.context is not None:
+                payload_default["context"] = req.context
+            headers_default: dict[str, str] = {"Content-Type": "application/json"}
+            if conv_data.callback_auth:
+                headers_default["Authorization"] = conv_data.callback_auth
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                try:
+                    response = await client.post(
+                        conv_data.callback_url, json=payload_default, headers=headers_default
+                    )
+                    response.raise_for_status()
+                except httpx.HTTPError as e:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Failed to reach callback_url ({conv_data.callback_url}): {e}",
+                    )
 
         return {"ok": True, "callback_url": conv_data.callback_url}
 
