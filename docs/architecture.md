@@ -262,15 +262,16 @@ The web chat box has the same shape as any agent — it just happens to live in 
 | Basic `/inbox` endpoint (single-channel, accepts `content`) | ✅ MVP |
 | `callback_url` field on ConversationData | ✅ done |
 | `/c/{id}` static viewer + auto-load JS | ✅ done |
-| Single `response` field semantics (SaC decides chat vs ui) | ❌ pending |
+| Single response/content semantics (SaC decides chat vs ui) | ✅ MVP via LegacyShim classifier |
 | Fused LLM call (chat vs ui in one model call) | ❌ pending |
-| Default agent extracted to `sac.builtin_agent` | ❌ pending |
-| `/generate /send /stream` re-routed through bundled agent | ❌ pending |
+| Default agent extracted to `sac.builtin` | ✅ done |
+| `/generate /send /stream` re-routed through bundled agent / legacy shim | ✅ done |
 | MCP server tools re-routed to /inbox | ❌ pending |
-| Callback POST routing for button click + chat input | ❌ pending |
-| Renderer SSE for live updates | ❌ pending |
-| OpenClaw adapter (bridge service) | ❌ pending |
-| End-to-end lighthouse demo | ❌ pending |
+| Callback routing for button click + chat input | ✅ done |
+| Renderer SSE for live updates | ✅ done |
+| OpenClaw adapter (gateway callback) | ✅ done |
+| Codex adapter (`codex_exec_resume`) | ✅ MVP |
+| End-to-end OpenClaw demo | ✅ done |
 
 ## Strategic note
 
