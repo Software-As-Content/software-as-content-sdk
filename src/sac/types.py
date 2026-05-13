@@ -144,7 +144,7 @@ class ConversationData(BaseModel):
     latest_intent: str | None = None
     event_count: int = 0
     callback_url: str | None = None
-    callback_format: str | None = None  # "default" | "openclaw_taskflow" | ...
+    callback_format: str | None = None  # "default" | "openclaw_gateway" | "codex_exec_resume" | ...
     callback_auth: str | None = None    # e.g. "Bearer <token>"
 
 

@@ -233,7 +233,7 @@ class InboxRequest(BaseModel):
     intent: str | None = None
     conversation_id: str | None = None
     callback_url: str | None = None
-    callback_format: str | None = None  # "default" | "openclaw_taskflow"
+    callback_format: str | None = None  # "default" | "openclaw_gateway" | "codex_exec_resume"
     callback_auth: str | None = None    # e.g. "Bearer <token>"
     suggestions: list[dict[str, Any]] | None = None
     context: dict[str, Any] | None = None
@@ -708,6 +708,84 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                     status_code=502,
                     detail=f"Failed to send to OpenClaw gateway ({ws_url}): {e}",
                 )
+
+        elif fmt == "codex_exec_resume":
+            # Codex CLI adapter: resume an existing Codex thread and send the
+            # SaC action as the next user prompt. This is intentionally a thin
+            # platform adapter, analogous to OpenClaw's gateway `sessions.send`.
+            parsed = urlparse(conv_data.callback_url)
+            if parsed.scheme != "codex" or parsed.netloc != "resume":
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Invalid Codex callback_url. Expected "
+                        "codex://resume?thread=<thread_id>&cwd=<absolute_path>."
+                    ),
+                )
+            qs = parse_qs(parsed.query)
+            thread_id = (qs.get("thread") or qs.get("thread_id") or [""])[0].strip()
+            cwd = (qs.get("cwd") or [""])[0].strip()
+            if not thread_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Codex callback_url must include thread=<thread_id>.",
+                )
+
+            context_text = ""
+            if req.context is not None:
+                context_text = (
+                    "\n\nAction context JSON:\n"
+                    f"```json\n{json.dumps(req.context, ensure_ascii=False, indent=2)}\n```"
+                )
+
+            message = (
+                f"A user is viewing a SaC interactive app and requested: {req.intent}"
+                f"{context_text}\n\n"
+                f"Continue the engineering analysis for this SaC conversation. "
+                f"Compose rich, detailed content for the request, then run this exact command "
+                f"(replace CONTENT with your composed content, escape quotes and newlines for JSON):\n\n"
+                f'curl -s -X POST "{sac_url}/inbox" '
+                f'-H "Content-Type: application/json" '
+                f"-d '{{\"conversation_id\": \"{conv_id}\", "
+                f"\"content\": \"CONTENT\", "
+                f"\"intent\": \"{req.intent}\"}}'\n\n"
+                f"Do NOT ask clarifying questions. Do NOT only reply in chat. "
+                f"Do the best follow-up analysis you can and update the SaC app via /inbox."
+            )
+
+            async def _run_codex_resume() -> None:
+                cmd = ["codex"]
+                if cwd:
+                    cmd.extend(["-C", cwd])
+                cmd.extend(["exec", "resume"])
+                if thread_id == "last":
+                    cmd.append("--last")
+                else:
+                    cmd.append(thread_id)
+                cmd.append(message)
+
+                try:
+                    proc = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout, stderr = await proc.communicate()
+                    if proc.returncode != 0:
+                        print(
+                            "codex_exec_resume failed",
+                            {
+                                "returncode": proc.returncode,
+                                "stdout": stdout.decode(errors="replace")[-4000:],
+                                "stderr": stderr.decode(errors="replace")[-4000:],
+                            },
+                        )
+                except FileNotFoundError:
+                    print("codex_exec_resume failed: `codex` command not found")
+                except Exception as exc:
+                    print(f"codex_exec_resume failed: {exc}")
+
+            asyncio.create_task(_run_codex_resume())
 
         elif fmt == "openclaw_taskflow":
             # Legacy: OpenClaw webhook TaskFlow creation (kept for compat).
