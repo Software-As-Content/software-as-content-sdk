@@ -685,10 +685,15 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 token = auth.removeprefix("Bearer ").strip()
 
             message = (
-                f"SaC user action on conversation {conv_id}: "
-                f"{req.intent}\n\n"
-                f"Use the sac-interaction skill to POST updated content "
-                f"to {sac_url}/inbox with conversation_id \"{conv_id}\"."
+                f"A user is viewing a SaC interactive app and requested: {req.intent}\n\n"
+                f"Compose rich, detailed content for this request, then run this exact command "
+                f"(replace CONTENT with your composed content, escape quotes and newlines for JSON):\n\n"
+                f'exec: curl -s -X POST "{sac_url}/inbox" '
+                f'-H "Content-Type: application/json" '
+                f"-d '{{\"conversation_id\": \"{conv_id}\", "
+                f"\"content\": \"CONTENT\", "
+                f"\"intent\": \"{req.intent}\"}}'\n\n"
+                f"Do NOT ask clarifying questions — just compose the best content you can and run the curl command."
             )
 
             try:
