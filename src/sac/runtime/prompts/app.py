@@ -80,6 +80,9 @@ BUTTON ACTIONS:
   use: onClick={() => window.__sac_action("description of what should happen")}
 - The action string should be a natural language intent describing the desired outcome,
   e.g., "Show detailed pricing for Val Thorens including lift passes and accommodation"
+- You may pass optional structured context as a second argument when the action refers
+  to a specific object, e.g.
+  `window.__sac_action("Inspect this failing test", { action_id: "inspect_test", target: { type: "check", id: "pytest-3.12" } })`
 - For buttons that are purely UI-internal (tab switching, accordion toggle, modal open/close, filtering),
   use normal React state — do NOT use __sac_action
 - For external links, use normal <a href="..." target="_blank"> tags

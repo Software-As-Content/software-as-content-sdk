@@ -226,10 +226,10 @@ function createRenderer() {
   r.on('error', (err) => {
     showStatus(`Render error (${err.type}): ${err.message}`);
   });
-  r.on('action', ({ intent }) => {
+  r.on('action', ({ intent, context }) => {
     if (!conversationId || !intent) return;
     addChatMsg('user', intent);
-    routeUserIntent(intent);
+    routeUserIntent(intent, context);
   });
   return r;
 }
@@ -369,7 +369,7 @@ async function handleSend() {
 // Routes any user-originated intent (button click in App, suggestion click,
 // etc.) to either the external agent (via /c/{id}/action) or the local
 // stream pipeline.
-async function routeUserIntent(intent) {
+async function routeUserIntent(intent, context = null) {
   if (pendingAction) return;  // debounce — wait for current action to finish
   setPending(true);
 
@@ -379,7 +379,7 @@ async function routeUserIntent(intent) {
       const res = await fetch(`/c/${conversationId}/action`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intent }),
+        body: JSON.stringify({ intent, context }),
       });
       if (!res.ok) {
         const detail = await res.text().catch(() => '');

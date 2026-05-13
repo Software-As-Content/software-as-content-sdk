@@ -28,9 +28,13 @@
 
   <!-- SaC Action Bridge: allows generated app buttons to trigger evolve -->
   <script>
-    window.__sac_action = function(intent) {
+    window.__sac_action = function(intent, context) {
       if (typeof intent !== 'string' || !intent.trim()) return;
-      window.parent.postMessage({ type: 'sac-action', intent: intent.trim() }, '*');
+      window.parent.postMessage({
+        type: 'sac-action',
+        intent: intent.trim(),
+        context: context && typeof context === 'object' ? context : null
+      }, '*');
     };
   </script>
 

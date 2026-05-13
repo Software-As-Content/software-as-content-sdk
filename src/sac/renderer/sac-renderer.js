@@ -35,7 +35,7 @@ export class SaCRenderer {
       } else if (ev.data.type === 'render-error') {
         this._emit('error', ev.data.error);
       } else if (ev.data.type === 'sac-action') {
-        this._emit('action', { intent: ev.data.intent });
+        this._emit('action', { intent: ev.data.intent, context: ev.data.context || null });
       }
     };
     window.addEventListener('message', this._messageHandler);
