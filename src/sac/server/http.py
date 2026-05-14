@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -334,6 +335,21 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 "content": message,
             },
         )
+
+    def _resolve_codex_bin() -> str:
+        configured = os.environ.get("SAC_CODEX_BIN", "").strip()
+        if configured:
+            return configured
+
+        found = shutil.which("codex")
+        if found:
+            return found
+
+        app_bundle_bin = Path("/Applications/Codex.app/Contents/Resources/codex")
+        if app_bundle_bin.exists():
+            return str(app_bundle_bin)
+
+        return "codex"
 
     async def _get_or_create_conv(conv_id: str | None, settings: ConversationSettings | None = None, user_id: str = "") -> Any:
         if conv_id and conv_id in _conversations:
@@ -802,7 +818,8 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             )
 
             async def _run_codex_resume() -> None:
-                cmd = ["codex"]
+                codex_bin = _resolve_codex_bin()
+                cmd = [codex_bin]
                 if cwd:
                     cmd.extend(["-C", cwd])
                 cmd.extend(["exec", "resume"])
@@ -837,10 +854,13 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                             f"Codex callback failed ({detail.strip()[:1200]}).",
                         )
                 except FileNotFoundError:
-                    print("codex_exec_resume failed: `codex` command not found")
+                    print(f"codex_exec_resume failed: `{codex_bin}` command not found")
                     _publish_callback_failure(
                         conv_id,
-                        "Codex callback failed: `codex` command not found on the SaC server PATH.",
+                        (
+                            "Codex callback failed: Codex CLI not found. "
+                            "Set SAC_CODEX_BIN to the absolute codex executable path."
+                        ),
                     )
                 except Exception as exc:
                     print(f"codex_exec_resume failed: {exc}")
