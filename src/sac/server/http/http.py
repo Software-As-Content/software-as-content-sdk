@@ -10,16 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
-import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 try:
-    import httpx
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import FileResponse, HTMLResponse
@@ -33,107 +29,13 @@ except ImportError as e:
 from sac.runtime.prompts.app import AVAILABLE_MODELS, DEFAULT_MODEL
 from sac.runtime.store.file import FileStore
 from sac.sac import SaC
+from sac.server.http.callbacks import CallbackManager
 from sac.types import ConversationSettings
 
 _STATIC_DIR = Path(__file__).parent / "static"
-_RENDERER_DIR = Path(__file__).parent.parent / "renderer"
+_RENDERER_DIR = Path(__file__).parent.parent.parent / "renderer"
 
 _VERSION = "0.1.0"
-
-
-# ─── OpenClaw Gateway WebSocket RPC ─────────────────────────────
-
-
-async def _openclaw_gateway_send(
-    ws_url: str,
-    token: str,
-    session_key: str,
-    message: str,
-    timeout: float = 30.0,
-) -> dict[str, Any]:
-    """Send a message to an OpenClaw agent session via Gateway WebSocket RPC.
-
-    Implements the connect-request-disconnect pattern:
-      1. Connect to gateway WebSocket
-      2. Receive connect.challenge event
-      3. Send connect request with auth token
-      4. Receive hello-ok response
-      5. Send sessions.send request
-      6. Receive response and disconnect
-
-    Args:
-        ws_url: Gateway WebSocket URL (e.g. "ws://127.0.0.1:18789")
-        token: Gateway auth token
-        session_key: Target session key (e.g. "agent:main:main")
-        message: Message text to send
-        timeout: Overall timeout in seconds
-    """
-    try:
-        import websockets
-    except ImportError:
-        raise RuntimeError(
-            "websockets package required for OpenClaw callback. "
-            "Install with: pip install websockets"
-        )
-
-    async with websockets.connect(ws_url, max_size=25 * 1024 * 1024) as ws:
-        # Step 1: Receive connect.challenge
-        raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
-        challenge = json.loads(raw)
-        if challenge.get("event") != "connect.challenge":
-            raise RuntimeError(f"Expected connect.challenge, got: {challenge}")
-
-        # Step 2: Send connect request
-        connect_id = str(uuid.uuid4())
-        await ws.send(json.dumps({
-            "type": "req",
-            "id": connect_id,
-            "method": "connect",
-            "params": {
-                "minProtocol": 3,
-                "maxProtocol": 3,
-                "client": {
-                    "id": "gateway-client",
-                    "version": "0.1.0",
-                    "platform": "sac-sdk",
-                    "mode": "backend",
-                },
-                "caps": [],
-                "role": "operator",
-                "scopes": ["operator.write"],
-                "auth": {"token": token},
-            },
-        }))
-
-        # Step 3: Receive hello-ok
-        raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
-        hello = json.loads(raw)
-        if not (hello.get("type") == "res" and hello.get("ok")):
-            raise RuntimeError(f"Gateway auth failed: {hello}")
-
-        # Step 4: Send sessions.send
-        send_id = str(uuid.uuid4())
-        await ws.send(json.dumps({
-            "type": "req",
-            "id": send_id,
-            "method": "sessions.send",
-            "params": {
-                "key": session_key,
-                "message": message,
-                "idempotencyKey": str(uuid.uuid4()),
-            },
-        }))
-
-        # Step 5: Wait for response (skip events/ticks)
-        while True:
-            raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
-            frame = json.loads(raw)
-            if frame.get("type") == "res" and frame.get("id") == send_id:
-                if frame.get("ok"):
-                    return frame.get("payload", {})
-                else:
-                    raise RuntimeError(f"sessions.send failed: {frame.get('error')}")
-            # Skip unsolicited events (ticks, etc.)
 
 
 # ─── Pub/Sub for SSE conversation updates ────────────────────────
@@ -291,131 +193,11 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     # Pub/sub broker for /c/{id}/events SSE subscribers
     pubsub = _PubSub()
-    _callback_runs: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    callback_manager = CallbackManager(publish=pubsub.publish, server_cwd=server_cwd)
 
     def _get_user_id(request: Request) -> str:
         """Extract user ID from X-User-Id header, default to 'anonymous'."""
         return request.headers.get("x-user-id", "anonymous")
-
-    def _resolve_codex_cwd(raw_cwd: str) -> str | None:
-        """Resolve the working directory for Codex callback subprocesses.
-
-        Omitting `cwd` preserves Codex's stored thread cwd. `cwd=server`
-        means "use the directory where `sac serve` was started".
-        For the Codex MVP this is usually the safest value because generated
-        apps may be created from transient Codex artifact/session directories.
-        If a callback gives a directory that does not look like a project root
-        while the server cwd does, prefer the server cwd.
-        """
-        value = raw_cwd.strip()
-        if not value:
-            return None
-        if value in {"server", "."}:
-            return str(server_cwd)
-
-        path = Path(value).expanduser()
-        if not path.is_dir():
-            return str(server_cwd)
-
-        project_markers = (".git", "pyproject.toml", "package.json", "src")
-        looks_like_project = any((path / marker).exists() for marker in project_markers)
-        server_looks_like_project = any(
-            (server_cwd / marker).exists() for marker in project_markers
-        )
-        if not looks_like_project and server_looks_like_project:
-            return str(server_cwd)
-
-        return str(path)
-
-    def _publish_callback_failure(conv_id: str, message: str) -> None:
-        pubsub.publish(
-            conv_id,
-            "chat",
-            {
-                "role": "system",
-                "content": message,
-            },
-        )
-
-    def _utc_now() -> str:
-        return datetime.now(timezone.utc).isoformat()
-
-    def _new_callback_run(
-        conv_id: str,
-        *,
-        adapter: str,
-        intent: str,
-        callback_url: str,
-        context: dict[str, Any] | None,
-    ) -> dict[str, Any]:
-        run = {
-            "id": str(uuid.uuid4()),
-            "conversation_id": conv_id,
-            "adapter": adapter,
-            "intent": intent,
-            "context": context,
-            "callback_url": callback_url,
-            "status": "queued",
-            "created_at": _utc_now(),
-            "updated_at": _utc_now(),
-        }
-        _callback_runs[conv_id].append(run)
-        _callback_runs[conv_id] = _callback_runs[conv_id][-50:]
-        pubsub.publish(conv_id, "callback_run", run)
-        return run
-
-    def _update_callback_run(
-        conv_id: str,
-        run_id: str,
-        **updates: Any,
-    ) -> dict[str, Any] | None:
-        runs = _callback_runs.get(conv_id, [])
-        run = next((r for r in runs if r["id"] == run_id), None)
-        if run is None:
-            return None
-        run.update(updates)
-        run["updated_at"] = _utc_now()
-        if run.get("status") in {"succeeded", "failed"} and "completed_at" not in run:
-            run["completed_at"] = run["updated_at"]
-        pubsub.publish(conv_id, "callback_run", run)
-        return run
-
-    def _publish_callback_log(
-        conv_id: str,
-        run_id: str,
-        *,
-        stream: str,
-        line: str,
-        payload: dict[str, Any] | None = None,
-    ) -> None:
-        entry = {
-            "run_id": run_id,
-            "stream": stream,
-            "line": line[:2000],
-            "payload": payload,
-            "timestamp": _utc_now(),
-        }
-        run = next((r for r in _callback_runs.get(conv_id, []) if r["id"] == run_id), None)
-        if run is not None:
-            logs = run.setdefault("logs", [])
-            logs.append(entry)
-            del logs[:-100]
-        pubsub.publish(conv_id, "callback_log", entry)
-
-    def _resolve_codex_bin() -> str:
-        configured = os.environ.get("SAC_CODEX_BIN", "").strip()
-        if configured:
-            return configured
-
-        found = shutil.which("codex")
-        if found:
-            return found
-
-        app_bundle_bin = Path("/Applications/Codex.app/Contents/Resources/codex")
-        if app_bundle_bin.exists():
-            return str(app_bundle_bin)
-
-        return "codex"
 
     async def _get_or_create_conv(conv_id: str | None, settings: ConversationSettings | None = None, user_id: str = "") -> Any:
         if conv_id and conv_id in _conversations:
@@ -768,13 +550,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     @app.post("/c/{conv_id}/action")
     async def conversation_action(conv_id: str, req: ActionRequest, request: Request) -> dict[str, Any]:
-        """Forward a user action to the agent's registered callback_url.
-
-        Called by the SaC viewer when the user clicks a button (sac-action
-        message from the iframe) or types into the chat panel. SaC just
-        relays — the agent is expected to ack quickly, do its work
-        asynchronously, then POST a new response back to /inbox.
-        """
+        """Forward a user action to the agent's registered callback_url."""
         conv_data = await sac._store.get_conversation(conv_id)
         if conv_data is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -787,349 +563,20 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 ),
             )
 
-        # Route callback based on format
-        sac_url = str(request.base_url).rstrip("/")
-        fmt = conv_data.callback_format or "default"
-        callback_scheme = urlparse(conv_data.callback_url).scheme
-        if fmt == "default" and callback_scheme == "codex":
-            fmt = "codex_exec_resume"
-        elif fmt == "default" and callback_scheme in ("ws", "wss"):
-            fmt = "openclaw_gateway"
-
-        callback_run = _new_callback_run(
-            conv_id,
-            adapter=fmt,
+        run = await callback_manager.dispatch(
+            conv_id=conv_id,
             intent=req.intent,
-            callback_url=conv_data.callback_url,
             context=req.context,
+            callback_url=conv_data.callback_url,
+            callback_format=conv_data.callback_format,
+            callback_auth=conv_data.callback_auth,
+            sac_url=str(request.base_url).rstrip("/"),
         )
-        run_id = callback_run["id"]
-
-        if fmt == "openclaw_gateway":
-            # OpenClaw Gateway: send message via WebSocket RPC.
-            # callback_url format: ws://host:port?session=<session_key>
-            # callback_auth format: Bearer <gateway_token>
-            parsed = urlparse(conv_data.callback_url)
-            qs = parse_qs(parsed.query)
-            session_key = (qs.get("session") or ["agent:main:main"])[0]
-            # Reconstruct clean WebSocket URL without query params
-            ws_url = f"{parsed.scheme}://{parsed.netloc}"
-
-            token = ""
-            if conv_data.callback_auth:
-                # Strip "Bearer " prefix if present
-                auth = conv_data.callback_auth
-                token = auth.removeprefix("Bearer ").strip()
-
-            message = (
-                f"A user is viewing a SaC interactive app and requested: {req.intent}\n\n"
-                f"Compose rich, detailed content for this request, then run this exact command "
-                f"(replace CONTENT with your composed content, escape quotes and newlines for JSON):\n\n"
-                f'exec: curl -s -X POST "{sac_url}/inbox" '
-                f'-H "Content-Type: application/json" '
-                f"-d '{{\"conversation_id\": \"{conv_id}\", "
-                f"\"content\": \"CONTENT\", "
-                f"\"intent\": \"{req.intent}\"}}'\n\n"
-                f"Do NOT ask clarifying questions — just compose the best content you can and run the curl command."
-            )
-
-            try:
-                _update_callback_run(
-                    conv_id,
-                    run_id,
-                    status="running",
-                    target_session=session_key,
-                    transport="websocket",
-                )
-                await _openclaw_gateway_send(
-                    ws_url=ws_url,
-                    token=token,
-                    session_key=session_key,
-                    message=message,
-                )
-                _update_callback_run(
-                    conv_id,
-                    run_id,
-                    status="succeeded",
-                    detail="Message sent to OpenClaw gateway.",
-                )
-            except Exception as e:
-                _update_callback_run(conv_id, run_id, status="failed", error=str(e))
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Failed to send to OpenClaw gateway ({ws_url}): {e}",
-                )
-
-        elif fmt == "codex_exec_resume":
-            # Codex CLI adapter: resume an existing Codex thread and send the
-            # SaC action as the next user prompt. This is intentionally a thin
-            # platform adapter, analogous to OpenClaw's gateway `sessions.send`.
-            parsed = urlparse(conv_data.callback_url)
-            if parsed.scheme != "codex" or parsed.netloc != "resume":
-                _update_callback_run(
-                    conv_id,
-                    run_id,
-                    status="failed",
-                    error="Invalid Codex callback_url.",
-                )
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "Invalid Codex callback_url. Expected "
-                        "codex://resume?thread=<thread_id>&cwd=<absolute_path>."
-                    ),
-                )
-            qs = parse_qs(parsed.query)
-            thread_id = (qs.get("thread") or qs.get("thread_id") or [""])[0].strip()
-            cwd = _resolve_codex_cwd((qs.get("cwd") or [""])[0])
-            if not thread_id:
-                _update_callback_run(
-                    conv_id,
-                    run_id,
-                    status="failed",
-                    error="Codex callback_url missing thread.",
-                )
-                raise HTTPException(
-                    status_code=400,
-                    detail="Codex callback_url must include thread=<thread_id>.",
-                )
-
-            context_text = ""
-            if req.context is not None:
-                context_text = (
-                    "\n\nAction context JSON:\n"
-                    f"```json\n{json.dumps(req.context, ensure_ascii=False, indent=2)}\n```"
-                )
-
-            message = (
-                f"A user is viewing a SaC interactive app and requested: {req.intent}"
-                f"{context_text}\n\n"
-                f"Continue the engineering analysis for this SaC conversation. "
-                f"Use the existing repository/session context first; do not run broad validation "
-                f"or debug unrelated infrastructure unless the requested action explicitly asks for it. "
-                f"Compose rich, detailed content for the request, then run this exact command "
-                f"(replace CONTENT with your composed content, escape quotes and newlines for JSON):\n\n"
-                f'curl -s -X POST "{sac_url}/inbox" '
-                f'-H "Content-Type: application/json" '
-                f"-d '{{\"conversation_id\": \"{conv_id}\", "
-                f"\"content\": \"CONTENT\", "
-                f"\"intent\": \"{req.intent}\"}}'\n\n"
-                f"Do NOT ask clarifying questions. Do NOT only reply in chat. "
-                f"Do the best follow-up analysis you can and update the SaC app via /inbox."
-            )
-
-            async def _run_codex_resume() -> None:
-                codex_bin = _resolve_codex_bin()
-                cmd = [codex_bin]
-                if cwd:
-                    cmd.extend(["-C", cwd])
-                cmd.extend(["exec", "resume"])
-                cmd.append("--json")
-                if thread_id == "last":
-                    cmd.append("--last")
-                else:
-                    cmd.append(thread_id)
-                cmd.append(message)
-                command_preview = [*cmd[:-1], "<prompt>"]
-
-                try:
-                    _update_callback_run(
-                        conv_id,
-                        run_id,
-                        status="running",
-                        cwd=cwd,
-                        command=command_preview,
-                        thread_id=thread_id,
-                    )
-                    proc = await asyncio.create_subprocess_exec(
-                        *cmd,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    stdout_parts: list[str] = []
-                    stderr_parts: list[str] = []
-
-                    async def _read_lines(
-                        reader: asyncio.StreamReader | None,
-                        stream_name: str,
-                        sink: list[str],
-                    ) -> None:
-                        if reader is None:
-                            return
-                        while True:
-                            raw = await reader.readline()
-                            if not raw:
-                                break
-                            line = raw.decode(errors="replace").rstrip("\n")
-                            if not line:
-                                continue
-                            stored_line = line[:4000]
-                            sink.append(stored_line)
-                            del sink[:-100]
-                            payload = None
-                            stripped = stored_line.strip()
-                            if stripped.startswith("{"):
-                                try:
-                                    payload = json.loads(stripped)
-                                except json.JSONDecodeError:
-                                    payload = None
-                            _publish_callback_log(
-                                conv_id,
-                                run_id,
-                                stream=stream_name,
-                                line=stored_line,
-                                payload=payload,
-                            )
-
-                    await asyncio.gather(
-                        _read_lines(proc.stdout, "stdout", stdout_parts),
-                        _read_lines(proc.stderr, "stderr", stderr_parts),
-                    )
-                    await proc.wait()
-
-                    stdout_tail = "\n".join(stdout_parts)[-4000:]
-                    stderr_tail = "\n".join(stderr_parts)[-4000:]
-                    if proc.returncode != 0:
-                        print(
-                            "codex_exec_resume failed",
-                            {
-                                "returncode": proc.returncode,
-                                "cwd": cwd,
-                                "stdout": stdout_tail,
-                                "stderr": stderr_tail,
-                            },
-                        )
-                        detail = stderr_tail or stdout_tail or f"exit code {proc.returncode}"
-                        _update_callback_run(
-                            conv_id,
-                            run_id,
-                            status="failed",
-                            returncode=proc.returncode,
-                            stdout_tail=stdout_tail,
-                            stderr_tail=stderr_tail,
-                            error=detail.strip()[:1200],
-                        )
-                        _publish_callback_failure(
-                            conv_id,
-                            f"Codex callback failed ({detail.strip()[:1200]}).",
-                        )
-                    else:
-                        _update_callback_run(
-                            conv_id,
-                            run_id,
-                            status="succeeded",
-                            returncode=proc.returncode,
-                            stdout_tail=stdout_tail,
-                            stderr_tail=stderr_tail,
-                        )
-                except FileNotFoundError:
-                    print(f"codex_exec_resume failed: `{codex_bin}` command not found")
-                    _update_callback_run(
-                        conv_id,
-                        run_id,
-                        status="failed",
-                        command=command_preview,
-                        error="Codex CLI not found.",
-                    )
-                    _publish_callback_failure(
-                        conv_id,
-                        (
-                            "Codex callback failed: Codex CLI not found. "
-                            "Set SAC_CODEX_BIN to the absolute codex executable path."
-                        ),
-                    )
-                except Exception as exc:
-                    print(f"codex_exec_resume failed: {exc}")
-                    _update_callback_run(
-                        conv_id,
-                        run_id,
-                        status="failed",
-                        command=command_preview,
-                        error=str(exc),
-                    )
-                    _publish_callback_failure(
-                        conv_id,
-                        f"Codex callback failed: {exc}",
-                    )
-
-            asyncio.create_task(_run_codex_resume())
-
-        elif fmt == "openclaw_taskflow":
-            # Legacy: OpenClaw webhook TaskFlow creation (kept for compat).
-            payload: dict[str, Any] = {
-                "action": "create_flow",
-                "goal": (
-                    f"SaC user action on conversation {conv_id}: "
-                    f"{req.intent}\n\n"
-                    f"Use the sac-interaction skill to POST updated content "
-                    f"to {sac_url}/inbox with conversation_id \"{conv_id}\"."
-                ),
-            }
-            headers: dict[str, str] = {"Content-Type": "application/json"}
-            if conv_data.callback_auth:
-                headers["Authorization"] = conv_data.callback_auth
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                try:
-                    _update_callback_run(
-                        conv_id,
-                        run_id,
-                        status="running",
-                        transport="http",
-                    )
-                    response = await client.post(
-                        conv_data.callback_url, json=payload, headers=headers
-                    )
-                    response.raise_for_status()
-                    _update_callback_run(
-                        conv_id,
-                        run_id,
-                        status="succeeded",
-                        status_code=response.status_code,
-                    )
-                except httpx.HTTPError as e:
-                    _update_callback_run(conv_id, run_id, status="failed", error=str(e))
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Failed to reach callback_url ({conv_data.callback_url}): {e}",
-                    )
-
-        else:
-            # Default SaC protocol format (HTTP POST)
-            payload_default: dict[str, Any] = {
-                "conversation_id": conv_id,
-                "intent": req.intent,
-            }
-            if req.context is not None:
-                payload_default["context"] = req.context
-            headers_default: dict[str, str] = {"Content-Type": "application/json"}
-            if conv_data.callback_auth:
-                headers_default["Authorization"] = conv_data.callback_auth
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                try:
-                    _update_callback_run(
-                        conv_id,
-                        run_id,
-                        status="running",
-                        transport="http",
-                    )
-                    response = await client.post(
-                        conv_data.callback_url, json=payload_default, headers=headers_default
-                    )
-                    response.raise_for_status()
-                    _update_callback_run(
-                        conv_id,
-                        run_id,
-                        status="succeeded",
-                        status_code=response.status_code,
-                    )
-                except httpx.HTTPError as e:
-                    _update_callback_run(conv_id, run_id, status="failed", error=str(e))
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Failed to reach callback_url ({conv_data.callback_url}): {e}",
-                    )
-
-        return {"ok": True, "callback_url": conv_data.callback_url, "run_id": run_id}
+        return {
+            "ok": True,
+            "callback_url": conv_data.callback_url,
+            "run_id": run["id"],
+        }
 
     # ─── Conversation Management ─────────────────────────────────
 
@@ -1138,7 +585,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         conv_data = await sac._store.get_conversation(conv_id)
         if conv_data is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
-        return {"runs": _callback_runs.get(conv_id, [])}
+        return {"runs": callback_manager.list_runs(conv_id)}
 
     @app.get("/conversations")
     async def list_conversations(request: Request) -> dict[str, Any]:
