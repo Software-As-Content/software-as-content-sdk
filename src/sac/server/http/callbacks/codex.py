@@ -89,9 +89,11 @@ def build_codex_message(
     return (
         f"A user is viewing a SaC interactive app and requested: {intent}"
         f"{context_text}\n\n"
-        f"Continue the engineering analysis for this SaC conversation. "
-        f"Use the existing repository/session context first; do not run broad validation "
-        f"or debug unrelated infrastructure unless the requested action explicitly asks for it. "
+        f"Fast path contract:\n"
+        f"- Treat this as a SaC UI action, not a general coding task.\n"
+        f"- Do not inspect or modify the repo unless the action explicitly asks for engineering analysis or code changes.\n"
+        f"- Use existing repository/session context first; do not run broad validation or debug unrelated infrastructure.\n"
+        f"- Prefer concise, directly usable content that can update the current app within 60-120 seconds.\n\n"
         f"Compose rich, detailed content for the request, then run this exact command "
         f"(replace CONTENT with your composed content, escape quotes and newlines for JSON):\n\n"
         f'curl -s -X POST "{sac_url}/inbox" '

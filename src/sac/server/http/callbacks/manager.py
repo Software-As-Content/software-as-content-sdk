@@ -158,11 +158,16 @@ class CallbackManager:
         line: str,
         payload: dict[str, Any] | None = None,
     ) -> None:
+        summary = self._summarize_log(stream=stream, line=line, payload=payload)
         entry = {
             "run_id": run_id,
             "stream": stream,
             "line": line[:2000],
             "payload": payload,
+            "kind": summary["kind"],
+            "label": summary["label"],
+            "detail": summary.get("detail"),
+            "raw_visible": summary.get("raw_visible", False),
             "timestamp": self._utc_now(),
         }
         run = next((r for r in self._runs.get(conv_id, []) if r["id"] == run_id), None)
@@ -170,10 +175,107 @@ class CallbackManager:
             logs = run.setdefault("logs", [])
             logs.append(entry)
             del logs[:-100]
+            run["last_event"] = entry["label"]
+            run["last_log_at"] = entry["timestamp"]
         self._publish(conv_id, "callback_log", entry)
 
     def _publish_failure(self, conv_id: str, message: str) -> None:
         self._publish(conv_id, "chat", {"role": "system", "content": message})
+
+    def _summarize_log(
+        self,
+        *,
+        stream: str,
+        line: str,
+        payload: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Convert adapter-specific output into a compact product-facing event."""
+        if payload:
+            typ = payload.get("type")
+            if typ == "thread.started":
+                return {
+                    "kind": "thread_started",
+                    "label": "Codex thread started",
+                    "detail": payload.get("thread_id"),
+                }
+            if typ == "turn.started":
+                return {"kind": "turn_started", "label": "Codex turn started"}
+            if typ == "turn.completed":
+                usage = payload.get("usage") or {}
+                details = []
+                if usage.get("input_tokens") is not None:
+                    details.append(f"input {usage['input_tokens']}")
+                if usage.get("output_tokens") is not None:
+                    details.append(f"output {usage['output_tokens']}")
+                return {
+                    "kind": "turn_completed",
+                    "label": "Codex turn completed",
+                    "detail": ", ".join(details) if details else None,
+                }
+            if typ == "error":
+                return {
+                    "kind": "warning",
+                    "label": payload.get("message") or "Codex warning",
+                    "raw_visible": True,
+                }
+
+            item = payload.get("item") or {}
+            item_type = item.get("type")
+            if typ == "item.started":
+                if item_type == "command_execution":
+                    return {
+                        "kind": "command_started",
+                        "label": "Command started",
+                        "detail": item.get("command"),
+                    }
+                return {
+                    "kind": "tool_started",
+                    "label": f"{self._humanize_item_type(item_type)} started",
+                }
+            if typ == "item.completed":
+                if item_type == "command_execution":
+                    exit_code = item.get("exit_code")
+                    label = "Command completed"
+                    if exit_code not in (None, 0):
+                        label = f"Command failed ({exit_code})"
+                    return {
+                        "kind": "command_completed",
+                        "label": label,
+                        "detail": item.get("command"),
+                        "raw_visible": bool(item.get("aggregated_output")),
+                    }
+                if item_type == "agent_message":
+                    return {
+                        "kind": "agent_message",
+                        "label": "Codex message",
+                        "detail": str(item.get("text") or "")[:900],
+                    }
+                return {
+                    "kind": "tool_completed",
+                    "label": f"{self._humanize_item_type(item_type)} completed",
+                }
+
+        raw = " ".join(str(line or "").split())
+        if not raw:
+            return {"kind": "log", "label": f"{stream} log"}
+        if raw.startswith("{") and len(raw) > 500:
+            return {
+                "kind": "raw",
+                "label": f"{stream} event",
+                "detail": raw[:240] + "...",
+                "raw_visible": False,
+            }
+        return {
+            "kind": "log",
+            "label": f"{stream} log",
+            "detail": raw[:700],
+            "raw_visible": True,
+        }
+
+    def _humanize_item_type(self, item_type: str | None) -> str:
+        if not item_type:
+            return "Codex item"
+        return str(item_type).replace("_", " ").strip().capitalize()
 
     def _utc_now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
