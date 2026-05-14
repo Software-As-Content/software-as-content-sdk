@@ -28,6 +28,8 @@ sac serve --port 8000
 
 ## New App
 
+Fast path: do not over-investigate. For a SaC render request, gather only the context needed to compose a useful workbench. Do not run broad test suites, start/stop servers, or debug unrelated infrastructure unless the user explicitly asks for release validation or troubleshooting.
+
 Compose substantive markdown content first. Prefer structured sections, tables, risks, decisions, and next actions.
 
 Then POST it to `/inbox`:
@@ -35,7 +37,7 @@ Then POST it to `/inbox`:
 ```bash
 curl -s -X POST "http://localhost:8000/inbox" \
   -H "Content-Type: application/json" \
-  -d '{"content": "CONTENT", "intent": "INTENT", "callback_url": "codex://resume?thread=last&cwd=CWD_URL_ENCODED", "callback_format": "codex_exec_resume"}'
+  -d '{"content": "CONTENT", "intent": "INTENT", "callback_url": "codex://resume?thread=last&cwd=server", "callback_format": "codex_exec_resume"}'
 ```
 
 Fields:
@@ -43,7 +45,7 @@ Fields:
 - `INTENT`: short description, such as `SaC SDK release readiness dashboard`.
 - `callback_url`: tells SaC how to send app button clicks back to Codex.
 - `thread=last`: fastest local default. Use an explicit Codex thread id when known.
-- `cwd`: optional URL-encoded working directory. If omitted, Codex resumes from its stored thread cwd.
+- `cwd=server`: resume Codex from the directory where `sac serve` is running. Use this default for SDK demos; do not put Codex artifact/session folders such as `~/Documents/Codex/...` in `cwd`. If you need a different repo, pass its URL-encoded absolute project root.
 
 Always show the returned `url` to the user.
 
@@ -77,7 +79,7 @@ Follow that message exactly:
 
 1. Continue the requested analysis.
 2. Do not ask clarifying questions.
-3. Compose the best updated content you can.
+3. Use existing context first; avoid broad validation/debugging unless the action explicitly asks for it.
 4. Run the provided `curl -s -X POST ... /inbox` command with the same `conversation_id`.
 
 ## Codex Demo Scenario
@@ -104,4 +106,3 @@ window.__sac_action("Inspect Codex integration path", {
   target: { type: "integration", id: "codex" }
 })
 ```
-

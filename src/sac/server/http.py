@@ -275,6 +275,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             store=FileStore(data_dir),
         )
 
+    server_cwd = Path.cwd()
     app = FastAPI(title="SaC SDK Server", version=_VERSION)
 
     app.add_middleware(
@@ -293,6 +294,46 @@ def create_app(sac: SaC | None = None) -> FastAPI:
     def _get_user_id(request: Request) -> str:
         """Extract user ID from X-User-Id header, default to 'anonymous'."""
         return request.headers.get("x-user-id", "anonymous")
+
+    def _resolve_codex_cwd(raw_cwd: str) -> str | None:
+        """Resolve the working directory for Codex callback subprocesses.
+
+        Omitting `cwd` preserves Codex's stored thread cwd. `cwd=server`
+        means "use the directory where `sac serve` was started".
+        For the Codex MVP this is usually the safest value because generated
+        apps may be created from transient Codex artifact/session directories.
+        If a callback gives a directory that does not look like a project root
+        while the server cwd does, prefer the server cwd.
+        """
+        value = raw_cwd.strip()
+        if not value:
+            return None
+        if value in {"server", "."}:
+            return str(server_cwd)
+
+        path = Path(value).expanduser()
+        if not path.is_dir():
+            return str(server_cwd)
+
+        project_markers = (".git", "pyproject.toml", "package.json", "src")
+        looks_like_project = any((path / marker).exists() for marker in project_markers)
+        server_looks_like_project = any(
+            (server_cwd / marker).exists() for marker in project_markers
+        )
+        if not looks_like_project and server_looks_like_project:
+            return str(server_cwd)
+
+        return str(path)
+
+    def _publish_callback_failure(conv_id: str, message: str) -> None:
+        pubsub.publish(
+            conv_id,
+            "chat",
+            {
+                "role": "system",
+                "content": message,
+            },
+        )
 
     async def _get_or_create_conv(conv_id: str | None, settings: ConversationSettings | None = None, user_id: str = "") -> Any:
         if conv_id and conv_id in _conversations:
@@ -667,6 +708,11 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         # Route callback based on format
         sac_url = str(request.base_url).rstrip("/")
         fmt = conv_data.callback_format or "default"
+        callback_scheme = urlparse(conv_data.callback_url).scheme
+        if fmt == "default" and callback_scheme == "codex":
+            fmt = "codex_exec_resume"
+        elif fmt == "default" and callback_scheme in ("ws", "wss"):
+            fmt = "openclaw_gateway"
 
         if fmt == "openclaw_gateway":
             # OpenClaw Gateway: send message via WebSocket RPC.
@@ -724,7 +770,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 )
             qs = parse_qs(parsed.query)
             thread_id = (qs.get("thread") or qs.get("thread_id") or [""])[0].strip()
-            cwd = (qs.get("cwd") or [""])[0].strip()
+            cwd = _resolve_codex_cwd((qs.get("cwd") or [""])[0])
             if not thread_id:
                 raise HTTPException(
                     status_code=400,
@@ -742,6 +788,8 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 f"A user is viewing a SaC interactive app and requested: {req.intent}"
                 f"{context_text}\n\n"
                 f"Continue the engineering analysis for this SaC conversation. "
+                f"Use the existing repository/session context first; do not run broad validation "
+                f"or debug unrelated infrastructure unless the requested action explicitly asks for it. "
                 f"Compose rich, detailed content for the request, then run this exact command "
                 f"(replace CONTENT with your composed content, escape quotes and newlines for JSON):\n\n"
                 f'curl -s -X POST "{sac_url}/inbox" '
@@ -772,18 +820,34 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                     )
                     stdout, stderr = await proc.communicate()
                     if proc.returncode != 0:
+                        stdout_tail = stdout.decode(errors="replace")[-4000:]
+                        stderr_tail = stderr.decode(errors="replace")[-4000:]
                         print(
                             "codex_exec_resume failed",
                             {
                                 "returncode": proc.returncode,
-                                "stdout": stdout.decode(errors="replace")[-4000:],
-                                "stderr": stderr.decode(errors="replace")[-4000:],
+                                "cwd": cwd,
+                                "stdout": stdout_tail,
+                                "stderr": stderr_tail,
                             },
+                        )
+                        detail = stderr_tail or stdout_tail or f"exit code {proc.returncode}"
+                        _publish_callback_failure(
+                            conv_id,
+                            f"Codex callback failed ({detail.strip()[:1200]}).",
                         )
                 except FileNotFoundError:
                     print("codex_exec_resume failed: `codex` command not found")
+                    _publish_callback_failure(
+                        conv_id,
+                        "Codex callback failed: `codex` command not found on the SaC server PATH.",
+                    )
                 except Exception as exc:
                     print(f"codex_exec_resume failed: {exc}")
+                    _publish_callback_failure(
+                        conv_id,
+                        f"Codex callback failed: {exc}",
+                    )
 
             asyncio.create_task(_run_codex_resume())
 
