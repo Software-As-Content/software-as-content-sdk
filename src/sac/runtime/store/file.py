@@ -66,7 +66,7 @@ class FileStore:
         return convs
 
     async def get_conversation(self, id: str) -> ConversationData | None:
-        user_id = self._conv_to_user.get(id)
+        user_id = self._resolve_user_for_conversation(id)
         if user_id is None:
             return None
         return self._get_user_index(user_id).get(id)
@@ -84,7 +84,7 @@ class FileStore:
         self._save_events(conv.id, [])
 
     async def update_conversation(self, id: str, **updates: object) -> None:
-        user_id = self._conv_to_user.get(id)
+        user_id = self._resolve_user_for_conversation(id)
         if user_id is None:
             return
         conv = self._get_user_index(user_id).get(id)
@@ -97,9 +97,10 @@ class FileStore:
         self._save_user_index(user_id)
 
     async def delete_conversation(self, id: str) -> None:
-        user_id = self._conv_to_user.pop(id, None)
+        user_id = self._resolve_user_for_conversation(id)
         if user_id is None:
             return
+        self._conv_to_user.pop(id, None)
         self._get_user_index(user_id).pop(id, None)
         self._save_user_index(user_id)
         conv_dir = self._user_dir(user_id) / id
@@ -112,7 +113,7 @@ class FileStore:
 
     async def add_event(self, event: ConversationEvent) -> None:
         conv_id = event.conversation_id
-        user_id = self._conv_to_user.get(conv_id)
+        user_id = self._resolve_user_for_conversation(conv_id)
         if user_id is None:
             return
 
@@ -152,6 +153,31 @@ class FileStore:
             self._load_user_index(user_id)
         return self._users[user_id]
 
+    def _resolve_user_for_conversation(self, conv_id: str) -> str | None:
+        """Find which user owns a conversation, including after process restart."""
+        user_id = self._conv_to_user.get(conv_id)
+        if user_id is not None:
+            return user_id
+
+        for loaded_user_id, convs in self._users.items():
+            if conv_id in convs:
+                self._conv_to_user[conv_id] = loaded_user_id
+                return loaded_user_id
+
+        for user_dir in self._dir.iterdir():
+            if not user_dir.is_dir():
+                continue
+            index_path = user_dir / "conversations.json"
+            if not index_path.exists():
+                continue
+            candidate_user_id = user_dir.name
+            convs = self._get_user_index(candidate_user_id)
+            if conv_id in convs:
+                self._conv_to_user[conv_id] = candidate_user_id
+                return candidate_user_id
+
+        return None
+
     def _load_user_index(self, user_id: str) -> None:
         """Load a user's conversation index from disk."""
         self._users[user_id] = {}
@@ -178,7 +204,7 @@ class FileStore:
 
     def _conv_dir(self, conv_id: str) -> Path | None:
         """Get the directory for a conversation."""
-        user_id = self._conv_to_user.get(conv_id)
+        user_id = self._resolve_user_for_conversation(conv_id)
         if user_id is None:
             return None
         return self._user_dir(user_id) / conv_id
