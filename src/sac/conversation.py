@@ -32,8 +32,8 @@ from sac.types import (
 )
 
 if TYPE_CHECKING:
-    from sac.builtin.agent import StandaloneAgent
-    from sac.builtin.legacy import LegacyShim
+    from sac.agent.agent import StandaloneAgent
+    from sac.agent.legacy import LegacyShim
 
 
 class Conversation:

@@ -30,11 +30,11 @@ import json
 import re
 from typing import Any, AsyncIterator, TYPE_CHECKING
 
-from sac.builtin.prompts.intent import (
+from sac.agent.prompts.intent import (
     get_intent_suggestion_prompt,
     parse_intent_suggestions,
 )
-from sac.builtin.prompts.search import get_search_query_extraction_prompt
+from sac.agent.prompts.search import get_search_query_extraction_prompt
 from sac.runtime.providers.base import LLMProvider, SearchProvider
 from sac.types import (
     App,

@@ -12,7 +12,7 @@ Two pieces, deliberately kept separate:
     away once those consumers migrate to the dual-channel /inbox flow.
 """
 
-from sac.builtin.agent import StandaloneAgent
-from sac.builtin.legacy import LegacyShim
+from sac.agent.agent import StandaloneAgent
+from sac.agent.legacy import LegacyShim
 
 __all__ = ["StandaloneAgent", "LegacyShim"]

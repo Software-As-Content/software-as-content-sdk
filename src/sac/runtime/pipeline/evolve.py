@@ -6,7 +6,7 @@ content (data already gathered by whoever called us) and produces a unified
 LLM call that decides growth_type AND emits new code in one pass.
 
 No search, no analyze, no intent suggestions — agent-layer concerns live
-in `sac.builtin` (or any external agent driving core via /inbox).
+in `sac.agent` (or any external agent driving core via /inbox).
 """
 
 from __future__ import annotations

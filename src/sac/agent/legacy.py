@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
-from sac.builtin.prompts.classify import CLASSIFY_COLD, CLASSIFY_WITH_CONTEXT
+from sac.agent.prompts.classify import CLASSIFY_COLD, CLASSIFY_WITH_CONTEXT
 from sac.runtime.providers.base import LLMProvider
 from sac.types import (
     Message,

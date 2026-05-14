@@ -420,7 +420,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             GrowthEvent,
             IntentSuggestion,
         )
-        from sac.builtin.prompts.intent import (
+        from sac.agent.prompts.intent import (
             get_intent_suggestion_prompt,
             parse_intent_suggestions,
         )

@@ -7,7 +7,7 @@ content + optional prior_app, produce a new App version" body is delegated
 to a CodeProducer.
 
 Pure rendering only. No search, no analyze, no agent-side concerns. Search
-execution + suggestion generation live in `sac.builtin` (or any external
+execution + suggestion generation live in `sac.agent` (or any external
 agent driving core via /inbox).
 """
 

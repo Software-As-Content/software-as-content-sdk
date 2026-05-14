@@ -4,7 +4,7 @@ Generate Pipeline (core)
 Pure rendering: take an intent + optional content (data already gathered by
 whoever called us) and produce a React App. No search, no analyze, no
 intent suggestions — those are agent-layer concerns and live in
-`sac.builtin` (or in any external agent that drives core via /inbox).
+`sac.agent` (or in any external agent that drives core via /inbox).
 """
 
 from __future__ import annotations

@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sac.builtin.agent import StandaloneAgent
-from sac.builtin.legacy import LegacyShim
+from sac.agent.agent import StandaloneAgent
+from sac.agent.legacy import LegacyShim
 from sac.conversation import Conversation
 from sac.runtime.producer import CodeProducer, DefaultCodeProducer
 from sac.runtime.prompts.app import DEFAULT_MODEL
