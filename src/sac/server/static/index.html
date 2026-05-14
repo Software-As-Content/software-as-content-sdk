@@ -387,7 +387,7 @@ async function routeUserIntent(intent, context = null) {
         hideStatus();
         setPending(false);
       }
-      // On success: don't clear pending — wait for SSE event
+      // On success: callback_run/version SSE events clear pending.
     } catch (err) {
       addChatMsg('system', 'Error: ' + err.message);
       hideStatus();
@@ -450,6 +450,29 @@ function setupEventSource(convId) {
     addChatMsg(data.role || 'assistant', data.content || '');
     hideStatus();
     setPending(false);
+  });
+
+  es.addEventListener('callback_run', (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    renderCallbackRun(data);
+    if (data.status === 'queued') {
+      showStatus(`Callback queued (${data.adapter})`);
+    } else if (data.status === 'running') {
+      showStatus(`Callback running (${data.adapter})`);
+    } else if (data.status === 'failed') {
+      hideStatus();
+      setPending(false);
+    } else if (data.status === 'succeeded') {
+      hideStatus();
+      setPending(false);
+    }
+  });
+
+  es.addEventListener('callback_log', (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    renderCallbackLog(data);
   });
 
   es.addEventListener('ping', () => {
@@ -637,6 +660,67 @@ function addChatMsg(role, content) {
   area.scrollTop = area.scrollHeight;
 }
 
+function renderCallbackRun(run) {
+  const shortId = (run.id || '').slice(0, 8);
+  const statusIcon = {
+    queued: 'queued',
+    running: 'running',
+    succeeded: 'succeeded',
+    failed: 'failed',
+  }[run.status] || run.status || 'unknown';
+  let content = `Callback ${statusIcon} [${shortId}] via ${run.adapter || 'adapter'}: ${run.intent || ''}`;
+  if (run.cwd && run.status === 'running') content += `\ncwd: ${run.cwd}`;
+  if (run.returncode !== undefined) content += `\nexit: ${run.returncode}`;
+  if (run.error) content += `\nerror: ${run.error}`;
+  if (run.stderr_tail && run.status === 'failed') content += `\nstderr: ${run.stderr_tail.slice(-500)}`;
+  addChatMsg('system', content);
+}
+
+function renderCallbackLog(log) {
+  const runId = (log.run_id || '').slice(0, 8);
+  const payload = log.payload;
+  let content = '';
+
+  if (payload && payload.type === 'thread.started') {
+    content = `Codex thread started [${runId}]: ${payload.thread_id || ''}`;
+  } else if (payload && payload.type === 'turn.started') {
+    content = `Codex turn started [${runId}]`;
+  } else if (payload && payload.type === 'turn.completed') {
+    const usage = payload.usage || {};
+    content = `Codex turn completed [${runId}]`;
+    if (usage.input_tokens) content += `\ninput tokens: ${usage.input_tokens}`;
+    if (usage.output_tokens !== undefined) content += `\noutput tokens: ${usage.output_tokens}`;
+  } else if (payload && payload.type === 'item.started') {
+    const item = payload.item || {};
+    if (item.type === 'command_execution') {
+      content = `Command started [${runId}]: ${item.command || ''}`;
+    } else {
+      content = `Codex item started [${runId}]: ${item.type || payload.type}`;
+    }
+  } else if (payload && payload.type === 'item.completed') {
+    const item = payload.item || {};
+    if (item.type === 'command_execution') {
+      content = `Command completed [${runId}]: ${item.command || ''}`;
+      if (item.exit_code !== undefined && item.exit_code !== null) content += `\nexit: ${item.exit_code}`;
+      if (item.aggregated_output) content += `\n${String(item.aggregated_output).slice(-700)}`;
+    } else if (item.type === 'agent_message') {
+      content = `Codex message [${runId}]: ${String(item.text || '').slice(0, 900)}`;
+    } else {
+      content = `Codex item completed [${runId}]: ${item.type || payload.type}`;
+    }
+  } else {
+    const raw = String(log.line || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return;
+    if (raw.includes('<html') || raw.length > 1000) {
+      content = `Codex ${log.stream || 'log'} [${runId}]: ${raw.slice(0, 300)}...`;
+    } else {
+      content = `Codex ${log.stream || 'log'} [${runId}]: ${raw.slice(0, 700)}`;
+    }
+  }
+
+  addChatMsg('system', content);
+}
+
 // ─── API Explorer helpers ────────────────────────────────────
 
 window.apiCall = async function(method, path, resultId) {
@@ -747,6 +831,16 @@ window.loadConv = async function(id) {
 
     // Show suggestions from the last generation/growth event
     renderSuggestions(lastSuggestions);
+
+    try {
+      const runsRes = await fetch(`/c/${id}/callback-runs`);
+      if (runsRes.ok) {
+        const runsData = await runsRes.json();
+        for (const run of (runsData.runs || []).slice(-5)) {
+          renderCallbackRun(run);
+        }
+      }
+    } catch {}
 
     // Render latest code if available
     if (conv.latest_code) {

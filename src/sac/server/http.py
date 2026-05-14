@@ -291,6 +291,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     # Pub/sub broker for /c/{id}/events SSE subscribers
     pubsub = _PubSub()
+    _callback_runs: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     def _get_user_id(request: Request) -> str:
         """Extract user ID from X-User-Id header, default to 'anonymous'."""
@@ -335,6 +336,71 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 "content": message,
             },
         )
+
+    def _utc_now() -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    def _new_callback_run(
+        conv_id: str,
+        *,
+        adapter: str,
+        intent: str,
+        callback_url: str,
+        context: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        run = {
+            "id": str(uuid.uuid4()),
+            "conversation_id": conv_id,
+            "adapter": adapter,
+            "intent": intent,
+            "context": context,
+            "callback_url": callback_url,
+            "status": "queued",
+            "created_at": _utc_now(),
+            "updated_at": _utc_now(),
+        }
+        _callback_runs[conv_id].append(run)
+        _callback_runs[conv_id] = _callback_runs[conv_id][-50:]
+        pubsub.publish(conv_id, "callback_run", run)
+        return run
+
+    def _update_callback_run(
+        conv_id: str,
+        run_id: str,
+        **updates: Any,
+    ) -> dict[str, Any] | None:
+        runs = _callback_runs.get(conv_id, [])
+        run = next((r for r in runs if r["id"] == run_id), None)
+        if run is None:
+            return None
+        run.update(updates)
+        run["updated_at"] = _utc_now()
+        if run.get("status") in {"succeeded", "failed"} and "completed_at" not in run:
+            run["completed_at"] = run["updated_at"]
+        pubsub.publish(conv_id, "callback_run", run)
+        return run
+
+    def _publish_callback_log(
+        conv_id: str,
+        run_id: str,
+        *,
+        stream: str,
+        line: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        entry = {
+            "run_id": run_id,
+            "stream": stream,
+            "line": line[:2000],
+            "payload": payload,
+            "timestamp": _utc_now(),
+        }
+        run = next((r for r in _callback_runs.get(conv_id, []) if r["id"] == run_id), None)
+        if run is not None:
+            logs = run.setdefault("logs", [])
+            logs.append(entry)
+            del logs[:-100]
+        pubsub.publish(conv_id, "callback_log", entry)
 
     def _resolve_codex_bin() -> str:
         configured = os.environ.get("SAC_CODEX_BIN", "").strip()
@@ -730,6 +796,15 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         elif fmt == "default" and callback_scheme in ("ws", "wss"):
             fmt = "openclaw_gateway"
 
+        callback_run = _new_callback_run(
+            conv_id,
+            adapter=fmt,
+            intent=req.intent,
+            callback_url=conv_data.callback_url,
+            context=req.context,
+        )
+        run_id = callback_run["id"]
+
         if fmt == "openclaw_gateway":
             # OpenClaw Gateway: send message via WebSocket RPC.
             # callback_url format: ws://host:port?session=<session_key>
@@ -759,13 +834,27 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             )
 
             try:
+                _update_callback_run(
+                    conv_id,
+                    run_id,
+                    status="running",
+                    target_session=session_key,
+                    transport="websocket",
+                )
                 await _openclaw_gateway_send(
                     ws_url=ws_url,
                     token=token,
                     session_key=session_key,
                     message=message,
                 )
+                _update_callback_run(
+                    conv_id,
+                    run_id,
+                    status="succeeded",
+                    detail="Message sent to OpenClaw gateway.",
+                )
             except Exception as e:
+                _update_callback_run(conv_id, run_id, status="failed", error=str(e))
                 raise HTTPException(
                     status_code=502,
                     detail=f"Failed to send to OpenClaw gateway ({ws_url}): {e}",
@@ -777,6 +866,12 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             # platform adapter, analogous to OpenClaw's gateway `sessions.send`.
             parsed = urlparse(conv_data.callback_url)
             if parsed.scheme != "codex" or parsed.netloc != "resume":
+                _update_callback_run(
+                    conv_id,
+                    run_id,
+                    status="failed",
+                    error="Invalid Codex callback_url.",
+                )
                 raise HTTPException(
                     status_code=400,
                     detail=(
@@ -788,6 +883,12 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             thread_id = (qs.get("thread") or qs.get("thread_id") or [""])[0].strip()
             cwd = _resolve_codex_cwd((qs.get("cwd") or [""])[0])
             if not thread_id:
+                _update_callback_run(
+                    conv_id,
+                    run_id,
+                    status="failed",
+                    error="Codex callback_url missing thread.",
+                )
                 raise HTTPException(
                     status_code=400,
                     detail="Codex callback_url must include thread=<thread_id>.",
@@ -823,22 +924,72 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 if cwd:
                     cmd.extend(["-C", cwd])
                 cmd.extend(["exec", "resume"])
+                cmd.append("--json")
                 if thread_id == "last":
                     cmd.append("--last")
                 else:
                     cmd.append(thread_id)
                 cmd.append(message)
+                command_preview = [*cmd[:-1], "<prompt>"]
 
                 try:
+                    _update_callback_run(
+                        conv_id,
+                        run_id,
+                        status="running",
+                        cwd=cwd,
+                        command=command_preview,
+                        thread_id=thread_id,
+                    )
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
-                    stdout, stderr = await proc.communicate()
+                    stdout_parts: list[str] = []
+                    stderr_parts: list[str] = []
+
+                    async def _read_lines(
+                        reader: asyncio.StreamReader | None,
+                        stream_name: str,
+                        sink: list[str],
+                    ) -> None:
+                        if reader is None:
+                            return
+                        while True:
+                            raw = await reader.readline()
+                            if not raw:
+                                break
+                            line = raw.decode(errors="replace").rstrip("\n")
+                            if not line:
+                                continue
+                            stored_line = line[:4000]
+                            sink.append(stored_line)
+                            del sink[:-100]
+                            payload = None
+                            stripped = stored_line.strip()
+                            if stripped.startswith("{"):
+                                try:
+                                    payload = json.loads(stripped)
+                                except json.JSONDecodeError:
+                                    payload = None
+                            _publish_callback_log(
+                                conv_id,
+                                run_id,
+                                stream=stream_name,
+                                line=stored_line,
+                                payload=payload,
+                            )
+
+                    await asyncio.gather(
+                        _read_lines(proc.stdout, "stdout", stdout_parts),
+                        _read_lines(proc.stderr, "stderr", stderr_parts),
+                    )
+                    await proc.wait()
+
+                    stdout_tail = "\n".join(stdout_parts)[-4000:]
+                    stderr_tail = "\n".join(stderr_parts)[-4000:]
                     if proc.returncode != 0:
-                        stdout_tail = stdout.decode(errors="replace")[-4000:]
-                        stderr_tail = stderr.decode(errors="replace")[-4000:]
                         print(
                             "codex_exec_resume failed",
                             {
@@ -849,12 +1000,37 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                             },
                         )
                         detail = stderr_tail or stdout_tail or f"exit code {proc.returncode}"
+                        _update_callback_run(
+                            conv_id,
+                            run_id,
+                            status="failed",
+                            returncode=proc.returncode,
+                            stdout_tail=stdout_tail,
+                            stderr_tail=stderr_tail,
+                            error=detail.strip()[:1200],
+                        )
                         _publish_callback_failure(
                             conv_id,
                             f"Codex callback failed ({detail.strip()[:1200]}).",
                         )
+                    else:
+                        _update_callback_run(
+                            conv_id,
+                            run_id,
+                            status="succeeded",
+                            returncode=proc.returncode,
+                            stdout_tail=stdout_tail,
+                            stderr_tail=stderr_tail,
+                        )
                 except FileNotFoundError:
                     print(f"codex_exec_resume failed: `{codex_bin}` command not found")
+                    _update_callback_run(
+                        conv_id,
+                        run_id,
+                        status="failed",
+                        command=command_preview,
+                        error="Codex CLI not found.",
+                    )
                     _publish_callback_failure(
                         conv_id,
                         (
@@ -864,6 +1040,13 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                     )
                 except Exception as exc:
                     print(f"codex_exec_resume failed: {exc}")
+                    _update_callback_run(
+                        conv_id,
+                        run_id,
+                        status="failed",
+                        command=command_preview,
+                        error=str(exc),
+                    )
                     _publish_callback_failure(
                         conv_id,
                         f"Codex callback failed: {exc}",
@@ -887,11 +1070,24 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 headers["Authorization"] = conv_data.callback_auth
             async with httpx.AsyncClient(timeout=10.0) as client:
                 try:
+                    _update_callback_run(
+                        conv_id,
+                        run_id,
+                        status="running",
+                        transport="http",
+                    )
                     response = await client.post(
                         conv_data.callback_url, json=payload, headers=headers
                     )
                     response.raise_for_status()
+                    _update_callback_run(
+                        conv_id,
+                        run_id,
+                        status="succeeded",
+                        status_code=response.status_code,
+                    )
                 except httpx.HTTPError as e:
+                    _update_callback_run(conv_id, run_id, status="failed", error=str(e))
                     raise HTTPException(
                         status_code=502,
                         detail=f"Failed to reach callback_url ({conv_data.callback_url}): {e}",
@@ -910,19 +1106,39 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 headers_default["Authorization"] = conv_data.callback_auth
             async with httpx.AsyncClient(timeout=10.0) as client:
                 try:
+                    _update_callback_run(
+                        conv_id,
+                        run_id,
+                        status="running",
+                        transport="http",
+                    )
                     response = await client.post(
                         conv_data.callback_url, json=payload_default, headers=headers_default
                     )
                     response.raise_for_status()
+                    _update_callback_run(
+                        conv_id,
+                        run_id,
+                        status="succeeded",
+                        status_code=response.status_code,
+                    )
                 except httpx.HTTPError as e:
+                    _update_callback_run(conv_id, run_id, status="failed", error=str(e))
                     raise HTTPException(
                         status_code=502,
                         detail=f"Failed to reach callback_url ({conv_data.callback_url}): {e}",
                     )
 
-        return {"ok": True, "callback_url": conv_data.callback_url}
+        return {"ok": True, "callback_url": conv_data.callback_url, "run_id": run_id}
 
     # ─── Conversation Management ─────────────────────────────────
+
+    @app.get("/c/{conv_id}/callback-runs")
+    async def conversation_callback_runs(conv_id: str) -> dict[str, Any]:
+        conv_data = await sac._store.get_conversation(conv_id)
+        if conv_data is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return {"runs": _callback_runs.get(conv_id, [])}
 
     @app.get("/conversations")
     async def list_conversations(request: Request) -> dict[str, Any]:
