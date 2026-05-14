@@ -21,6 +21,30 @@
   <style>
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
     #root { min-height: 100vh; }
+    .sac-render-error {
+      margin: 28px;
+      max-width: 760px;
+      border: 1px solid #fecaca;
+      border-radius: 12px;
+      background: #fff7f7;
+      color: #7f1d1d;
+      padding: 18px 20px;
+      box-shadow: 0 10px 30px rgba(127, 29, 29, 0.08);
+    }
+    .sac-render-error strong {
+      display: block;
+      margin-bottom: 6px;
+      color: #991b1b;
+      font-size: 15px;
+    }
+    .sac-render-error pre {
+      margin-top: 10px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #991b1b;
+      font-size: 13px;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
@@ -82,9 +106,11 @@
       }
       render() {
         if (this.state.error) {
-          return this._silent ? null : React.createElement('pre', {
-            style: { padding: '24px', color: 'red', whiteSpace: 'pre-wrap' }
-          }, 'Runtime error: ' + this.state.error.message);
+          return this._silent ? null : React.createElement('div', { className: 'sac-render-error' },
+            React.createElement('strong', null, 'Generated app hit a runtime error'),
+            React.createElement('div', null, 'SaC kept the conversation alive. Ask the agent to revise the app, or inspect the code tab.'),
+            React.createElement('pre', null, this.state.error.message)
+          );
         }
         return this.props.children;
       }
@@ -110,7 +136,7 @@
       } catch(e) {
         if (!silent) {
           window.parent.postMessage({ type: 'render-error', error: { message: e.message, type: 'transpile' } }, '*');
-          rootEl.innerHTML = '<pre style="padding:24px;color:red;white-space:pre-wrap;">Transpile error: ' + e.message + '</pre>';
+          showRenderError('Generated app could not be transpiled', e.message);
         }
         return;
       }
@@ -156,10 +182,27 @@
         if (appBlob) URL.revokeObjectURL(appBlob);
         if (!silent) {
           window.parent.postMessage({ type: 'render-error', error: { message: err.message, type: 'module-load', stack: err.stack || '' } }, '*');
-          rootEl.innerHTML = '<pre style="padding:24px;color:red;white-space:pre-wrap;">' + err.message + '</pre>';
+          showRenderError('Generated app could not load', err.message);
         }
       }
     };
+
+    function showRenderError(title, message) {
+      rootEl.innerHTML =
+        '<div class="sac-render-error">' +
+        '<strong>' + escapeHtml(title) + '</strong>' +
+        '<div>SaC kept the conversation alive. Ask the agent to revise the app, or inspect the code tab.</div>' +
+        '<pre>' + escapeHtml(message) + '</pre>' +
+        '</div>';
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
 
     // Signal that the module is ready
     window.__moduleReady = true;

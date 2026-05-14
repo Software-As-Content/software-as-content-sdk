@@ -6,19 +6,24 @@
 <title>SaC SDK Preview</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f4; color: #1c1917; }
-  .header { padding: 16px 24px; background: #fff; border-bottom: 1px solid #e7e5e4; display: flex; align-items: center; gap: 12px; }
-  .header h1 { font-size: 18px; font-weight: 600; }
-  .header .version { font-size: 12px; color: #78716c; background: #f5f5f4; padding: 2px 8px; border-radius: 4px; }
+  html, body { height: 100%; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f7f4; color: #1c1917; }
+  .header { height: 56px; padding: 0 22px; background: rgba(255,255,255,0.92); border-bottom: 1px solid #e7e5e4; display: flex; align-items: center; gap: 12px; backdrop-filter: blur(12px); }
+  .header h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .header .version { font-size: 12px; color: #78716c; background: #f5f5f4; padding: 3px 8px; border-radius: 999px; }
+  .health { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #78716c; }
+  .conv-info { margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12px; color:#78716c; }
+  .conv-info strong { color:#44403c; font-weight:600; }
+  .conv-pill { padding: 4px 9px; border: 1px solid #e7e5e4; border-radius: 999px; background:#fff; }
   .main { display: flex; height: calc(100vh - 57px); }
-  .sidebar { width: 420px; min-width: 420px; background: #fff; border-right: 1px solid #e7e5e4; display: flex; flex-direction: column; }
+  .sidebar { order: 2; width: 390px; min-width: 390px; background: rgba(255,255,255,0.9); border-left: 1px solid #e7e5e4; display: flex; flex-direction: column; box-shadow: -18px 0 50px rgba(28,25,23,0.04); }
 
   /* Input area */
-  .input-area { padding: 16px; border-bottom: 1px solid #e7e5e4; }
-  .input-area textarea { width: 100%; height: 60px; border: 1px solid #e7e5e4; border-radius: 8px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; }
+  .input-area { padding: 14px 16px 16px; border-top: 1px solid #e7e5e4; background:#fff; }
+  .input-area textarea { width: 100%; height: 68px; border: 1px solid #e7e5e4; border-radius: 14px; padding: 12px; font-size: 14px; resize: vertical; font-family: inherit; line-height:1.4; }
   .input-area textarea:focus { outline: none; border-color: #f97316; }
   .btn-row { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
-  .btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+  .btn { padding: 8px 16px; border-radius: 10px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
   .btn-primary { background: #f97316; color: #fff; }
   .btn-primary:hover { background: #ea580c; }
   .btn-primary:disabled { background: #d6d3d1; cursor: not-allowed; }
@@ -31,25 +36,26 @@
   .btn-ghost:hover { color: #44403c; }
 
   /* Status & suggestions */
-  .status { padding: 12px 16px; border-bottom: 1px solid #e7e5e4; font-size: 13px; color: #78716c; }
-  .suggestions { padding: 12px 16px; border-bottom: 1px solid #e7e5e4; }
+  .status { margin: 10px 16px 0; padding: 10px 12px; border: 1px solid #dbeafe; border-radius: 12px; background:#eff6ff; font-size: 13px; color: #1d4ed8; }
+  .suggestions { padding: 12px 16px; border-top: 1px solid #f5f5f4; background:#fff; }
   .suggestions h3 { font-size: 12px; font-weight: 500; color: #a8a29e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .suggestion-btn { display: block; width: 100%; text-align: left; padding: 8px 12px; margin-bottom: 4px; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; font-size: 13px; cursor: pointer; transition: all 0.15s; }
-  .suggestion-btn:hover { background: #fde68a; }
+  .suggestion-btn { display: block; width: 100%; text-align: left; padding: 10px 12px; margin-bottom: 7px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; color:#9a3412; }
+  .suggestion-btn:hover { background: #ffedd5; transform: translateY(-1px); }
 
   /* Chat messages */
   .chat-area { flex: 1; overflow: auto; padding: 16px; }
   .chat-msg { margin-bottom: 12px; max-width: 90%; }
   .chat-msg.user { margin-left: auto; }
   .chat-msg.assistant { margin-right: auto; }
-  .chat-bubble { padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.5; }
+  .chat-bubble { padding: 10px 13px; border-radius: 14px; font-size: 13px; line-height: 1.45; }
   .chat-msg.user .chat-bubble { background: #f97316; color: #fff; border-bottom-right-radius: 4px; }
   .chat-msg.assistant .chat-bubble { background: #f5f5f4; color: #1c1917; border-bottom-left-radius: 4px; }
-  .chat-msg.system .chat-bubble { background: #dbeafe; color: #1e40af; font-size: 12px; text-align: center; margin: 0 auto; border-radius: 8px; }
+  .chat-msg.system { max-width: 100%; }
+  .chat-msg.system .chat-bubble { background: #eff6ff; color: #1d4ed8; font-size: 12px; text-align: center; margin: 0 auto; border-radius: 999px; }
   .chat-msg-meta { font-size: 10px; color: #a8a29e; margin-top: 2px; padding: 0 4px; }
   .chat-msg.user .chat-msg-meta { text-align: right; }
-  .callback-card { margin-bottom: 12px; border: 1px solid #e7e5e4; border-radius: 10px; background: #fff; overflow: hidden; }
-  .callback-card-header { padding: 10px 12px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid #f5f5f4; }
+  .callback-card { margin-bottom: 12px; border: 1px solid #e7e5e4; border-radius: 16px; background: #fff; overflow: hidden; box-shadow: 0 12px 30px rgba(28,25,23,0.06); }
+  .callback-card-header { padding: 12px 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; border-bottom: 1px solid #f5f5f4; }
   .callback-card-title { font-size: 13px; font-weight: 600; color: #1c1917; }
   .callback-card-meta { margin-top: 2px; font-size: 11px; color: #78716c; line-height: 1.4; }
   .callback-status { flex: 0 0 auto; font-size: 11px; font-weight: 600; padding: 3px 7px; border-radius: 999px; text-transform: capitalize; }
@@ -57,7 +63,7 @@
   .callback-status.running { color: #1d4ed8; background: #dbeafe; }
   .callback-status.succeeded { color: #15803d; background: #dcfce7; }
   .callback-status.failed { color: #b91c1c; background: #fee2e2; }
-  .callback-events { padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .callback-events { padding: 10px 14px; display: flex; flex-direction: column; gap: 7px; }
   .callback-event { display: grid; grid-template-columns: 8px 1fr; gap: 8px; font-size: 12px; line-height: 1.4; color: #44403c; }
   .callback-event-dot { width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: #a8a29e; }
   .callback-event.warning .callback-event-dot,
@@ -72,17 +78,19 @@
   .callback-raw pre { margin-top: 6px; background: #1c1917; color: #e7e5e4; border-radius: 8px; padding: 8px; white-space: pre-wrap; word-break: break-word; max-height: 220px; overflow: auto; }
 
   /* Tabs */
-  .tab-bar { display: flex; border-bottom: 1px solid #e7e5e4; background: #fafaf9; }
-  .tab { padding: 8px 16px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; color: #78716c; transition: all 0.15s; }
+  .tab-bar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid #e7e5e4; background: #fafaf9; }
+  .tab { padding: 7px 10px; font-size: 13px; cursor: pointer; border-radius: 999px; color: #78716c; transition: all 0.15s; font-weight:600; }
   .tab:hover { color: #44403c; }
-  .tab.active { color: #f97316; border-bottom-color: #f97316; }
+  .tab.active { color: #1c1917; background:#fff; box-shadow: 0 1px 4px rgba(28,25,23,0.1); }
   .tab-content { flex: 1; overflow: auto; display: flex; flex-direction: column; }
   .hidden { display: none !important; }
 
   /* Preview */
-  .preview-area { flex: 1; background: #fff; }
+  .preview-area { order: 1; flex: 1; min-width: 0; background: #fff; position: relative; }
   .preview-area iframe { width: 100%; height: 100%; border: none; }
-  .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: #78716c; font-size: 15px; flex-direction: column; gap: 8px; }
+  .loading { display: flex; align-items: center; justify-content: center; height: 100%; color: #78716c; font-size: 15px; flex-direction: column; gap: 8px; background: radial-gradient(circle at 50% 35%, #fff7ed 0, #fff 34%, #f8f7f4 100%); }
+  .preview-notice { position:absolute; top:16px; left:16px; right:16px; z-index:4; border:1px solid #fecaca; background:#fff7f7; color:#991b1b; border-radius:14px; padding:12px 14px; box-shadow:0 14px 40px rgba(127,29,29,0.1); font-size:13px; line-height:1.45; }
+  .preview-notice strong { display:block; margin-bottom:3px; }
 
   /* API Explorer */
   .api-panel { padding: 16px; }
@@ -106,7 +114,7 @@
   .conv-card-actions { display: flex; gap: 4px; margin-top: 8px; }
   .input-sm { padding: 4px 8px; border: 1px solid #e7e5e4; border-radius: 6px; font-size: 13px; font-family: inherit; }
   .input-sm:focus { outline: none; border-color: #f97316; }
-  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
   .dot-green { background: #22c55e; }
   .dot-red { background: #ef4444; }
 </style>
@@ -116,17 +124,17 @@
 <div class="header">
   <h1>SaC SDK</h1>
   <span class="version" id="version-badge">v0.1.0</span>
-  <span id="health-dot" style="margin-left: 8px; font-size: 12px; color: #a8a29e;"></span>
-  <span id="conv-info" style="margin-left:auto; font-size:12px; color:#a8a29e;"></span>
+  <span id="health-dot" class="health"></span>
+  <span id="conv-info" class="conv-info"></span>
 </div>
 
 <div class="main">
   <div class="sidebar">
     <div class="tab-bar">
-      <div class="tab active" data-tab="chat">Chat</div>
+      <div class="tab active" data-tab="chat">Activity</div>
       <div class="tab" data-tab="code">Code</div>
       <div class="tab" data-tab="api">API</div>
-      <div class="tab" data-tab="conversations">Conversations</div>
+      <div class="tab" data-tab="conversations">History</div>
     </div>
 
     <!-- Chat tab -->
@@ -221,8 +229,9 @@
   <div class="preview-area">
     <div class="loading" id="placeholder">
       <span style="font-size:32px;">✦</span>
-      <span>Send a message to get started</span>
+      <span>The generated app appears here</span>
     </div>
+    <div class="preview-notice hidden" id="preview-notice"></div>
     <iframe id="preview" class="hidden"></iframe>
   </div>
 </div>
@@ -237,6 +246,7 @@ import { SaCRenderer } from '/renderer/sac-renderer.js';
 
 const iframe = document.getElementById('preview');
 const placeholder = document.getElementById('placeholder');
+const previewNotice = document.getElementById('preview-notice');
 let renderer = createRenderer();
 
 function createRenderer() {
@@ -244,9 +254,11 @@ function createRenderer() {
   r.on('render', () => {
     placeholder.classList.add('hidden');
     iframe.classList.remove('hidden');
+    hidePreviewNotice();
   });
   r.on('error', (err) => {
-    showStatus(`Render error (${err.type}): ${err.message}`);
+    showPreviewNotice('Generated app needs a revision', `${err.type || 'render'}: ${err.message || err}`);
+    showStatus('Render issue detected. The conversation is still active.');
   });
   r.on('action', ({ intent, context }) => {
     if (!conversationId || !intent) return;
@@ -314,6 +326,7 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
   callbackUrl = null;
   if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('conv-info').textContent = '';
+  hidePreviewNotice();
   document.getElementById('chat-area').innerHTML =
     '<div class="chat-msg system"><div class="chat-bubble">New conversation started.</div></div>';
   callbackCards.clear();
@@ -444,13 +457,12 @@ function setupEventSource(convId) {
       const { conversation } = await res.json();
       if (conversation && conversation.latest_code) {
         currentVersion = data.version || conversation.event_count || currentVersion;
-        document.getElementById('conv-info').textContent =
-          `v${currentVersion} | ${conversation.latest_code.length} chars`;
+        setConversationInfo(`Updated to v${currentVersion}`, `${conversation.latest_code.length} chars`);
         document.getElementById('code-display').textContent = conversation.latest_code;
         placeholder.classList.add('hidden');
         iframe.classList.remove('hidden');
         renderer.render(conversation.latest_code);
-        addChatMsg('system', `v${currentVersion} updated`);
+        addChatMsg('system', `Updated to v${currentVersion}`);
         hideStatus();
         setPending(false);
 
@@ -629,14 +641,13 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
       currentVersion = app.version;
 
       // Update header
-      document.getElementById('conv-info').textContent =
-        `v${currentVersion} | ${app.code.length} chars`;
+      setConversationInfo(`Generated v${currentVersion}`, `${app.code.length} chars`);
 
       // Update code display with clean code
       codeDisplay.textContent = app.code;
 
       // Show completion in chat
-      addChatMsg('system', `v${currentVersion} generated (${app.code.length} chars)`);
+      addChatMsg('system', `Generated v${currentVersion}`);
 
       // Show suggestions
       const suggestions = app.suggestions || [];
@@ -715,14 +726,22 @@ function renderCallbackRun(run) {
 function renderCallbackLog(log) {
   if (!log.run_id) return;
   const card = ensureCallbackCard({ id: log.run_id, adapter: 'codex_exec_resume', status: 'running' });
+  const label = log.label || `${log.stream || 'callback'} log`;
+  const detail = log.detail || '';
+  const isDiagnosticNoise =
+    label === 'stderr log' ||
+    log.kind === 'warning' ||
+    /ignoring interface\.|stream disconnected|manifest|loader/.test(detail);
+  if (isDiagnosticNoise) {
+    if (log.line || detail) appendCallbackRaw(log.run_id, label, log.line || detail);
+    return;
+  }
   const eventKey = `${log.timestamp || ''}:${log.kind || ''}:${log.label || ''}:${log.detail || ''}`;
   if (card.seen.has(eventKey)) return;
   card.seen.add(eventKey);
 
   const event = document.createElement('div');
   event.className = `callback-event ${escClass(log.kind || 'log')}`;
-  const label = log.label || `${log.stream || 'callback'} log`;
-  const detail = log.detail || '';
   event.innerHTML = `
     <span class="callback-event-dot"></span>
     <span>
@@ -731,7 +750,7 @@ function renderCallbackLog(log) {
     </span>`;
   card.eventsEl.appendChild(event);
 
-  while (card.eventsEl.children.length > 8) card.eventsEl.removeChild(card.eventsEl.firstChild);
+  while (card.eventsEl.children.length > 5) card.eventsEl.removeChild(card.eventsEl.firstChild);
   if (log.raw_visible && log.line) appendCallbackRaw(log.run_id, label, log.line);
   scrollChatToBottom();
 }
@@ -875,8 +894,7 @@ window.loadConv = async function(id) {
     currentVersion = conv.event_count;
     callbackUrl = conv.callback_url || null;  // determines routing mode
     setupEventSource(id);                      // subscribe to live updates
-    document.getElementById('conv-info').textContent = escHtml(conv.title || 'Untitled')
-      + (callbackUrl ? ' · agent-driven' : '');
+    setConversationInfo(conv.title || 'Untitled', callbackUrl ? 'agent-driven' : 'local');
 
     // Rebuild chat from events
     const chatArea = document.getElementById('chat-area');
@@ -917,6 +935,7 @@ window.loadConv = async function(id) {
       codeDisplay.style.color = '';
       placeholder.classList.add('hidden');
       iframe.classList.remove('hidden');
+      hidePreviewNotice();
       renderer.render(conv.latest_code);
     }
 
@@ -957,6 +976,7 @@ window.deleteConv = async function(id) {
       conversationId = null;
       currentVersion = 0;
       document.getElementById('conv-info').textContent = '';
+      hidePreviewNotice();
       document.getElementById('chat-area').innerHTML =
         '<div class="chat-msg system"><div class="chat-bubble">Conversation deleted.</div></div>';
       placeholder.classList.remove('hidden');
@@ -973,11 +993,30 @@ window.deleteConv = async function(id) {
 function showStatus(text) {
   const bar = document.getElementById('status-bar');
   bar.classList.remove('hidden');
-  bar.innerHTML = text;
+  bar.textContent = text;
 }
 
 function hideStatus() {
   document.getElementById('status-bar').classList.add('hidden');
+}
+
+function showPreviewNotice(title, detail) {
+  previewNotice.classList.remove('hidden');
+  previewNotice.innerHTML = `<strong>${escHtml(title)}</strong><span>${escHtml(detail)}</span>`;
+}
+
+function hidePreviewNotice() {
+  previewNotice.classList.add('hidden');
+  previewNotice.innerHTML = '';
+}
+
+function setConversationInfo(primary, secondary = '') {
+  const el = document.getElementById('conv-info');
+  if (!primary) {
+    el.textContent = '';
+    return;
+  }
+  el.innerHTML = `<strong>${escHtml(primary)}</strong>${secondary ? `<span class="conv-pill">${escHtml(secondary)}</span>` : ''}`;
 }
 
 function hideSuggestions() {

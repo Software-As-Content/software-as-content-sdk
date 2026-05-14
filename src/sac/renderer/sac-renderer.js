@@ -170,10 +170,39 @@ export class SaCRenderer {
       }
     }
 
+    processed = this._rewriteLucideImports(processed);
+
     // Rewrite @/components/ui/* and @/lib/utils imports
     return processed
       .replace(/from\s+["']@\/components\/ui\/[^"']+["']/g, 'from "__ui_shim__"')
       .replace(/from\s+["']@\/lib\/utils["']/g, 'from "__ui_shim__"');
+  }
+
+  _rewriteLucideImports(code) {
+    let importIndex = 0;
+    return code.replace(
+      /import\s*\{([\s\S]*?)\}\s*from\s*["']lucide-react["'];?/g,
+      (_match, specifiers) => {
+        const ns = `__SaCLucide${importIndex++}`;
+        const bindings = specifiers
+          .split(',')
+          .map((part) => part.trim())
+          .filter(Boolean)
+          .map((part) => {
+            const cleaned = part.replace(/^type\s+/, '').trim();
+            const aliasMatch = cleaned.match(/^([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)$/);
+            const exported = aliasMatch ? aliasMatch[1] : cleaned;
+            const local = aliasMatch ? aliasMatch[2] : cleaned;
+            if (!/^[A-Za-z_$][\w$]*$/.test(exported) || !/^[A-Za-z_$][\w$]*$/.test(local)) {
+              return '';
+            }
+            return `const ${local} = ${ns}.${exported} || ${ns}.ShieldCheck || ${ns}.Circle;`;
+          })
+          .filter(Boolean)
+          .join('\n');
+        return `import * as ${ns} from "lucide-react";\n${bindings}`;
+      }
+    );
   }
 
   _ensureIframe(onReady) {
