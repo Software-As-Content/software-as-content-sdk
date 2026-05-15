@@ -76,9 +76,6 @@ document.querySelectorAll('.tab').forEach(tab => {
 const sendBtn = document.getElementById('send-btn');
 const intentInput = document.getElementById('intent');
 const latestVersionBtn = document.getElementById('latest-version-btn');
-const railSummary = document.getElementById('rail-summary');
-const railSummaryTitle = document.getElementById('rail-summary-title');
-const railSummaryCount = document.getElementById('rail-summary-count');
 const codeDisplay = document.getElementById('code-display');
 const codeMeta = document.getElementById('code-meta');
 const copyCodeBtn = document.getElementById('copy-code-btn');
@@ -111,8 +108,7 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
   if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('conv-info').textContent = '';
   latestVersionBtn.classList.add('hidden');
-  updateRailSummary();
-  hidePreviewNotice();
+    hidePreviewNotice();
   document.getElementById('chat-area').innerHTML =
     '<div class="chat-msg system"><div class="chat-bubble">New conversation started.</div></div>';
   callbackCards.clear();
@@ -322,13 +318,13 @@ function renderSuggestions(suggestions) {
     return;
   }
   area.classList.remove('hidden');
-  document.querySelector('#suggestions-area h3').textContent = 'Next actions';
+  const label = document.querySelector('.suggestions-label');
+  if (label) label.textContent = 'Next actions';
   list.innerHTML = suggestions.map(s =>
-    `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
+    `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}" title="${escHtml(s.label)}">${escHtml(s.label)}</button>`
   ).join('');
   list.querySelectorAll('.suggestion-btn').forEach(b => {
     b.addEventListener('click', () => {
-      // Suggestion clicks go through the same routing as everything else.
       const intent = b.dataset.prompt;
       addChatMsg('user', intent);
       routeUserIntent(intent);
@@ -405,13 +401,11 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
       if (results.length > 0) {
         const area = document.getElementById('suggestions-area');
         const list = document.getElementById('suggestions-list');
+        const label = document.querySelector('.suggestions-label');
         area.classList.remove('hidden');
-        document.querySelector('#suggestions-area h3').textContent = 'Search Results';
+        if (label) label.textContent = 'Sources';
         list.innerHTML = results.map(r =>
-          `<div style="margin-bottom:6px;padding:8px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;">` +
-          `<strong>${escHtml(r.query)}</strong>` +
-          `<span style="margin-left:8px;color:#888;">${r.sources?.length || 0} sources</span>` +
-          `</div>`
+          `<span style="font-size:12px;color:#78716c;">${escHtml(r.query)} (${r.sources?.length || 0})</span>`
         ).join('');
       }
       break;
@@ -447,23 +441,7 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
       ensureVersionCard(version);
 
       // Show suggestions
-      const suggestions = app.suggestions || [];
-      if (suggestions.length > 0) {
-        const area = document.getElementById('suggestions-area');
-        const list = document.getElementById('suggestions-list');
-        area.classList.remove('hidden');
-        document.querySelector('#suggestions-area h3').textContent = 'Next actions';
-        list.innerHTML = suggestions.map(s =>
-          `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
-        ).join('');
-        list.querySelectorAll('.suggestion-btn').forEach(b => {
-          b.addEventListener('click', () => {
-            const intent = b.dataset.prompt;
-            addChatMsg('user', intent);
-            routeUserIntent(intent);
-          });
-        });
-      }
+      renderSuggestions(app.suggestions || []);
 
       const stages = (app.stages || []).map(s =>
         `${s.name}: ${s.duration ? s.duration.toFixed(1) + 's' : s.status}`
@@ -535,8 +513,7 @@ function applyAppVersion(version, opts = {}) {
   setConversationInfo(`Viewing v${version.version}`, compactText(version.title, 34));
   markActiveVersionCard(version.version);
   updateLatestButton();
-  updateRailSummary();
-  if (opts.announce) {
+    if (opts.announce) {
     addChatMsg('system', `App updated to v${version.version}`);
     flashStatus(`App updated to v${version.version}`, 'success');
     flashVersionCard(version.version);
@@ -569,8 +546,7 @@ function ensureVersionCard(version) {
   `;
   markActiveVersionCard(viewedVersion);
   updateLatestButton();
-  updateRailSummary();
-  scrollChatToBottom();
+    scrollChatToBottom();
 }
 
 function markActiveVersionCard(versionNumber) {
@@ -593,23 +569,6 @@ function updateLatestButton() {
   latestVersionBtn.classList.toggle('hidden', !latest || viewedVersion >= latest.version);
 }
 
-function updateRailSummary() {
-  const latest = getLatestVersion();
-  if (!latest) {
-    railSummary.classList.add('hidden');
-    railSummaryTitle.textContent = 'No app versions yet';
-    railSummaryCount.textContent = '0';
-    return;
-  }
-
-  const viewing = appVersions.find(v => v.version === viewedVersion) || latest;
-  railSummary.classList.remove('hidden');
-  railSummaryTitle.textContent =
-    viewing.version === latest.version
-      ? `Latest version: v${latest.version}`
-      : `Viewing v${viewing.version} of v${latest.version}`;
-  railSummaryCount.textContent = `v${latest.version}`;
-}
 
 function renderCallbackRun(run) {
   const shortId = (run.id || '').slice(0, 8);
@@ -926,8 +885,7 @@ window.deleteConv = async function(id) {
       appVersions = [];
       document.getElementById('conv-info').textContent = '';
       latestVersionBtn.classList.add('hidden');
-      updateRailSummary();
-      hidePreviewNotice();
+            hidePreviewNotice();
       document.getElementById('chat-area').innerHTML =
         '<div class="chat-msg system"><div class="chat-bubble">Conversation deleted.</div></div>';
       placeholder.classList.remove('hidden');

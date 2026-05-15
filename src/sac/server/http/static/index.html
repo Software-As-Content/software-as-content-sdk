@@ -21,29 +21,21 @@
     <div class="tab-bar">
       <div class="tab active" data-tab="chat">Activity</div>
       <div class="tab" data-tab="code">Code</div>
-      <div class="tab" data-tab="api">API</div>
       <div class="tab" data-tab="conversations">History</div>
     </div>
 
     <!-- Chat tab -->
     <div class="tab-content" id="tab-chat" style="display:flex;flex-direction:column;">
-      <div class="rail-summary hidden" id="rail-summary">
-        <div>
-          <div class="rail-summary-label">Evolution</div>
-          <div class="rail-summary-title" id="rail-summary-title">No app versions yet</div>
-        </div>
-        <div class="rail-summary-count" id="rail-summary-count">0</div>
-      </div>
       <div class="chat-area" id="chat-area">
         <div class="chat-msg system">
           <div class="chat-bubble">Send a message to start. I'll chat or generate UI based on your intent.</div>
         </div>
       </div>
+      <div class="status hidden" id="status-bar"></div>
       <div class="suggestions hidden" id="suggestions-area">
-        <h3>Next actions</h3>
+        <span class="suggestions-label">Next actions</span>
         <div id="suggestions-list"></div>
       </div>
-      <div class="status hidden" id="status-bar"></div>
       <div class="input-area">
         <textarea id="intent" placeholder="Say anything — chat or describe a UI to generate..."></textarea>
         <div class="btn-row">
@@ -65,7 +57,7 @@
       <pre id="code-display" class="code-display">Generate something to see the code here.</pre>
     </div>
 
-    <!-- API Explorer tab -->
+    <!-- API Explorer tab (hidden from tab bar, accessible programmatically) -->
     <div class="tab-content hidden" id="tab-api">
       <div class="api-panel">
         <div class="api-section">

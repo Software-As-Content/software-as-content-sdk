@@ -35,13 +35,11 @@
   .status-running { border-color: #fed7aa; background: #fff7ed; color: #9a3412; }
   .status-success { border-color: #bbf7d0; background: #f0fdf4; color: #15803d; }
   .status-error { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
-  .rail-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #e7e5e4; background: linear-gradient(180deg, #fff 0%, #fafaf9 100%); }
-  .rail-summary-label { color: #a8a29e; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
-  .rail-summary-title { max-width: 320px; margin-top: 3px; color: #44403c; font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rail-summary-count { flex: 0 0 auto; min-width: 44px; height: 44px; padding: 0 10px; border-radius: 999px; display: flex; align-items: center; justify-content: center; border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; font-size: 14px; font-weight: 800; }
-  .suggestions { padding: 12px 16px; border-top: 1px solid #f5f5f4; background:#fff; }
-  .suggestions h3 { font-size: 12px; font-weight: 500; color: #a8a29e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .suggestion-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; margin-bottom: 7px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; color:#9a3412; }
+  .suggestions { padding: 8px 12px 9px; border-top: 1px solid #f5f5f4; background:#fff; }
+  .suggestions-label { display: block; margin-bottom: 6px; color: #a8a29e; font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+  #suggestions-list { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  #suggestions-list::-webkit-scrollbar { display: none; }
+  .suggestion-btn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; max-width: 260px; padding: 7px 10px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 999px; color:#9a3412; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .suggestion-btn::after { content: "→"; flex: 0 0 auto; color: #c2410c; opacity: 0.55; }
   .suggestion-btn:hover { background: #ffedd5; transform: translateY(-1px); }
 
