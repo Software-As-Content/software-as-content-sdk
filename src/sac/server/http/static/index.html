@@ -20,8 +20,8 @@
   <div class="sidebar">
     <div class="tab-bar">
       <div class="tab active" data-tab="chat">Activity</div>
-      <div class="tab" data-tab="code">Code</div>
       <div class="tab" data-tab="conversations">History</div>
+      <div class="tab" data-tab="code">Code</div>
     </div>
 
     <!-- Chat tab -->
@@ -52,7 +52,10 @@
           <div class="code-toolbar-title">Generated code</div>
           <div class="code-toolbar-meta" id="code-meta">No app version selected</div>
         </div>
-        <button class="btn btn-secondary btn-sm" id="copy-code-btn" type="button">Copy</button>
+        <div class="code-toolbar-actions">
+          <button class="btn btn-secondary btn-sm" id="expand-code-btn" type="button" title="Toggle fullscreen">⤢ Expand</button>
+          <button class="btn btn-secondary btn-sm" id="copy-code-btn" type="button">Copy</button>
+        </div>
       </div>
       <pre id="code-display" class="code-display">Generate something to see the code here.</pre>
     </div>

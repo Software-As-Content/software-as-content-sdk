@@ -52,6 +52,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.remove('hidden');
+    if (tab.dataset.tab !== 'code') setCodeFullscreen(false);
     if (tab.dataset.tab === 'conversations') loadConversations();
   });
 });
@@ -79,6 +80,19 @@ const latestVersionBtn = document.getElementById('latest-version-btn');
 const codeDisplay = document.getElementById('code-display');
 const codeMeta = document.getElementById('code-meta');
 const copyCodeBtn = document.getElementById('copy-code-btn');
+const expandCodeBtn = document.getElementById('expand-code-btn');
+const tabCode = document.getElementById('tab-code');
+
+function setCodeFullscreen(on) {
+  tabCode.classList.toggle('fullscreen', on);
+  expandCodeBtn.textContent = on ? '⤡ Collapse' : '⤢ Expand';
+}
+expandCodeBtn.addEventListener('click', () => {
+  setCodeFullscreen(!tabCode.classList.contains('fullscreen'));
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && tabCode.classList.contains('fullscreen')) setCodeFullscreen(false);
+});
 
 sendBtn.addEventListener('click', () => handleSend());
 intentInput.addEventListener('keydown', (e) => {

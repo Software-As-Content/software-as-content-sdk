@@ -662,7 +662,11 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             ".js": "application/javascript",
             ".css": "text/css",
         }
-        return FileResponse(file, media_type=media_types.get(suffix, "application/octet-stream"))
+        return FileResponse(
+            file,
+            media_type=media_types.get(suffix, "application/octet-stream"),
+            headers={"Cache-Control": "no-cache"},
+        )
 
     @app.get("/renderer/{path:path}")
     async def serve_renderer(path: str):
@@ -676,7 +680,11 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             ".md": "text/markdown",
             ".css": "text/css",
         }
-        return FileResponse(file, media_type=media_types.get(suffix, "application/octet-stream"))
+        return FileResponse(
+            file,
+            media_type=media_types.get(suffix, "application/octet-stream"),
+            headers={"Cache-Control": "no-cache"},
+        )
 
     return app
 

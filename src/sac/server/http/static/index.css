@@ -11,7 +11,7 @@
   .latest-btn { flex: 0 0 auto; border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; border-radius: 999px; padding: 6px 11px; font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.15s, transform 0.15s; }
   .latest-btn:hover { background: #ffedd5; transform: translateY(-1px); }
   .main { display: flex; height: calc(100vh - 57px); }
-  .sidebar { order: 2; flex: 0 0 clamp(360px, 32vw, 520px); background: rgba(255,255,255,0.94); border-left: 1px solid #e7e5e4; display: flex; flex-direction: column; box-shadow: -18px 0 50px rgba(28,25,23,0.04); }
+  .sidebar { order: 2; flex: 0 0 clamp(360px, 32vw, 520px); min-width: 0; background: rgba(255,255,255,0.94); border-left: 1px solid #e7e5e4; display: flex; flex-direction: column; box-shadow: -18px 0 50px rgba(28,25,23,0.04); }
 
   /* Input area */
   .input-area { padding: 14px 16px 16px; border-top: 1px solid #e7e5e4; background:#fff; }
@@ -124,17 +124,20 @@
 
   /* Tabs */
   .tab-bar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid #e7e5e4; background: #fafaf9; }
-  .tab { padding: 7px 10px; font-size: 13px; cursor: pointer; border-radius: 999px; color: #78716c; transition: all 0.15s; font-weight:600; }
+  .tab { flex: 1; text-align: center; padding: 7px 10px; font-size: 13px; cursor: pointer; border-radius: 999px; color: #78716c; transition: all 0.15s; font-weight:600; }
   .tab:hover { color: #44403c; }
   .tab.active { color: #1c1917; background:#fff; box-shadow: 0 1px 4px rgba(28,25,23,0.1); }
-  .tab-content { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+  .tab-content { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; }
   .hidden { display: none !important; }
 
   /* Code view */
   .code-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #e7e5e4; background: #fff; }
   .code-toolbar-title { color: #1c1917; font-size: 13px; font-weight: 800; }
   .code-toolbar-meta { margin-top: 2px; color: #a8a29e; font-size: 11px; }
+  .code-toolbar-actions { display: flex; gap: 8px; flex: 0 0 auto; }
   .code-display { flex: 1; margin: 0; padding: 16px; background: #fafaf9; color: #44403c; font-size: 12px; line-height: 1.5; overflow: auto; }
+  #tab-code.fullscreen { position: fixed; inset: 0; z-index: 200; background: #fff; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.04); }
+  #tab-code.fullscreen .code-display { font-size: 13px; padding: 20px 28px; }
 
   /* Preview */
   .preview-area { order: 1; flex: 1; min-width: 0; background: #fff; position: relative; }
