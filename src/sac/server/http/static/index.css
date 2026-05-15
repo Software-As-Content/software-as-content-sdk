@@ -43,10 +43,14 @@
   .suggestion-btn::after { content: "→"; flex: 0 0 auto; color: #c2410c; opacity: 0.55; }
   .suggestion-btn:hover { background: #ffedd5; transform: translateY(-1px); }
 
-  /* Chat messages */
-  .chat-area { flex: 1; overflow: auto; padding: 16px 16px 20px; background: linear-gradient(180deg, #fff 0%, #fff 72%, #fafaf9 100%); }
+  /* Chat messages & timeline */
+  .chat-area { flex: 1; overflow: auto; padding: 16px 16px 20px 32px; position: relative;
+    background:
+      linear-gradient(#e7e5e4, #e7e5e4) 14px 0 / 2px 100% no-repeat local,
+      linear-gradient(180deg, #fff 0%, #fff 72%, #fafaf9 100%); }
   .chat-msg { margin-bottom: 12px; max-width: 92%; }
-  .chat-msg.user { max-width: 100%; margin-left: 0; }
+  .chat-msg.user { max-width: 100%; margin-left: 0; position: relative; }
+  .chat-msg.user::after { content: ""; position: absolute; left: -22px; top: 24px; width: 10px; height: 10px; border-radius: 50%; background: #f97316; box-shadow: 0 0 0 3px #fff; z-index: 1; }
   .chat-msg.user::before,
   .chat-msg.assistant::before {
     display: block;
@@ -67,7 +71,8 @@
   .chat-msg.system .chat-bubble { background: #eff6ff; color: #1d4ed8; font-size: 12px; text-align: center; margin: 0 auto; border-radius: 999px; box-shadow: none; font-weight: 600; }
   .chat-msg-meta { font-size: 10px; color: #a8a29e; margin-top: 2px; padding: 0 4px; }
   .chat-msg.user .chat-msg-meta { text-align: right; }
-  .version-card { width: 100%; margin: 12px 0; border: 1px solid #e7e5e4; border-radius: 16px; background: #fff; padding: 12px 14px; text-align: left; cursor: pointer; box-shadow: 0 8px 24px rgba(28,25,23,0.05); transition: border-color 0.15s, background 0.15s, transform 0.15s; }
+  .version-card { width: 100%; margin: 12px 0; border: 1px solid #e7e5e4; border-radius: 16px; background: #fff; padding: 12px 14px; text-align: left; cursor: pointer; box-shadow: 0 8px 24px rgba(28,25,23,0.05); transition: border-color 0.15s, background 0.15s, transform 0.15s; position: relative; }
+  .version-card::before { content: ""; position: absolute; left: -22px; top: 18px; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px #fff; z-index: 1; }
   .version-card:not(.active) { padding: 10px 12px; box-shadow: none; }
   .version-card:hover { border-color: #fed7aa; background: #fff7ed; transform: translateY(-1px); }
   .version-card.active { border-color: #f97316; background: #fff7ed; box-shadow: 0 12px 28px rgba(249,115,22,0.12); }
