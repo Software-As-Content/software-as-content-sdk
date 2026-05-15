@@ -39,6 +39,8 @@ let currentVersion = 0;
 let callbackUrl = null;       // null = standalone mode; set = external-agent mode
 let eventSource = null;        // SSE subscription to /c/{id}/events
 let pendingAction = false;     // true while waiting for agent/stream response
+let appVersions = [];          // successful generation/growth events with code snapshots
+let viewedVersion = 0;         // version currently shown in the iframe
 const callbackCards = new Map(); // run_id -> { el, eventsEl, rawEl, seen }
 
 // ─── Tab switching ───────────────────────────────────────────
@@ -81,6 +83,8 @@ intentInput.addEventListener('keydown', (e) => {
 document.getElementById('new-conv-btn').addEventListener('click', () => {
   conversationId = null;
   currentVersion = 0;
+  viewedVersion = 0;
+  appVersions = [];
   callbackUrl = null;
   if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('conv-info').textContent = '';
@@ -212,22 +216,26 @@ function setupEventSource(convId) {
     // New App version pushed by an agent — fetch latest code and re-render.
     try {
       const res = await fetch('/conversations/' + convId);
-      const { conversation } = await res.json();
+      const { conversation, events = [] } = await res.json();
       if (conversation && conversation.latest_code) {
-        currentVersion = data.version || conversation.event_count || currentVersion;
-        setConversationInfo(`Updated to v${currentVersion}`, `${conversation.latest_code.length} chars`);
-        document.getElementById('code-display').textContent = conversation.latest_code;
-        placeholder.classList.add('hidden');
-        iframe.classList.remove('hidden');
-        renderer.render(conversation.latest_code);
-        addChatMsg('system', `Updated to v${currentVersion}`);
+        appVersions = extractAppVersions(events);
+        const latest = appVersions[appVersions.length - 1];
+        currentVersion = latest?.version || data.version || currentVersion;
+        if (latest) {
+          ensureVersionCard(latest);
+          applyAppVersion(latest, { announce: true });
+        } else {
+          setConversationInfo(`Updated to v${currentVersion}`, `${conversation.latest_code.length} chars`);
+          document.getElementById('code-display').textContent = conversation.latest_code;
+          placeholder.classList.add('hidden');
+          iframe.classList.remove('hidden');
+          renderer.render(conversation.latest_code);
+          addChatMsg('system', `Updated to v${currentVersion}`);
+        }
         hideStatus();
         setPending(false);
 
         // Refresh suggestions from the latest event
-        const evRes = await fetch('/conversations/' + convId);
-        const evData = await evRes.json();
-        const events = evData.events || [];
         const last = [...events].reverse().find(
           (ev) => (ev.type === 'generation' || ev.type === 'growth') && ev.status === 'success'
         );
@@ -397,15 +405,20 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
       const app = data.app;
       if (data.conversation_id) conversationId = data.conversation_id;
       currentVersion = app.version;
+      const version = {
+        version: app.version,
+        title: app.intent || `Version ${app.version}`,
+        code: app.code,
+        kind: app.parent_version ? 'evolved' : 'generated',
+        createdAt: app.created_at,
+      };
+      upsertAppVersion(version);
 
       // Update header
-      setConversationInfo(`Generated v${currentVersion}`, `${app.code.length} chars`);
-
-      // Update code display with clean code
-      codeDisplay.textContent = app.code;
+      applyAppVersion(version);
 
       // Show completion in chat
-      addChatMsg('system', `Generated v${currentVersion}`);
+      ensureVersionCard(version);
 
       // Show suggestions
       const suggestions = app.suggestions || [];
@@ -452,6 +465,75 @@ function addChatMsg(role, content) {
   msg.innerHTML = `<div class="chat-bubble">${escHtml(content)}</div>`;
   area.appendChild(msg);
   scrollChatToBottom();
+}
+
+function extractAppVersions(events) {
+  const versions = [];
+  for (const event of events || []) {
+    if ((event.type === 'generation' || event.type === 'growth') && event.status === 'success' && event.code) {
+      versions.push({
+        version: versions.length + 1,
+        title: event.intent || `Version ${versions.length + 1}`,
+        code: event.code,
+        kind: event.type === 'generation' ? 'generated' : 'evolved',
+        createdAt: event.timestamp,
+        suggestions: event.intent_suggestions || [],
+      });
+    }
+  }
+  return versions;
+}
+
+function upsertAppVersion(version) {
+  const index = appVersions.findIndex(v => v.version === version.version);
+  if (index >= 0) {
+    appVersions[index] = version;
+  } else {
+    appVersions.push(version);
+  }
+}
+
+function applyAppVersion(version, opts = {}) {
+  if (!version || !version.code) return;
+  viewedVersion = version.version;
+  document.getElementById('code-display').textContent = version.code;
+  placeholder.classList.add('hidden');
+  iframe.classList.remove('hidden');
+  hidePreviewNotice();
+  renderer.render(version.code);
+  setConversationInfo(`Viewing v${version.version}`, compactText(version.title, 34));
+  markActiveVersionCard(version.version);
+  if (opts.announce) addChatMsg('system', `App updated to v${version.version}`);
+}
+
+function ensureVersionCard(version) {
+  const area = document.getElementById('chat-area');
+  const id = `version-card-${version.version}`;
+  let button = document.getElementById(id);
+  if (!button) {
+    button = document.createElement('button');
+    button.id = id;
+    button.type = 'button';
+    button.className = 'version-card';
+    button.addEventListener('click', () => applyAppVersion(version));
+    area.appendChild(button);
+  }
+  button.innerHTML = `
+    <span class="version-card-top">
+      <span class="version-card-badge">v${version.version}</span>
+      <span class="version-card-kind">${escHtml(version.kind || 'version')}</span>
+    </span>
+    <span class="version-card-title">${escHtml(version.title || `Version ${version.version}`)}</span>
+    <span class="version-card-meta">${version.createdAt ? escHtml(formatTime(version.createdAt)) : `${version.code.length} chars`}</span>
+  `;
+  markActiveVersionCard(viewedVersion);
+  scrollChatToBottom();
+}
+
+function markActiveVersionCard(versionNumber) {
+  document.querySelectorAll('.version-card').forEach(card => {
+    card.classList.toggle('active', card.id === `version-card-${versionNumber}`);
+  });
 }
 
 function renderCallbackRun(run) {
@@ -653,6 +735,8 @@ window.loadConv = async function(id) {
     callbackUrl = conv.callback_url || null;  // determines routing mode
     setupEventSource(id);                      // subscribe to live updates
     setConversationInfo(conv.title || 'Untitled', callbackUrl ? 'agent-driven' : 'local');
+    appVersions = extractAppVersions(events);
+    viewedVersion = appVersions[appVersions.length - 1]?.version || 0;
 
     // Rebuild chat from events
     const chatArea = document.getElementById('chat-area');
@@ -664,11 +748,12 @@ window.loadConv = async function(id) {
       if (evt.type === 'message') {
         addChatMsg(evt.role, evt.content);
       } else if (evt.type === 'generation' && evt.status === 'success') {
-        const ver = events.filter(e => (e.type === 'generation' || e.type === 'growth') && e.status === 'success').indexOf(evt) + 1;
-        addChatMsg('system', `v${ver} generated`);
+        const version = appVersions.find(v => v.code === evt.code);
+        if (version) ensureVersionCard(version);
         if (evt.intent_suggestions?.length) lastSuggestions = evt.intent_suggestions;
       } else if (evt.type === 'growth' && evt.status === 'success') {
-        addChatMsg('system', `Evolved`);
+        const version = appVersions.find(v => v.code === evt.code);
+        if (version) ensureVersionCard(version);
         if (evt.intent_suggestions?.length) lastSuggestions = evt.intent_suggestions;
       }
     }
@@ -687,14 +772,17 @@ window.loadConv = async function(id) {
     } catch {}
 
     // Render latest code if available
-    if (conv.latest_code) {
-      const codeDisplay = document.getElementById('code-display');
-      codeDisplay.textContent = conv.latest_code;
-      codeDisplay.style.color = '';
-      placeholder.classList.add('hidden');
-      iframe.classList.remove('hidden');
-      hidePreviewNotice();
-      renderer.render(conv.latest_code);
+    const latestVersion = appVersions[appVersions.length - 1];
+    if (latestVersion) {
+      applyAppVersion(latestVersion);
+    } else if (conv.latest_code) {
+      const fallbackVersion = {
+        version: currentVersion || 1,
+        title: conv.latest_intent || conv.title || 'Latest version',
+        code: conv.latest_code,
+        kind: 'latest',
+      };
+      applyAppVersion(fallbackVersion);
     }
 
     // Switch to chat tab
@@ -733,6 +821,8 @@ window.deleteConv = async function(id) {
     if (conversationId === id) {
       conversationId = null;
       currentVersion = 0;
+      viewedVersion = 0;
+      appVersions = [];
       document.getElementById('conv-info').textContent = '';
       hidePreviewNotice();
       document.getElementById('chat-area').innerHTML =
@@ -803,6 +893,17 @@ function escClass(s) {
 function compactText(s, max = 500) {
   const text = String(s || '').replace(/\s+/g, ' ').trim();
   return text.length > max ? text.slice(0, max - 1) + '...' : text;
+}
+
+function formatTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function adapterLabel(adapter) {
