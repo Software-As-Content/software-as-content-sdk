@@ -16,7 +16,7 @@ function createRenderer() {
   });
   r.on('error', (err) => {
     showPreviewNotice('Generated app needs a revision', `${err.type || 'render'}: ${err.message || err}`);
-    showStatus('Render issue detected. The conversation is still active.');
+    showStatus('Render issue detected. The conversation is still active.', 'error');
   });
   r.on('action', ({ intent, context }) => {
     if (!conversationId || !intent) return;
@@ -41,6 +41,7 @@ let eventSource = null;        // SSE subscription to /c/{id}/events
 let pendingAction = false;     // true while waiting for agent/stream response
 let appVersions = [];          // successful generation/growth events with code snapshots
 let viewedVersion = 0;         // version currently shown in the iframe
+let statusTimer = null;
 const callbackCards = new Map(); // run_id -> { el, eventsEl, rawEl, seen }
 
 // ─── Tab switching ───────────────────────────────────────────
@@ -75,6 +76,12 @@ document.querySelectorAll('.tab').forEach(tab => {
 const sendBtn = document.getElementById('send-btn');
 const intentInput = document.getElementById('intent');
 const latestVersionBtn = document.getElementById('latest-version-btn');
+const railSummary = document.getElementById('rail-summary');
+const railSummaryTitle = document.getElementById('rail-summary-title');
+const railSummaryCount = document.getElementById('rail-summary-count');
+const codeDisplay = document.getElementById('code-display');
+const codeMeta = document.getElementById('code-meta');
+const copyCodeBtn = document.getElementById('copy-code-btn');
 
 sendBtn.addEventListener('click', () => handleSend());
 intentInput.addEventListener('keydown', (e) => {
@@ -83,6 +90,16 @@ intentInput.addEventListener('keydown', (e) => {
 latestVersionBtn.addEventListener('click', () => {
   const latest = getLatestVersion();
   if (latest) applyAppVersion(latest);
+});
+copyCodeBtn.addEventListener('click', async () => {
+  const code = codeDisplay.textContent || '';
+  if (!code.trim()) return;
+  try {
+    await navigator.clipboard.writeText(code);
+    flashStatus('Code copied', 'success', 1200);
+  } catch {
+    flashStatus('Copy failed', 'error', 1800);
+  }
 });
 
 document.getElementById('new-conv-btn').addEventListener('click', () => {
@@ -94,6 +111,7 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
   if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('conv-info').textContent = '';
   latestVersionBtn.classList.add('hidden');
+  updateRailSummary();
   hidePreviewNotice();
   document.getElementById('chat-area').innerHTML =
     '<div class="chat-msg system"><div class="chat-bubble">New conversation started.</div></div>';
@@ -103,7 +121,8 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
   resetRenderer();
   hideSuggestions();
   hideStatus();
-  document.getElementById('code-display').textContent = '';
+  codeDisplay.textContent = '';
+  codeMeta.textContent = 'No app version selected';
 });
 
 async function handleSend() {
@@ -118,7 +137,7 @@ async function handleSend() {
   // to /inbox; SSE delivers it. No local streamGenerate path.
   // pendingAction stays true — cleared when SSE delivers version/chat event.
   if (callbackUrl && conversationId) {
-    showStatus('Sent to agent, waiting...');
+    showStatus('Sent to agent, waiting...', 'running');
     try {
       const res = await fetch(`/c/${conversationId}/action`, {
         method: 'POST',
@@ -141,7 +160,7 @@ async function handleSend() {
   }
 
   // Standalone mode (no callback registered): legacy classify + local stream
-  showStatus('Thinking...');
+  showStatus('Thinking...', 'running');
   try {
     const res = await fetch('/send', {
       method: 'POST',
@@ -179,7 +198,7 @@ async function routeUserIntent(intent, context = null) {
   setPending(true);
 
   if (callbackUrl) {
-    showStatus('Sent to agent, waiting...');
+    showStatus('Sent to agent, waiting...', 'running');
     try {
       const res = await fetch(`/c/${conversationId}/action`, {
         method: 'POST',
@@ -232,13 +251,14 @@ function setupEventSource(convId) {
           applyAppVersion(latest, { announce: true });
         } else {
           setConversationInfo(`Updated to v${currentVersion}`, `${conversation.latest_code.length} chars`);
-          document.getElementById('code-display').textContent = conversation.latest_code;
+          codeDisplay.textContent = conversation.latest_code;
+          codeMeta.textContent = `Updated to v${currentVersion} · ${formatCodeSize(conversation.latest_code)}`;
           placeholder.classList.add('hidden');
           iframe.classList.remove('hidden');
           renderer.render(conversation.latest_code);
           addChatMsg('system', `Updated to v${currentVersion}`);
+          flashStatus(`App updated to v${currentVersion}`, 'success');
         }
-        hideStatus();
         setPending(false);
 
         // Refresh suggestions from the latest event
@@ -266,14 +286,14 @@ function setupEventSource(convId) {
     try { data = JSON.parse(e.data); } catch { return; }
     renderCallbackRun(data);
     if (data.status === 'queued') {
-      showStatus(`Callback queued (${data.adapter})`);
+      showStatus(`Callback queued (${adapterLabel(data.adapter)})`, 'running');
     } else if (data.status === 'running') {
-      showStatus(`Callback running (${data.adapter})`);
+      showStatus(`Callback running (${adapterLabel(data.adapter)})`, 'running');
     } else if (data.status === 'failed') {
-      hideStatus();
+      showStatus(`Callback failed (${adapterLabel(data.adapter)})`, 'error');
       setPending(false);
     } else if (data.status === 'succeeded') {
-      hideStatus();
+      flashStatus(`Callback completed (${adapterLabel(data.adapter)})`, 'success');
       setPending(false);
     }
   });
@@ -302,7 +322,7 @@ function renderSuggestions(suggestions) {
     return;
   }
   area.classList.remove('hidden');
-  document.querySelector('#suggestions-area h3').textContent = 'Suggestions';
+  document.querySelector('#suggestions-area h3').textContent = 'Next actions';
   list.innerHTML = suggestions.map(s =>
     `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
   ).join('');
@@ -319,11 +339,11 @@ function renderSuggestions(suggestions) {
 // ─── Streaming generation (POST-based SSE) ───────────────────
 
 async function streamGenerate(body) {
-  showStatus('Generating...');
+  showStatus('Generating...', 'running');
 
-  const codeDisplay = document.getElementById('code-display');
   codeDisplay.textContent = '';
   codeDisplay.style.color = '';
+  codeMeta.textContent = 'Streaming generated code...';
 
   placeholder.classList.add('hidden');
   iframe.classList.remove('hidden');
@@ -365,7 +385,7 @@ async function streamGenerate(body) {
       }
     }
   } catch (err) {
-    showStatus('Connection error: ' + err.message);
+    showStatus('Connection error: ' + err.message, 'error');
     stream.abort();
     setPending(false);
   }
@@ -377,7 +397,7 @@ let fenceState = { started: false, firstLine: true };
 function handleSSEEvent(eventType, data, stream, codeDisplay) {
   switch (eventType) {
     case 'stage':
-      showStatus(`${data.name}: ${data.status}`);
+      showStatus(`${data.name}: ${data.status}`, 'running');
       break;
 
     case 'search': {
@@ -432,7 +452,7 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
         const area = document.getElementById('suggestions-area');
         const list = document.getElementById('suggestions-list');
         area.classList.remove('hidden');
-        document.querySelector('#suggestions-area h3').textContent = 'Suggestions';
+        document.querySelector('#suggestions-area h3').textContent = 'Next actions';
         list.innerHTML = suggestions.map(s =>
           `<button class="suggestion-btn" data-prompt="${escHtml(s.prompt)}">${escHtml(s.label)}</button>`
         ).join('');
@@ -448,13 +468,13 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
       const stages = (app.stages || []).map(s =>
         `${s.name}: ${s.duration ? s.duration.toFixed(1) + 's' : s.status}`
       ).join(' → ');
-      showStatus(stages);
+      flashStatus(stages || `App updated to v${version.version}`, 'success');
       setPending(false);
       break;
     }
 
     case 'error':
-      showStatus('Error: ' + data.error);
+      showStatus('Error: ' + data.error, 'error');
       addChatMsg('system', 'Error: ' + data.error);
       stream.abort();
       setPending(false);
@@ -506,7 +526,8 @@ function getLatestVersion() {
 function applyAppVersion(version, opts = {}) {
   if (!version || !version.code) return;
   viewedVersion = version.version;
-  document.getElementById('code-display').textContent = version.code;
+  codeDisplay.textContent = version.code;
+  codeMeta.textContent = `v${version.version} · ${formatCodeSize(version.code)}`;
   placeholder.classList.add('hidden');
   iframe.classList.remove('hidden');
   hidePreviewNotice();
@@ -514,7 +535,12 @@ function applyAppVersion(version, opts = {}) {
   setConversationInfo(`Viewing v${version.version}`, compactText(version.title, 34));
   markActiveVersionCard(version.version);
   updateLatestButton();
-  if (opts.announce) addChatMsg('system', `App updated to v${version.version}`);
+  updateRailSummary();
+  if (opts.announce) {
+    addChatMsg('system', `App updated to v${version.version}`);
+    flashStatus(`App updated to v${version.version}`, 'success');
+    flashVersionCard(version.version);
+  }
 }
 
 function ensureVersionCard(version) {
@@ -536,9 +562,14 @@ function ensureVersionCard(version) {
     </span>
     <span class="version-card-title">${escHtml(version.title || `Version ${version.version}`)}</span>
     <span class="version-card-meta">${version.createdAt ? escHtml(formatTime(version.createdAt)) : `${version.code.length} chars`}</span>
+    <span class="version-card-footer">
+      <span>${escHtml(formatCodeSize(version.code))}</span>
+      <span class="version-card-cta">View version →</span>
+    </span>
   `;
   markActiveVersionCard(viewedVersion);
   updateLatestButton();
+  updateRailSummary();
   scrollChatToBottom();
 }
 
@@ -548,9 +579,36 @@ function markActiveVersionCard(versionNumber) {
   });
 }
 
+function flashVersionCard(versionNumber) {
+  const card = document.getElementById(`version-card-${versionNumber}`);
+  if (!card) return;
+  card.classList.remove('just-updated');
+  void card.offsetWidth;
+  card.classList.add('just-updated');
+  window.setTimeout(() => card.classList.remove('just-updated'), 1500);
+}
+
 function updateLatestButton() {
   const latest = getLatestVersion();
   latestVersionBtn.classList.toggle('hidden', !latest || viewedVersion >= latest.version);
+}
+
+function updateRailSummary() {
+  const latest = getLatestVersion();
+  if (!latest) {
+    railSummary.classList.add('hidden');
+    railSummaryTitle.textContent = 'No app versions yet';
+    railSummaryCount.textContent = '0';
+    return;
+  }
+
+  const viewing = appVersions.find(v => v.version === viewedVersion) || latest;
+  railSummary.classList.remove('hidden');
+  railSummaryTitle.textContent =
+    viewing.version === latest.version
+      ? `Latest version: v${latest.version}`
+      : `Viewing v${viewing.version} of v${latest.version}`;
+  railSummaryCount.textContent = `v${latest.version}`;
 }
 
 function renderCallbackRun(run) {
@@ -558,18 +616,19 @@ function renderCallbackRun(run) {
   const card = ensureCallbackCard(run);
   const status = run.status || 'unknown';
   const title = card.el.querySelector('.callback-card-title');
+  const subtitle = card.el.querySelector('.callback-card-subtitle');
   const meta = card.el.querySelector('.callback-card-meta');
   const statusEl = card.el.querySelector('.callback-status');
 
-  title.textContent = `${adapterLabel(run.adapter)} callback`;
-  const parts = [`#${shortId}`];
-  if (run.intent) parts.push(run.intent);
-  if (run.cwd && status === 'running') parts.push(`cwd: ${run.cwd}`);
-  if (run.last_event) parts.push(`latest: ${run.last_event}`);
-  if (run.returncode !== undefined) parts.push(`exit: ${run.returncode}`);
-  if (run.error) parts.push(`error: ${run.error}`);
-  meta.textContent = parts.join(' · ');
-  statusEl.textContent = status;
+  card.el.className = `callback-card ${escClass(status)}`;
+  title.textContent = `${adapterLabel(run.adapter)} agent bridge`;
+  subtitle.textContent = compactText(run.intent || run.last_event || 'Waiting for agent activity', 140);
+  const facts = [`#${shortId}`];
+  if (run.cwd && status === 'running') facts.push(compactPath(run.cwd));
+  if (run.returncode !== undefined) facts.push(`exit ${run.returncode}`);
+  if (run.error) facts.push(compactText(run.error, 80));
+  meta.textContent = facts.join(' · ');
+  statusEl.textContent = runStatusLabel(status);
   statusEl.className = `callback-status ${status}`;
 
   if (run.status === 'failed' && run.stderr_tail) {
@@ -583,8 +642,14 @@ function renderCallbackRun(run) {
 function renderCallbackLog(log) {
   if (!log.run_id) return;
   const card = ensureCallbackCard({ id: log.run_id, adapter: 'codex_exec_resume', status: 'running' });
-  const label = log.label || `${log.stream || 'callback'} log`;
-  const detail = log.detail || '';
+  let label = log.label || `${log.stream || 'callback'} log`;
+  let detail = log.detail || '';
+  const commandSummary = summarizeCommandLog(label, detail || log.line);
+  if (commandSummary) {
+    label = commandSummary.label;
+    detail = commandSummary.detail;
+    if (log.line || log.detail) appendCallbackRaw(log.run_id, log.label || label, log.line || log.detail);
+  }
   const isDiagnosticNoise =
     label === 'stderr log' ||
     log.kind === 'warning' ||
@@ -612,6 +677,17 @@ function renderCallbackLog(log) {
   scrollChatToBottom();
 }
 
+function summarizeCommandLog(label, text) {
+  if (!/^Command (started|completed)$/i.test(label || '')) return null;
+  const raw = String(text || '');
+  const inboxTarget = raw.includes('/inbox') ? 'POST /inbox' : 'Command';
+  const state = /completed/i.test(label) ? 'completed' : 'started';
+  return {
+    label: `Agent bridge ${state}`,
+    detail: inboxTarget,
+  };
+}
+
 function ensureCallbackCard(run) {
   let card = callbackCards.get(run.id);
   if (card) return card;
@@ -622,15 +698,19 @@ function ensureCallbackCard(run) {
   el.dataset.runId = run.id;
   el.innerHTML = `
     <div class="callback-card-header">
-      <div>
-        <div class="callback-card-title">${escHtml(adapterLabel(run.adapter))} callback</div>
-        <div class="callback-card-meta">#${escHtml((run.id || '').slice(0, 8))}</div>
+      <div class="callback-card-main">
+        <div class="callback-icon">↔</div>
+        <div>
+          <div class="callback-card-title">${escHtml(adapterLabel(run.adapter))} agent bridge</div>
+          <div class="callback-card-subtitle">Waiting for agent activity</div>
+          <div class="callback-card-meta">#${escHtml((run.id || '').slice(0, 8))}</div>
+        </div>
       </div>
-      <span class="callback-status ${escClass(run.status || 'queued')}">${escHtml(run.status || 'queued')}</span>
+      <span class="callback-status ${escClass(run.status || 'queued')}">${escHtml(runStatusLabel(run.status || 'queued'))}</span>
     </div>
     <div class="callback-events"></div>`;
   area.appendChild(el);
-  card = { el, eventsEl: el.querySelector('.callback-events'), rawEl: null, seen: new Set() };
+  card = { el, eventsEl: el.querySelector('.callback-events'), rawEl: null, rawCount: 0, seen: new Set() };
   callbackCards.set(run.id, card);
   scrollChatToBottom();
   return card;
@@ -642,9 +722,11 @@ function appendCallbackRaw(runId, label, raw) {
   if (!card.rawEl) {
     card.rawEl = document.createElement('details');
     card.rawEl.className = 'callback-raw';
-    card.rawEl.innerHTML = '<summary>Raw logs</summary><pre></pre>';
+    card.rawEl.innerHTML = '<summary>Diagnostics</summary><pre></pre>';
     card.el.appendChild(card.rawEl);
   }
+  card.rawCount += 1;
+  card.rawEl.querySelector('summary').textContent = `Diagnostics (${card.rawCount})`;
   const pre = card.rawEl.querySelector('pre');
   pre.textContent = `${pre.textContent}${pre.textContent ? '\n\n' : ''}[${label}]\n${String(raw).slice(0, 2000)}`.slice(-8000);
 }
@@ -652,8 +734,10 @@ function appendCallbackRaw(runId, label, raw) {
 function markLatestCallbackVersion(version) {
   const cards = Array.from(callbackCards.values());
   const card = cards.reverse().find(c => {
-    const status = c.el.querySelector('.callback-status')?.textContent || '';
-    return status === 'running' || status === 'queued' || status === 'succeeded';
+    const statusEl = c.el.querySelector('.callback-status');
+    return statusEl?.classList.contains('running') ||
+      statusEl?.classList.contains('queued') ||
+      statusEl?.classList.contains('succeeded');
   });
   if (!card) return;
   const event = {
@@ -842,6 +926,7 @@ window.deleteConv = async function(id) {
       appVersions = [];
       document.getElementById('conv-info').textContent = '';
       latestVersionBtn.classList.add('hidden');
+      updateRailSummary();
       hidePreviewNotice();
       document.getElementById('chat-area').innerHTML =
         '<div class="chat-msg system"><div class="chat-bubble">Conversation deleted.</div></div>';
@@ -856,14 +941,32 @@ window.deleteConv = async function(id) {
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-function showStatus(text) {
+function showStatus(text, kind = 'info') {
   const bar = document.getElementById('status-bar');
+  if (statusTimer) {
+    clearTimeout(statusTimer);
+    statusTimer = null;
+  }
   bar.classList.remove('hidden');
+  bar.classList.remove('status-running', 'status-success', 'status-error');
+  if (kind !== 'info') bar.classList.add(`status-${kind}`);
   bar.textContent = text;
 }
 
 function hideStatus() {
+  if (statusTimer) {
+    clearTimeout(statusTimer);
+    statusTimer = null;
+  }
   document.getElementById('status-bar').classList.add('hidden');
+}
+
+function flashStatus(text, kind = 'success', ms = 2400) {
+  showStatus(text, kind);
+  statusTimer = window.setTimeout(() => {
+    statusTimer = null;
+    if (!pendingAction) hideStatus();
+  }, ms);
 }
 
 function showPreviewNotice(title, detail) {
@@ -924,12 +1027,33 @@ function formatTime(value) {
   });
 }
 
+function compactPath(value) {
+  const path = String(value || '');
+  const parts = path.split('/').filter(Boolean);
+  if (parts.length <= 2) return path;
+  return `.../${parts.slice(-2).join('/')}`;
+}
+
+function formatCodeSize(code) {
+  const length = String(code || '').length;
+  if (length >= 1000) return `${(length / 1000).toFixed(1)}k chars`;
+  return `${length} chars`;
+}
+
 function adapterLabel(adapter) {
   if (adapter === 'codex_exec_resume') return 'Codex';
   if (adapter === 'openclaw_gateway') return 'OpenClaw';
   if (adapter === 'openclaw_taskflow') return 'OpenClaw TaskFlow';
   if (adapter === 'default') return 'HTTP';
   return adapter || 'Agent';
+}
+
+function runStatusLabel(status) {
+  if (status === 'queued') return 'Queued';
+  if (status === 'running') return 'Running';
+  if (status === 'succeeded') return 'Completed';
+  if (status === 'failed') return 'Failed';
+  return status || 'Unknown';
 }
 
 function scrollChatToBottom() {

@@ -27,13 +27,20 @@
 
     <!-- Chat tab -->
     <div class="tab-content" id="tab-chat" style="display:flex;flex-direction:column;">
+      <div class="rail-summary hidden" id="rail-summary">
+        <div>
+          <div class="rail-summary-label">Evolution</div>
+          <div class="rail-summary-title" id="rail-summary-title">No app versions yet</div>
+        </div>
+        <div class="rail-summary-count" id="rail-summary-count">0</div>
+      </div>
       <div class="chat-area" id="chat-area">
         <div class="chat-msg system">
           <div class="chat-bubble">Send a message to start. I'll chat or generate UI based on your intent.</div>
         </div>
       </div>
       <div class="suggestions hidden" id="suggestions-area">
-        <h3>Suggestions</h3>
+        <h3>Next actions</h3>
         <div id="suggestions-list"></div>
       </div>
       <div class="status hidden" id="status-bar"></div>
@@ -48,7 +55,14 @@
 
     <!-- Code tab -->
     <div class="tab-content hidden" id="tab-code">
-      <pre id="code-display" style="padding:16px; font-size:12px; line-height:1.5; color:#78716c;">Generate something to see the code here.</pre>
+      <div class="code-toolbar">
+        <div>
+          <div class="code-toolbar-title">Generated code</div>
+          <div class="code-toolbar-meta" id="code-meta">No app version selected</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="copy-code-btn" type="button">Copy</button>
+      </div>
+      <pre id="code-display" class="code-display">Generate something to see the code here.</pre>
     </div>
 
     <!-- API Explorer tab -->
