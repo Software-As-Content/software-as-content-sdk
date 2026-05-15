@@ -650,6 +650,20 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         """
         return (_STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
+    @app.get("/static/{path:path}")
+    async def serve_static(path: str):
+        file = (_STATIC_DIR / path).resolve()
+        static_root = _STATIC_DIR.resolve()
+        if not file.is_relative_to(static_root) or not file.exists() or not file.is_file():
+            raise HTTPException(status_code=404, detail="File not found")
+        suffix = file.suffix
+        media_types = {
+            ".html": "text/html",
+            ".js": "application/javascript",
+            ".css": "text/css",
+        }
+        return FileResponse(file, media_type=media_types.get(suffix, "application/octet-stream"))
+
     @app.get("/renderer/{path:path}")
     async def serve_renderer(path: str):
         file = _RENDERER_DIR / path
