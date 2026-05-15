@@ -74,10 +74,15 @@ document.querySelectorAll('.tab').forEach(tab => {
 
 const sendBtn = document.getElementById('send-btn');
 const intentInput = document.getElementById('intent');
+const latestVersionBtn = document.getElementById('latest-version-btn');
 
 sendBtn.addEventListener('click', () => handleSend());
 intentInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+});
+latestVersionBtn.addEventListener('click', () => {
+  const latest = getLatestVersion();
+  if (latest) applyAppVersion(latest);
 });
 
 document.getElementById('new-conv-btn').addEventListener('click', () => {
@@ -88,6 +93,7 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
   callbackUrl = null;
   if (eventSource) { eventSource.close(); eventSource = null; }
   document.getElementById('conv-info').textContent = '';
+  latestVersionBtn.classList.add('hidden');
   hidePreviewNotice();
   document.getElementById('chat-area').innerHTML =
     '<div class="chat-msg system"><div class="chat-bubble">New conversation started.</div></div>';
@@ -493,6 +499,10 @@ function upsertAppVersion(version) {
   }
 }
 
+function getLatestVersion() {
+  return appVersions[appVersions.length - 1] || null;
+}
+
 function applyAppVersion(version, opts = {}) {
   if (!version || !version.code) return;
   viewedVersion = version.version;
@@ -503,6 +513,7 @@ function applyAppVersion(version, opts = {}) {
   renderer.render(version.code);
   setConversationInfo(`Viewing v${version.version}`, compactText(version.title, 34));
   markActiveVersionCard(version.version);
+  updateLatestButton();
   if (opts.announce) addChatMsg('system', `App updated to v${version.version}`);
 }
 
@@ -527,6 +538,7 @@ function ensureVersionCard(version) {
     <span class="version-card-meta">${version.createdAt ? escHtml(formatTime(version.createdAt)) : `${version.code.length} chars`}</span>
   `;
   markActiveVersionCard(viewedVersion);
+  updateLatestButton();
   scrollChatToBottom();
 }
 
@@ -534,6 +546,11 @@ function markActiveVersionCard(versionNumber) {
   document.querySelectorAll('.version-card').forEach(card => {
     card.classList.toggle('active', card.id === `version-card-${versionNumber}`);
   });
+}
+
+function updateLatestButton() {
+  const latest = getLatestVersion();
+  latestVersionBtn.classList.toggle('hidden', !latest || viewedVersion >= latest.version);
 }
 
 function renderCallbackRun(run) {
@@ -824,6 +841,7 @@ window.deleteConv = async function(id) {
       viewedVersion = 0;
       appVersions = [];
       document.getElementById('conv-info').textContent = '';
+      latestVersionBtn.classList.add('hidden');
       hidePreviewNotice();
       document.getElementById('chat-area').innerHTML =
         '<div class="chat-msg system"><div class="chat-bubble">Conversation deleted.</div></div>';
