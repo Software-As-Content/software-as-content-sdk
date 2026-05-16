@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -692,10 +693,107 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 # ─── Standalone runner ────────────────────────────────────────────
 
 
+def _probe_existing_server(port: int) -> str:
+    """Classify what (if anything) is already listening on ``port``.
+
+    Returns one of: ``"free"`` (nothing listening), ``"sac"`` (a healthy SaC
+    server already running), ``"foreign"`` (port occupied by something that is
+    not a healthy SaC server, e.g. another app or a stale/zombie listener).
+    """
+    import socket
+
+    # Is anything accepting connections on the loopback address?
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.4)
+        try:
+            probe.connect(("127.0.0.1", port))
+        except OSError:
+            return "free"
+
+    # Something is listening — is it a healthy SaC server?
+    try:
+        import json
+        import urllib.request
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/health", timeout=1.5
+        ) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        if isinstance(data, dict) and data.get("status") == "ok":
+            return "sac"
+    except Exception:
+        return "foreign"
+    return "foreign"
+
+
+def _warn_if_not_repo_root() -> None:
+    """Warn when launched outside a project root.
+
+    Codex callbacks resolve ``cwd=server`` to this process's working
+    directory; starting from an unrelated dir silently breaks the loop.
+    """
+    cwd = Path.cwd()
+    markers = (".git", "pyproject.toml", "package.json", "src")
+    if not any((cwd / m).exists() for m in markers):
+        print(
+            f"⚠  sac serve started from {cwd}\n"
+            "   This does not look like a project root. Codex callbacks "
+            "resolve cwd=server to this directory, so the agent loop will "
+            "run here. Start `sac serve` from the SDK repo root for the "
+            "Codex/OpenClaw bidirectional loop to work.",
+            file=sys.stderr,
+        )
+
+
 def run(host: str = "0.0.0.0", port: int = 8000) -> None:
-    """Run the server with uvicorn."""
+    """Run the server with uvicorn.
+
+    `sac serve` is idempotent: if a healthy SaC server is already serving
+    this port, reuse it and exit 0 instead of fighting for the socket. This
+    lets an agent run `sac serve` safely without restart/port-migration
+    logic. If the port is held by something else (foreign app or a stale
+    listener), fail loudly with actionable guidance rather than producing a
+    half-bound "answers once then refuses" zombie.
+    """
     import uvicorn
 
+    state = _probe_existing_server(port)
+    if state == "sac":
+        print(
+            f"SaC server already running and healthy at "
+            f"http://127.0.0.1:{port} — reusing it (nothing to do).\n"
+            f"Open http://127.0.0.1:{port}",
+        )
+        return
+    if state == "foreign":
+        pid = ""
+        try:
+            import subprocess
+
+            out = subprocess.run(
+                ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            ).stdout.strip()
+            if out:
+                pid = out.splitlines()[0]
+        except Exception:
+            pass
+        held_by = f" (held by PID {pid})" if pid else ""
+        kill_hint = f"kill {pid}" if pid else "kill <pid>"
+        print(
+            f"Error: port {port} is occupied{held_by} but is not a healthy "
+            f"SaC server.\n"
+            f"  - If it is a stale SaC process, stop it: {kill_hint}\n"
+            f"  - Or start on another port: sac serve --port <port>\n"
+            f"sac serve will not bind a contended socket (this is what "
+            f"caused the 'answers once then refuses' zombie before).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    _warn_if_not_repo_root()
     app = create_app()
     uvicorn.run(app, host=host, port=port)
 

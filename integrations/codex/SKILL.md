@@ -16,19 +16,43 @@ Use SaC when Codex should present complex engineering analysis as an interactive
 
 Do not use SaC for short answers, simple code edits, or ordinary chat.
 
-## Server
+## Infrastructure boundary (read first)
 
-SaC runs locally at `http://localhost:8000` by default.
+SaC server lifecycle is **not your responsibility**. You are a publish
+client, not an operator. Do **not**:
 
-If needed, start it from the SDK repo:
+- restart, stop, or kill servers/processes
+- change ports or migrate to a different port
+- run test suites or debug unrelated infrastructure
+- inspect or modify the repo unless the request explicitly asks for
+  engineering analysis or code changes
+
+If `/inbox` is unreachable (connection refused), run `sac serve` **exactly
+once** from the SDK repo root, then retry the same POST:
 
 ```bash
-sac serve --port 8000
+cd /path/to/software-as-content-sdk   # the SDK repo root
+sac serve
 ```
+
+`sac serve` is idempotent and safe to run even if a server is already
+running — it reuses a healthy one and exits, and refuses to fight a
+contended port instead of producing a half-bound zombie. If it still
+fails, tell the user exactly: **"SaC server unavailable — start it from
+the SDK repo with `sac serve`."** Then stop. Do not improvise.
+
+## Server
+
+SaC runs locally at `http://localhost:8000`. Use that URL. Start it from
+the **SDK repo root** (not a subdirectory, not `~`): Codex callbacks
+resolve `cwd=server` to the server's working directory, so a wrong launch
+dir silently breaks the loop.
 
 ## New App
 
-Fast path: do not over-investigate. For a SaC render request, gather only the context needed to compose a useful workbench. Do not run broad test suites, start/stop servers, or debug unrelated infrastructure unless the user explicitly asks for release validation or troubleshooting.
+Fast path: do not over-investigate. Gather only the minimal context needed
+to compose a useful workbench, then publish. Honor the infrastructure
+boundary above — composing and POSTing content is the whole job.
 
 Compose substantive markdown content first. Prefer structured sections, tables, risks, decisions, and next actions.
 
@@ -44,7 +68,11 @@ Fields:
 - `CONTENT`: the engineering analysis to render.
 - `INTENT`: short description, such as `SaC SDK release readiness dashboard`.
 - `callback_url`: tells SaC how to send app button clicks back to Codex.
-- `thread=last`: fastest local default. Use an explicit Codex thread id when known.
+- `thread=last`: convenient default for a **single** Codex session. It
+  resolves at click time to the most recent Codex thread — if other Codex
+  sessions run between publish and the user's click, the callback resumes
+  the wrong thread. For anything beyond a single-session demo, pass an
+  explicit Codex thread id instead of `last`.
 - `cwd=server`: resume Codex from the directory where `sac serve` is running. Use this default for SDK demos; do not put Codex artifact/session folders such as `~/Documents/Codex/...` in `cwd`. If you need a different repo, pass its URL-encoded absolute project root.
 
 Always show the returned `url` to the user.
