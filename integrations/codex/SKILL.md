@@ -33,7 +33,7 @@ sequence:
 **Step 1 — Connectivity check.** Run a lightweight health probe first:
 
 ```bash
-curl -sS http://127.0.0.1:8000/health
+curl -sS --connect-timeout 5 http://127.0.0.1:8000/health
 ```
 
 If this returns `{"status":"ok"}`, the server IS running and `curl` GET
@@ -74,7 +74,7 @@ with open('/tmp/sac_payload.json', 'rb') as f:
     data = f.read()
 req = urllib.request.Request('http://127.0.0.1:8000/inbox',
     data=data, headers={'Content-Type': 'application/json'})
-resp = urllib.request.urlopen(req, timeout=30)
+resp = urllib.request.urlopen(req, timeout=300)
 print(resp.read().decode())
 "
 ```
@@ -112,7 +112,7 @@ infrastructure boundary above; do not re-verify with a tiny POST.)
 Then POST it to `/inbox`:
 
 ```bash
-curl -s -X POST "http://127.0.0.1:8000/inbox" \
+curl -s --connect-timeout 5 -X POST "http://127.0.0.1:8000/inbox" \
   -H "Content-Type: application/json" \
   -d '{"content": "CONTENT", "intent": "INTENT", "callback_url": "codex://resume?thread=last&cwd=server", "callback_format": "codex_exec_resume"}'
 ```
@@ -145,7 +145,7 @@ Keep the `conversation_id` for updates.
 For follow-up changes, POST updated content with the existing `conversation_id`:
 
 ```bash
-curl -s -X POST "http://127.0.0.1:8000/inbox" \
+curl -s --connect-timeout 5 -X POST "http://127.0.0.1:8000/inbox" \
   -H "Content-Type: application/json" \
   -d '{"conversation_id": "abc-123", "content": "UPDATED CONTENT", "intent": "what changed"}'
 ```
