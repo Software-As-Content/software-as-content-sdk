@@ -109,18 +109,29 @@ render cost. The `/inbox` endpoint is reliable — compose the complete
 content, then POST it once. (`sac serve` health is already covered by the
 infrastructure boundary above; do not re-verify with a tiny POST.)
 
-Then POST it to `/inbox`:
+Publish using the `sac publish` CLI. Write the content to a temp file
+first — this avoids all shell-escaping issues with backticks, quotes, and
+newlines in large markdown payloads:
 
 ```bash
-curl -s --connect-timeout 5 -X POST "http://127.0.0.1:8000/inbox" \
-  -H "Content-Type: application/json" \
-  -d '{"content": "CONTENT", "intent": "INTENT", "callback_url": "codex://resume?thread=last&cwd=server", "callback_format": "codex_exec_resume"}'
+cat > /tmp/sac_content.md << 'CONTENT_EOF'
+CONTENT
+CONTENT_EOF
+
+sac publish --file /tmp/sac_content.md \
+  --intent "INTENT" \
+  --callback-url "codex://resume?thread=last&cwd=server" \
+  --callback-format codex_exec_resume
 ```
 
+Replace `CONTENT` inside the heredoc with the actual markdown analysis,
+and `INTENT` with a short description (e.g. `SaC SDK release readiness
+dashboard`). The heredoc (`<< 'CONTENT_EOF'`) prevents shell expansion.
+
 Fields:
-- `CONTENT`: the engineering analysis to render.
-- `INTENT`: short description, such as `SaC SDK release readiness dashboard`.
-- `callback_url`: tells SaC how to send app button clicks back to Codex.
+- `--file`: path to the content file.
+- `--intent`: short description of the content.
+- `--callback-url`: tells SaC how to send app button clicks back to Codex.
 - `thread=last`: safe bootstrap default. SaC auto-pins the concrete
   thread id after the first callback (it reads `thread.started` from the
   Codex stream and rewrites the stored callback_url), so every subsequent
@@ -130,19 +141,30 @@ Fields:
   `thread=<id>` to close even that window.
 - `cwd=server`: resume Codex from the directory where `sac serve` is running. Use this default for SDK demos; do not put Codex artifact/session folders such as `~/Documents/Codex/...` in `cwd`. If you need a different repo, pass its URL-encoded absolute project root.
 
-Always show the returned `url` to the user.
+`sac publish` prints the app URL to stdout. Always show it to the user.
 
-Example response:
+Keep the `conversation_id` (printed to stderr) for updates.
 
-```json
-{"conversation_id":"abc-123","url":"http://127.0.0.1:8000/c/abc-123","version":1,"type":"ui"}
+**Fallback:** if `sac publish` is not on `PATH`, use curl:
+
+```bash
+curl -s --connect-timeout 5 -X POST "http://127.0.0.1:8000/inbox" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "CONTENT", "intent": "INTENT", "callback_url": "codex://resume?thread=last&cwd=server", "callback_format": "codex_exec_resume"}'
 ```
-
-Keep the `conversation_id` for updates.
 
 ## Update Existing App
 
-For follow-up changes, POST updated content with the existing `conversation_id`:
+For follow-up changes, publish updated content with the existing
+`conversation_id`:
+
+```bash
+sac publish --file /tmp/sac_updated.md \
+  --conversation-id "abc-123" \
+  --intent "what changed"
+```
+
+Or with curl:
 
 ```bash
 curl -s --connect-timeout 5 -X POST "http://127.0.0.1:8000/inbox" \
