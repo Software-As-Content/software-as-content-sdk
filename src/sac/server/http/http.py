@@ -214,6 +214,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         publish=pubsub.publish,
         server_cwd=server_cwd,
         pin_thread=_pin_codex_thread,
+        runs_dir=Path(data_dir) / "_runs",
     )
 
     def _get_user_id(request: Request) -> str:

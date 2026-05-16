@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 import uuid
+
+logger = logging.getLogger(__name__)
 
 import httpx
 from fastapi import HTTPException
@@ -32,19 +36,28 @@ PinThread = Callable[[str, str], "Any"]  # async (conv_id, thread_id) -> None
 class CallbackManager:
     """Dispatch SaC app actions to external agents and stream callback status."""
 
+    # Keys excluded from the on-disk snapshot (large / transient).
+    _TRANSIENT_KEYS = frozenset({"logs", "stdout_tail", "stderr_tail", "context"})
+
     def __init__(
         self,
         *,
         publish: PublishEvent,
         server_cwd: Path,
         pin_thread: PinThread | None = None,
+        runs_dir: Path | None = None,
     ) -> None:
         self._publish = publish
         self._server_cwd = server_cwd
         self._pin_thread = pin_thread
         self._runs: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        self._runs_dir = runs_dir
+        if runs_dir is not None:
+            runs_dir.mkdir(parents=True, exist_ok=True)
 
     def list_runs(self, conv_id: str) -> list[dict[str, Any]]:
+        if conv_id not in self._runs and self._runs_dir is not None:
+            self._load_runs(conv_id)
         return self._runs.get(conv_id, [])
 
     def _get_run(self, conv_id: str, run_id: str) -> dict[str, Any] | None:
@@ -81,6 +94,7 @@ class CallbackManager:
                 run["result_version"] = version
                 run["updated_at"] = self._utc_now()
                 self._publish(conv_id, "callback_run", run)
+                self._persist_runs(conv_id)
                 return True
         return False
 
@@ -175,6 +189,7 @@ class CallbackManager:
         self._runs[conv_id].append(run)
         self._runs[conv_id] = self._runs[conv_id][-50:]
         self._publish(conv_id, "callback_run", run)
+        self._persist_runs(conv_id)
         return run
 
     def _update_run(
@@ -189,9 +204,10 @@ class CallbackManager:
             return None
         run.update(updates)
         run["updated_at"] = self._utc_now()
-        if run.get("status") in {"succeeded", "failed"} and "completed_at" not in run:
+        if run.get("status") in {"succeeded", "failed", "no_update"} and "completed_at" not in run:
             run["completed_at"] = run["updated_at"]
         self._publish(conv_id, "callback_run", run)
+        self._persist_runs(conv_id)
         return run
 
     def _publish_log(
@@ -324,6 +340,44 @@ class CallbackManager:
 
     def _utc_now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    # ─── Runs persistence ────────────────────────────────────────
+
+    def _runs_path(self, conv_id: str) -> Path | None:
+        if self._runs_dir is None:
+            return None
+        return self._runs_dir / f"{conv_id}.json"
+
+    def _persist_runs(self, conv_id: str) -> None:
+        """Write current runs for *conv_id* to disk (fire-and-forget)."""
+        path = self._runs_path(conv_id)
+        if path is None:
+            return
+        runs = self._runs.get(conv_id, [])
+        # Strip transient / large keys to keep the file small.
+        compact = [
+            {k: v for k, v in r.items() if k not in self._TRANSIENT_KEYS}
+            for r in runs
+        ]
+        try:
+            path.write_text(
+                json.dumps(compact, ensure_ascii=False, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except Exception:
+            logger.debug("failed to persist runs for %s", conv_id, exc_info=True)
+
+    def _load_runs(self, conv_id: str) -> None:
+        """Load persisted runs into the in-memory cache (once per conv)."""
+        path = self._runs_path(conv_id)
+        if path is None or not path.exists():
+            return
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                self._runs[conv_id] = data[-50:]
+        except Exception:
+            logger.debug("failed to load runs for %s", conv_id, exc_info=True)
 
     async def _dispatch_openclaw_gateway(
         self,
