@@ -302,6 +302,9 @@ function setupEventSource(convId) {
     } else if (data.status === 'failed') {
       showStatus(`Callback failed (${adapterLabel(data.adapter)})`, 'error');
       setPending(false);
+    } else if (data.status === 'no_update') {
+      flashStatus(`${adapterLabel(data.adapter)} finished — app unchanged`, 'error');
+      setPending(false);
     } else if (data.status === 'succeeded') {
       flashStatus(`Callback completed (${adapterLabel(data.adapter)})`, 'success');
       setPending(false);
@@ -1024,6 +1027,7 @@ function runStatusLabel(status) {
   if (status === 'queued') return 'Queued';
   if (status === 'running') return 'Running';
   if (status === 'succeeded') return 'Completed';
+  if (status === 'no_update') return 'No update';
   if (status === 'failed') return 'Failed';
   return status || 'Unknown';
 }

@@ -39,6 +39,43 @@ class CallbackManager:
     def list_runs(self, conv_id: str) -> list[dict[str, Any]]:
         return self._runs.get(conv_id, [])
 
+    def _get_run(self, conv_id: str, run_id: str) -> dict[str, Any] | None:
+        return next(
+            (r for r in self._runs.get(conv_id, []) if r["id"] == run_id),
+            None,
+        )
+
+    def mark_inbox_result(
+        self,
+        conv_id: str,
+        *,
+        kind: str,
+        version: int | None,
+    ) -> bool:
+        """Record that the upstream agent posted back to ``/inbox``.
+
+        A callback run is only a *real* success when the agent actually
+        closes the loop by POSTing to ``/inbox`` (chat reply or new app
+        version). Subprocess exit code alone does not prove the loop
+        closed. This attaches the inbox outcome to the most recent
+        in-flight run so the run's final status reflects whether the app
+        actually changed.
+
+        Returns ``True`` if an in-flight run was found and tagged. The
+        initial publish (v1) has no in-flight callback run, so this is a
+        no-op there — exactly what we want.
+        """
+        runs = self._runs.get(conv_id, [])
+        for run in reversed(runs):
+            if run.get("status") in {"running", "queued"}:
+                run["loop_closed"] = True
+                run["result_kind"] = kind
+                run["result_version"] = version
+                run["updated_at"] = self._utc_now()
+                self._publish(conv_id, "callback_run", run)
+                return True
+        return False
+
     async def dispatch(
         self,
         *,
@@ -359,6 +396,7 @@ class CallbackManager:
                 update_run=self._update_run,
                 publish_log=self._publish_log,
                 publish_failure=self._publish_failure,
+                get_run=self._get_run,
             )
         )
 

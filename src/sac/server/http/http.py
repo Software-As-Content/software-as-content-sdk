@@ -406,6 +406,9 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 "chat",
                 {"role": "assistant", "content": req.content},
             )
+            callback_manager.mark_inbox_result(
+                conv.id, kind="chat", version=None
+            )
             return {
                 "conversation_id": conv.id,
                 "url": f"{base}/c/{conv.id}",
@@ -504,6 +507,9 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 "conversation_id": conv.id,
                 "version": app_result.version,
             },
+        )
+        callback_manager.mark_inbox_result(
+            conv.id, kind="ui", version=app_result.version
         )
 
         return {

@@ -16,6 +16,7 @@ from fastapi import HTTPException
 PublishLog = Callable[..., None]
 UpdateRun = Callable[..., dict[str, Any] | None]
 PublishFailure = Callable[[str, str], None]
+GetRun = Callable[[str, str], dict[str, Any] | None]
 
 
 def resolve_codex_cwd(raw_cwd: str, *, server_cwd: Path) -> str | None:
@@ -116,6 +117,7 @@ async def run_codex_resume(
     update_run: UpdateRun,
     publish_log: PublishLog,
     publish_failure: PublishFailure,
+    get_run: GetRun | None = None,
 ) -> None:
     codex_bin = resolve_codex_bin()
     cmd = [codex_bin]
@@ -199,14 +201,34 @@ async def run_codex_resume(
             )
             publish_failure(conv_id, f"Codex callback failed ({detail.strip()[:1200]}).")
         else:
-            update_run(
-                conv_id,
-                run_id,
-                status="succeeded",
-                returncode=proc.returncode,
-                stdout_tail=stdout_tail,
-                stderr_tail=stderr_tail,
-            )
+            run = get_run(conv_id, run_id) if get_run else None
+            loop_closed = bool(run and run.get("loop_closed"))
+            if loop_closed:
+                update_run(
+                    conv_id,
+                    run_id,
+                    status="succeeded",
+                    returncode=proc.returncode,
+                    stdout_tail=stdout_tail,
+                    stderr_tail=stderr_tail,
+                )
+            else:
+                # Subprocess exited cleanly but the agent never POSTed back
+                # to /inbox — the app did not change. Surface this honestly
+                # instead of a misleading green "succeeded".
+                update_run(
+                    conv_id,
+                    run_id,
+                    status="no_update",
+                    returncode=proc.returncode,
+                    stdout_tail=stdout_tail,
+                    stderr_tail=stderr_tail,
+                )
+                publish_failure(
+                    conv_id,
+                    "Codex finished without updating the app "
+                    "(no /inbox response). The app is unchanged.",
+                )
     except FileNotFoundError:
         update_run(
             conv_id,
