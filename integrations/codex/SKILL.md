@@ -121,11 +121,13 @@ Fields:
 - `CONTENT`: the engineering analysis to render.
 - `INTENT`: short description, such as `SaC SDK release readiness dashboard`.
 - `callback_url`: tells SaC how to send app button clicks back to Codex.
-- `thread=last`: convenient default for a **single** Codex session. It
-  resolves at click time to the most recent Codex thread — if other Codex
-  sessions run between publish and the user's click, the callback resumes
-  the wrong thread. For anything beyond a single-session demo, pass an
-  explicit Codex thread id instead of `last`.
+- `thread=last`: safe bootstrap default. SaC auto-pins the concrete
+  thread id after the first callback (it reads `thread.started` from the
+  Codex stream and rewrites the stored callback_url), so every subsequent
+  user action resumes this exact thread. The only residual race is if
+  another Codex session starts between publish and the *first* click; if
+  you already know your thread id, pass it explicitly as
+  `thread=<id>` to close even that window.
 - `cwd=server`: resume Codex from the directory where `sac serve` is running. Use this default for SDK demos; do not put Codex artifact/session folders such as `~/Documents/Codex/...` in `cwd`. If you need a different repo, pass its URL-encoded absolute project root.
 
 Always show the returned `url` to the user.

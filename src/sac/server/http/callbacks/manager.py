@@ -26,14 +26,22 @@ from sac.server.http.callbacks.openclaw import (
 
 
 PublishEvent = Callable[[str, str, dict[str, Any]], None]
+PinThread = Callable[[str, str], "Any"]  # async (conv_id, thread_id) -> None
 
 
 class CallbackManager:
     """Dispatch SaC app actions to external agents and stream callback status."""
 
-    def __init__(self, *, publish: PublishEvent, server_cwd: Path) -> None:
+    def __init__(
+        self,
+        *,
+        publish: PublishEvent,
+        server_cwd: Path,
+        pin_thread: PinThread | None = None,
+    ) -> None:
         self._publish = publish
         self._server_cwd = server_cwd
+        self._pin_thread = pin_thread
         self._runs: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
     def list_runs(self, conv_id: str) -> list[dict[str, Any]]:
@@ -397,6 +405,7 @@ class CallbackManager:
                 publish_log=self._publish_log,
                 publish_failure=self._publish_failure,
                 get_run=self._get_run,
+                on_thread=self._pin_thread,
             )
         )
 

@@ -7,7 +7,7 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 from urllib.parse import parse_qs, urlparse
 
 from fastapi import HTTPException
@@ -17,6 +17,7 @@ PublishLog = Callable[..., None]
 UpdateRun = Callable[..., dict[str, Any] | None]
 PublishFailure = Callable[[str, str], None]
 GetRun = Callable[[str, str], dict[str, Any] | None]
+OnThread = Callable[[str, str], Awaitable[None]]
 
 
 def resolve_codex_cwd(raw_cwd: str, *, server_cwd: Path) -> str | None:
@@ -118,6 +119,7 @@ async def run_codex_resume(
     publish_log: PublishLog,
     publish_failure: PublishFailure,
     get_run: GetRun | None = None,
+    on_thread: OnThread | None = None,
 ) -> None:
     codex_bin = resolve_codex_bin()
     cmd = [codex_bin]
@@ -147,6 +149,7 @@ async def run_codex_resume(
         )
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
+        captured_thread_id: str | None = None
 
         async def _read_lines(
             reader: asyncio.StreamReader | None,
@@ -172,6 +175,13 @@ async def run_codex_resume(
                         payload = json.loads(stripped)
                     except json.JSONDecodeError:
                         payload = None
+                if (
+                    payload
+                    and payload.get("type") == "thread.started"
+                    and payload.get("thread_id")
+                ):
+                    nonlocal captured_thread_id
+                    captured_thread_id = str(payload["thread_id"])
                 publish_log(
                     conv_id,
                     run_id,
@@ -185,6 +195,16 @@ async def run_codex_resume(
             _read_lines(proc.stderr, "stderr", stderr_parts),
         )
         await proc.wait()
+
+        # G2: pin the resolved thread id so future callbacks target this
+        # exact Codex thread instead of `--last` (which races with any
+        # other Codex session started between publish and the next click).
+        if thread_id == "last" and captured_thread_id and on_thread:
+            try:
+                await on_thread(conv_id, captured_thread_id)
+                update_run(conv_id, run_id, thread_id=captured_thread_id)
+            except Exception:
+                pass
 
         stdout_tail = "\n".join(stdout_parts)[-4000:]
         stderr_tail = "\n".join(stderr_parts)[-4000:]

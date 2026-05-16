@@ -194,7 +194,27 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     # Pub/sub broker for /c/{id}/events SSE subscribers
     pubsub = _PubSub()
-    callback_manager = CallbackManager(publish=pubsub.publish, server_cwd=server_cwd)
+
+    async def _pin_codex_thread(conv_id: str, thread_id: str) -> None:
+        """Pin the resolved Codex thread id onto the conversation.
+
+        After the first callback, replace the bootstrap `thread=last` in
+        the stored callback_url with the concrete thread id so subsequent
+        user actions resume this exact thread (not whatever Codex session
+        happens to be most recent). No-op if already pinned or explicit.
+        """
+        conv = await sac._store.get_conversation(conv_id)
+        if conv is None or not conv.callback_url:
+            return
+        new_url = _pin_thread_url(conv.callback_url, thread_id)
+        if new_url is not None:
+            await sac._store.update_conversation(conv_id, callback_url=new_url)
+
+    callback_manager = CallbackManager(
+        publish=pubsub.publish,
+        server_cwd=server_cwd,
+        pin_thread=_pin_codex_thread,
+    )
 
     def _get_user_id(request: Request) -> str:
         """Extract user ID from X-User-Id header, default to 'anonymous'."""
@@ -697,6 +717,26 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
 
 # ─── Standalone runner ────────────────────────────────────────────
+
+
+def _pin_thread_url(callback_url: str, thread_id: str) -> str | None:
+    """Rewrite `thread=last` in a Codex callback_url to a concrete id.
+
+    Returns the new URL, or ``None`` if no rewrite is needed (the URL
+    already carries an explicit/pinned thread id, so we must not clobber
+    it). Pure function — unit-testable without a store or server.
+    """
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+    parsed = urlparse(callback_url)
+    qs = parse_qs(parsed.query)
+    current = (qs.get("thread") or qs.get("thread_id") or [""])[0]
+    if current != "last":
+        return None
+    flat = {k: v[0] for k, v in qs.items()}
+    flat.pop("thread_id", None)
+    flat["thread"] = thread_id
+    return urlunparse(parsed._replace(query=urlencode(flat)))
 
 
 def _probe_existing_server(port: int) -> str:
