@@ -43,7 +43,57 @@ let appVersions = [];          // successful generation/growth events with code 
 let viewedVersion = 0;         // version currently shown in the iframe
 let statusTimer = null;
 const callbackCards = new Map(); // run_id -> { el, eventsEl, rawEl, seen }
-let liveStream = null;          // active renderer stream from PubSub chunks
+
+// ─── Streaming preview state ────────────────────────────────
+// Matches the product's approach: accumulate chunks in a buffer,
+// throttle-flush to the iframe with silent=true. No autoClose or
+// parent-side Babel gate — the iframe's own Babel decides; failures
+// are silenced and the last good frame stays visible.
+let streamBuffer = '';
+let streamFlushTimer = null;
+const STREAM_FLUSH_MS = 150;
+
+function streamPush(chunk) {
+  if (!streamBuffer) {
+    // First chunk — ensure iframe is loaded before we try to render into it
+    renderer._ensureIframe();
+  }
+  streamBuffer += chunk;
+  if (!streamFlushTimer) {
+    streamFlushTimer = setTimeout(streamFlush, STREAM_FLUSH_MS);
+  }
+}
+
+function streamFlush() {
+  streamFlushTimer = null;
+  if (!streamBuffer) return;
+  // Strip fences and rewrite imports. The iframe's own repairPartialTsx +
+  // render scheduler handles partial code repair and last-good-frame fallback.
+  const processed = renderer._processCode(streamBuffer);
+  if (processed && processed.trim()) {
+    renderer._sendToIframe(processed, true);
+  }
+}
+
+function streamEnd() {
+  if (streamFlushTimer) {
+    clearTimeout(streamFlushTimer);
+    streamFlushTimer = null;
+  }
+  if (streamBuffer) {
+    // Final render with full code — non-silent so errors surface
+    renderer.render(streamBuffer);
+  }
+  streamBuffer = '';
+}
+
+function streamReset() {
+  if (streamFlushTimer) {
+    clearTimeout(streamFlushTimer);
+    streamFlushTimer = null;
+  }
+  streamBuffer = '';
+}
 
 // ─── Tab switching ───────────────────────────────────────────
 
@@ -250,11 +300,8 @@ function setupEventSource(convId) {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
 
-    // Finalize any in-progress live stream before applying the version.
-    if (liveStream) {
-      liveStream.end();
-      liveStream = null;
-    }
+    // Finalize any in-progress stream before applying the version.
+    streamReset();
 
     // New App version pushed by an agent — fetch latest code and re-render.
     try {
@@ -339,9 +386,8 @@ function setupEventSource(convId) {
     const chunk = data.data;
     if (!chunk) return;
 
-    // Lazily create the streaming renderer on first chunk
-    if (!liveStream) {
-      liveStream = renderer.createStream();
+    // First chunk: prepare the UI for streaming
+    if (!streamBuffer) {
       placeholder.classList.add('hidden');
       iframe.classList.remove('hidden');
       codeDisplay.textContent = '';
@@ -349,17 +395,14 @@ function setupEventSource(convId) {
       showStatus('Generating...', 'running');
     }
     codeDisplay.textContent += chunk;
-    liveStream.push(chunk);
+    streamPush(chunk);
   });
 
   es.addEventListener('error', (e) => {
     // Server-sent error event (not SSE connection error)
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
-    if (liveStream) {
-      liveStream.abort();
-      liveStream = null;
-    }
+    streamReset();
     showStatus('Error: ' + (data.error || 'unknown'), 'error');
     addChatMsg('system', 'Error: ' + (data.error || 'unknown'));
     setPending(false);
@@ -409,9 +452,7 @@ async function streamGenerate(body) {
   placeholder.classList.add('hidden');
   iframe.classList.remove('hidden');
 
-  const stream = renderer.createStream();
-  let codeBuffer = '';
-  let inCodeFence = false;
+  streamReset();
 
   try {
     const response = await fetch('/stream', {
@@ -439,7 +480,7 @@ async function streamGenerate(body) {
         } else if (line.startsWith('data: ') && currentEvent) {
           try {
             const data = JSON.parse(line.slice(6));
-            handleSSEEvent(currentEvent, data, stream, codeDisplay);
+            handleSSEEvent(currentEvent, data);
           } catch {}
           currentEvent = null;
         }
@@ -447,15 +488,12 @@ async function streamGenerate(body) {
     }
   } catch (err) {
     showStatus('Connection error: ' + err.message, 'error');
-    stream.abort();
+    streamReset();
     setPending(false);
   }
 }
 
-// Track code fence stripping state per stream
-let fenceState = { started: false, firstLine: true };
-
-function handleSSEEvent(eventType, data, stream, codeDisplay) {
+function handleSSEEvent(eventType, data) {
   switch (eventType) {
     case 'stage':
       showStatus(`${data.name}: ${data.status}`, 'running');
@@ -480,14 +518,17 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
       let chunk = data.data;
       // Display raw in code panel
       codeDisplay.textContent += chunk;
-      // Stream to renderer (it handles fence stripping internally)
-      stream.push(chunk);
+      // Accumulate in stream buffer — throttled flush to iframe
+      streamPush(chunk);
       break;
     }
 
     case 'complete': {
-      stream.end();
+      // Final render with the authoritative code from the complete event
+      streamReset();
       const app = data.app;
+      renderer.render(app.code);
+
       if (data.conversation_id) conversationId = data.conversation_id;
       currentVersion = app.version;
       const version = {
@@ -519,7 +560,7 @@ function handleSSEEvent(eventType, data, stream, codeDisplay) {
     case 'error':
       showStatus('Error: ' + data.error, 'error');
       addChatMsg('system', 'Error: ' + data.error);
-      stream.abort();
+      streamReset();
       setPending(false);
       break;
   }

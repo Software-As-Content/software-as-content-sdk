@@ -19,38 +19,72 @@
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-    #root { min-height: 100vh; }
-    .sac-render-error {
-      margin: 28px;
-      max-width: 760px;
-      border: 1px solid #fecaca;
-      border-radius: 12px;
-      background: #fff7f7;
-      color: #7f1d1d;
-      padding: 18px 20px;
-      box-shadow: 0 10px 30px rgba(127, 29, 29, 0.08);
+    html, body { margin: 0; background: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    #root { min-height: 100vh; background: #ffffff; }
+
+    /* ─── SaC action button hover cue ─────────────────────────────── */
+    button[data-sac-action="true"] {
+      position: relative;
     }
-    .sac-render-error strong {
-      display: block;
-      margin-bottom: 6px;
-      color: #991b1b;
-      font-size: 15px;
+    button[data-sac-action="true"]:hover {
+      outline: 2px solid rgba(249, 115, 22, 0.55);
+      outline-offset: 2px;
+      transition: outline-color 120ms ease;
     }
-    .sac-render-error pre {
-      margin-top: 10px;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #991b1b;
-      font-size: 13px;
-      line-height: 1.5;
+    button[data-sac-action="true"]:hover::after {
+      content: "Ask SaC";
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #0F2318;
+      color: #ffffff;
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      pointer-events: none;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.1) inset;
+      z-index: 999;
+      animation: sac-action-pill-in 140ms ease-out;
+    }
+    @keyframes sac-action-pill-in {
+      from { opacity: 0; transform: translate(-50%, 2px); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
+    }
+    /* ─── Streaming lock: disable sac-action buttons visually ──────── */
+    body.sac-locked button[data-sac-action="true"] {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    body.sac-locked button[data-sac-action="true"]:hover {
+      outline: none;
+    }
+    body.sac-locked button[data-sac-action="true"]:hover::after {
+      display: none;
     }
   </style>
 </head>
 <body>
-  <div id="root"><p style="padding:24px;color:#a8a29e;">Waiting for code...</p></div>
+  <div id="root">
+    <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#ffffff;">
+      <div style="text-align:center;">
+        <div style="width:32px;height:32px;margin:0 auto 16px;position:relative;">
+          <div style="position:absolute;inset:0;border-radius:50%;border:1.5px solid #e7e5e4;animation:breathe-ring 3s ease-in-out infinite;"></div>
+          <div style="position:absolute;inset:4px;border-radius:50%;border:1.5px solid transparent;border-top-color:#a8a29e;animation:spin 1.5s linear infinite;"></div>
+        </div>
+        <p style="color:#a8a29e;font-size:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;letter-spacing:-0.01em;">Preparing canvas...</p>
+      </div>
+    </div>
+    <style>
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes breathe-ring { 0%,100% { transform:scale(1);opacity:0.5; } 50% { transform:scale(1.08);opacity:1; } }
+    </style>
+  </div>
 
-  <!-- SaC Action Bridge: allows generated app buttons to trigger evolve -->
+  <!-- SaC Action Bridge -->
   <script>
     window.__sac_action = function(intent, context) {
       if (typeof intent !== 'string' || !intent.trim()) return;
@@ -91,37 +125,276 @@
     window.__React = React;
     window.React = React;
 
-    // Persistent React root — reused across renders
+    // Persistent React root — reused across renders (never unmounted)
     const rootEl = document.getElementById('root');
-    let reactRoot = ReactDOM.createRoot(rootEl);
+    const reactRoot = ReactDOM.createRoot(rootEl);
+    let _renderCounter = 0;
 
-    // Error boundary
+    // Auto-scroll to bottom during streaming
+    let _streamingScrollActive = false;
+    const _scrollObserver = new MutationObserver(() => {
+      if (_streamingScrollActive) {
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      }
+    });
+    _scrollObserver.observe(rootEl, { childList: true, subtree: true, characterData: true });
+
+    // ─── Last-good-frame tracking ─────────────────────────────────────
+    let _lastGoodCode = null;
+    let _lastGoodShimUrl = null;
+
+    window.__notifyRenderSuccess = function(code, shimUrl) {
+      _lastGoodCode = code;
+      _lastGoodShimUrl = shimUrl;
+    };
+
+    var _fallbackScheduled = false;
+    window.__scheduleRenderLastGood = function() {
+      if (!_lastGoodCode || !window.__scheduleSilentRender || _fallbackScheduled) return;
+      _fallbackScheduled = true;
+      requestAnimationFrame(function() {
+        _fallbackScheduled = false;
+        if (window._queuedRender || !_lastGoodCode || !window.__scheduleSilentRender) return;
+        window.__scheduleSilentRender(_lastGoodCode, _lastGoodShimUrl);
+      });
+    };
+
+    // Thin wrapper that fires a success notification after commit
+    function SuccessWrapper({ code, shimUrl, children }) {
+      useEffect(function() {
+        window.__notifyRenderSuccess(code, shimUrl);
+      }, []);
+      return children;
+    }
+
+    // Error boundary with silent mode and resetKey
     class ErrorBoundary extends React.Component {
-      constructor(props) { super(props); this.state = { error: null, key: 0 }; }
+      constructor(props) {
+        super(props);
+        this.state = { error: null, lastResetKey: props.resetKey };
+      }
+      static getDerivedStateFromProps(nextProps, prevState) {
+        if (nextProps.resetKey !== prevState.lastResetKey) {
+          return { error: null, lastResetKey: nextProps.resetKey };
+        }
+        return null;
+      }
       static getDerivedStateFromError(error) { return { error }; }
       componentDidCatch(error) {
-        if (!this._silent) {
+        if (!this.props.silent) {
           window.parent.postMessage({ type: 'render-error', error: { message: error.message, type: 'runtime', stack: error.stack || '' } }, '*');
+        } else {
+          requestAnimationFrame(function() {
+            window.__scheduleRenderLastGood && window.__scheduleRenderLastGood();
+          });
         }
       }
       render() {
         if (this.state.error) {
-          return this._silent ? null : React.createElement('div', { className: 'sac-render-error' },
-            React.createElement('strong', null, 'Generated app hit a runtime error'),
-            React.createElement('div', null, 'SaC kept the conversation alive. Ask the agent to revise the app, or inspect the code tab.'),
-            React.createElement('pre', null, this.state.error.message)
-          );
+          if (this.props.silent) return null;
+          return React.createElement('pre', {
+            style: { padding: '24px', color: 'red', whiteSpace: 'pre-wrap' }
+          }, 'Runtime error: ' + this.state.error.message);
         }
         return this.props.children;
       }
     }
 
+    function renderErrorUI(message) {
+      _renderCounter++;
+      reactRoot.render(React.createElement('pre', {
+        style: { padding: '24px', color: 'red', whiteSpace: 'pre-wrap' }
+      }, message));
+    }
+
+    // ─── Partial TSX repair (for streaming chunks) ────────────────────
+    const JSX_KEYWORDS = new Set(['return', 'yield', 'await', 'typeof', 'void', 'delete', 'new']);
+
+    function repairPartialTsx(code) {
+      let stripped = code.replace(/\s+$/, '');
+      stripped = stripped.replace(/[.=+\-*/%&|^,:!?]+$/, '');
+      stripped = stripped.replace(/\.\w*$/, '');
+
+      const stack = [];
+      let inString = null;
+      let inLineComment = false;
+      let inBlockComment = false;
+      let i = 0;
+
+      const lastNonWs = (upTo) => {
+        let k = upTo - 1;
+        while (k >= 0 && /\s/.test(stripped[k])) k--;
+        return k >= 0 ? { char: stripped[k], idx: k } : null;
+      };
+
+      const isJsxContext = (idx) => {
+        const prev = lastNonWs(idx);
+        if (!prev) return true;
+        if (/[({\[,;=&|?:!+\-*/%^~]/.test(prev.char)) return true;
+        if (prev.char === '>') return true;
+        if (/[A-Za-z0-9_$)\]]/.test(prev.char)) {
+          let wEnd = prev.idx + 1;
+          let wStart = prev.idx;
+          while (wStart > 0 && /[A-Za-z0-9_$]/.test(stripped[wStart - 1])) wStart--;
+          const word = stripped.slice(wStart, wEnd);
+          return JSX_KEYWORDS.has(word);
+        }
+        return true;
+      };
+
+      while (i < stripped.length) {
+        const c = stripped[i];
+        const next = stripped[i + 1];
+
+        if (inLineComment) {
+          if (c === '\n') inLineComment = false;
+          i++; continue;
+        }
+        if (inBlockComment) {
+          if (c === '*' && next === '/') { inBlockComment = false; i += 2; continue; }
+          i++; continue;
+        }
+        if (inString) {
+          if (c === '\\') { i += 2; continue; }
+          if (c === inString) inString = null;
+          i++; continue;
+        }
+
+        if (c === '/' && next === '/') { inLineComment = true; i += 2; continue; }
+        if (c === '/' && next === '*') { inBlockComment = true; i += 2; continue; }
+        if (c === '"' || c === "'" || c === '`') { inString = c; i++; continue; }
+
+        if (c === '(') { stack.push({ close: ')' }); i++; continue; }
+        if (c === '{') { stack.push({ close: '}' }); i++; continue; }
+        if (c === '[') { stack.push({ close: ']' }); i++; continue; }
+        if (c === ')' || c === '}' || c === ']') {
+          for (let k = stack.length - 1; k >= 0; k--) {
+            if (stack[k].close === c) { stack.splice(k, 1); break; }
+          }
+          i++; continue;
+        }
+
+        if (c === '<') {
+          if (next === '/') {
+            let j = i + 2;
+            if (stripped[j] === '>') {
+              for (let k = stack.length - 1; k >= 0; k--) {
+                if (stack[k].close === '</>') { stack.splice(k, 1); break; }
+              }
+              i = j + 1; continue;
+            }
+            while (j < stripped.length && /[A-Za-z0-9_.]/.test(stripped[j])) j++;
+            const tagName = stripped.slice(i + 2, j);
+            while (j < stripped.length && stripped[j] !== '>') j++;
+            if (j >= stripped.length) {
+              return repairPartialTsx(stripped.slice(0, i));
+            }
+            const closeStr = `</${tagName}>`;
+            for (let k = stack.length - 1; k >= 0; k--) {
+              if (stack[k].close === closeStr) { stack.splice(k, 1); break; }
+            }
+            i = j + 1; continue;
+          }
+          if (next === '>') {
+            stack.push({ close: '</>' });
+            i += 2; continue;
+          }
+          const topIsJsx = stack.length > 0 && stack[stack.length - 1].close.startsWith('</');
+          if (/[A-Za-z]/.test(next) && (topIsJsx || isJsxContext(i))) {
+            let j = i + 1;
+            while (j < stripped.length && /[A-Za-z0-9_.]/.test(stripped[j])) j++;
+            const tagName = stripped.slice(i + 1, j);
+
+            let depth = 0;
+            let attrStr = null;
+            let k = j;
+            let completed = false;
+            let selfClosing = false;
+            while (k < stripped.length) {
+              const cc = stripped[k];
+              const nn = stripped[k + 1];
+              if (attrStr) {
+                if (cc === '\\') { k += 2; continue; }
+                if (cc === attrStr) attrStr = null;
+                k++; continue;
+              }
+              if (cc === '"' || cc === "'") { attrStr = cc; k++; continue; }
+              if (cc === '{') { depth++; k++; continue; }
+              if (cc === '}') { depth--; k++; continue; }
+              if (depth === 0 && cc === '/' && nn === '>') { selfClosing = true; completed = true; k += 2; break; }
+              if (depth === 0 && cc === '>') { completed = true; k++; break; }
+              k++;
+            }
+            if (!completed) {
+              let synthTail = '';
+              if (attrStr) synthTail += attrStr;
+              while (depth > 0) { synthTail += '}'; depth--; }
+              synthTail += ' />';
+              const rebuilt = stripped.slice(0, k) + synthTail;
+              return repairPartialTsx(rebuilt);
+            }
+            if (!selfClosing) stack.push({ close: `</${tagName}>` });
+            i = k;
+            continue;
+          }
+          i++;
+          continue;
+        }
+
+        i++;
+      }
+
+      let suffix = '';
+      if (inString) suffix += inString;
+      if (inBlockComment) suffix += '*/';
+      while (stack.length > 0) {
+        suffix += stack.pop().close;
+      }
+
+      return stripped + suffix;
+    }
+
+    // ─── Lucide icon safety net ───────────────────────────────────────
+    function rewriteLucideImports(code) {
+      let count = 0;
+      let hadLucide = false;
+      const rewritten = code.replace(
+        /import\s*\{([^}]*)\}\s*from\s*["']lucide-react["']\s*;?/g,
+        (_match, names) => {
+          hadLucide = true;
+          count++;
+          const ns = `__sac_lucide_${count}`;
+          const decls = names.split(',').map(s => s.trim()).filter(Boolean).map(item => {
+            const m = item.match(/^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/);
+            if (!m) return '';
+            const orig = m[1];
+            const alias = m[2] || m[1];
+            return `const ${alias} = ${ns}.${orig} || __sac_lucide_fallback;`;
+          }).filter(Boolean).join('\n');
+          return `import * as ${ns} from "lucide-react";\n${decls}`;
+        }
+      );
+      if (!hadLucide) return code;
+      const fallback = `const __sac_lucide_fallback = (props) => React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', ...props }, React.createElement('circle', { cx: 12, cy: 12, r: 10 }));\n`;
+      return fallback + rewritten;
+    }
+
     // Cache for shim blob URLs
     const shimCache = {};
 
-    // Main render function — called from the non-module script via window
-    window.__doRender = async function(tsxCode, shimUrl, silent) {
-      // Transpile
+    window.__clearRoot = function() {
+      _renderCounter++;
+      _lastGoodCode = null;
+      _lastGoodShimUrl = null;
+      reactRoot.render(
+        React.createElement('div', {
+          style: { minHeight: '100vh', background: '#ffffff' },
+        })
+      );
+    };
+
+    // Main render function
+    window.__doRender = async function(tsxCode, shimUrl, silent, generation) {
       if (!window.Babel) {
         if (!silent) window.parent.postMessage({ type: 'render-error', error: { message: 'Babel not loaded', type: 'transpile' } }, '*');
         return;
@@ -136,9 +409,22 @@
       } catch(e) {
         if (!silent) {
           window.parent.postMessage({ type: 'render-error', error: { message: e.message, type: 'transpile' } }, '*');
-          showRenderError('Generated app could not be transpiled', e.message);
+          renderErrorUI('Transpile error: ' + e.message);
+          return;
         }
-        return;
+        // Silent (streaming) path: try to repair partial TSX
+        const repaired = repairPartialTsx(tsxCode);
+        if (repaired === tsxCode) return;
+        // Guard: skip frames with no visible JSX before first good frame
+        if (!_lastGoodCode && !/<[A-Za-z][^>]*>[^<]*[^<\s][^<]*/.test(repaired)) return;
+        try {
+          jsCode = window.Babel.transform(repaired, {
+            presets: ['react', 'typescript'],
+            filename: 'App.tsx',
+          }).code;
+        } catch {
+          return;
+        }
       }
 
       // Load and cache shim
@@ -156,6 +442,9 @@
         jsCode = jsCode.replace(/__ui_shim__/g, shimCache[shimUrl]);
       }
 
+      // Rewrite lucide imports with fallback
+      jsCode = rewriteLucideImports(jsCode);
+
       // Dynamic import the app code
       let appBlob;
       try {
@@ -169,52 +458,137 @@
           return;
         }
 
-        // Unmount previous and re-render
-        reactRoot.unmount();
-        rootEl.innerHTML = '';
-        reactRoot = ReactDOM.createRoot(rootEl);
+        _renderCounter++;
+        const appEl = silent
+          ? React.createElement(SuccessWrapper, { code: tsxCode, shimUrl: shimUrl }, React.createElement(App))
+          : React.createElement(App);
+        const boundary = React.createElement(
+          ErrorBoundary,
+          { silent: !!silent, resetKey: _renderCounter },
+          appEl
+        );
 
-        const boundary = React.createElement(ErrorBoundary, null, React.createElement(App));
+        if (generation !== undefined && generation !== window._renderGeneration) return;
+
+        _streamingScrollActive = !!silent;
         reactRoot.render(boundary);
 
-        window.parent.postMessage({ type: 'render-success' }, '*');
+        if (!silent) window.parent.postMessage({ type: 'render-success' }, '*');
       } catch(err) {
         if (appBlob) URL.revokeObjectURL(appBlob);
         if (!silent) {
           window.parent.postMessage({ type: 'render-error', error: { message: err.message, type: 'module-load', stack: err.stack || '' } }, '*');
-          showRenderError('Generated app could not load', err.message);
+          renderErrorUI(err.message);
         }
       }
     };
 
-    function showRenderError(title, message) {
-      rootEl.innerHTML =
-        '<div class="sac-render-error">' +
-        '<strong>' + escapeHtml(title) + '</strong>' +
-        '<div>SaC kept the conversation alive. Ask the agent to revise the app, or inspect the code tab.</div>' +
-        '<pre>' + escapeHtml(message) + '</pre>' +
-        '</div>';
-    }
+    // Pre-warm lightweight libraries
+    ['pigeon-maps', 'lucide-react'].forEach(function(m) {
+      import(m).catch(function() {});
+    });
 
-    function escapeHtml(value) {
-      return String(value || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
-    // Signal that the module is ready
+    // Signal module ready
     window.__moduleReady = true;
-    // Process any pending render
     if (window.__pendingModuleRender) {
       const p = window.__pendingModuleRender;
       window.__doRender(p.code, p.shimUrl, p.silent);
     }
   </script>
 
-  <!-- Message handler (non-module, runs immediately) -->
+  <!-- Click lock -->
   <script>
+    var _sacLocked = false;
+    function _sacBlockEvent(ev) {
+      if (!ev.target || !ev.target.closest('[data-sac-action]')) return;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }
+    var _SAC_LOCK_EVENTS = ['click', 'mousedown', 'pointerdown', 'contextmenu', 'dblclick', 'auxclick'];
+    function _sacSetLocked(locked) {
+      locked = !!locked;
+      if (locked === _sacLocked) return;
+      _sacLocked = locked;
+      document.body.classList.toggle('sac-locked', locked);
+      for (var i = 0; i < _SAC_LOCK_EVENTS.length; i++) {
+        var t = _SAC_LOCK_EVENTS[i];
+        if (locked) {
+          window.addEventListener(t, _sacBlockEvent, true);
+        } else {
+          window.removeEventListener(t, _sacBlockEvent, true);
+        }
+      }
+    }
+  </script>
+
+  <!-- Message handler + render scheduler (non-module, runs immediately) -->
+  <script>
+    // Stream render scheduler (latest-wins + in-flight serialization)
+    var _STREAM_MIN_INTERVAL_MS = 280;
+    var _STREAM_STALE_MS = 1500;
+    var _lastRenderStartedAt = 0;
+    var _renderInFlight = false;
+    var _renderGeneration = 0;
+    var _staleTimer = null;
+    var _renderTimer = null;
+    var _queuedRender = null;
+
+    function _drainRenderQueue() {
+      if (_renderInFlight || !_queuedRender) return;
+
+      var req = _queuedRender;
+      var now = Date.now();
+
+      if (req.silent) {
+        var wait = _STREAM_MIN_INTERVAL_MS - (now - _lastRenderStartedAt);
+        if (wait > 0) {
+          if (_renderTimer) clearTimeout(_renderTimer);
+          _renderTimer = setTimeout(function() {
+            _renderTimer = null;
+            _drainRenderQueue();
+          }, wait);
+          return;
+        }
+      }
+
+      _queuedRender = null;
+      _renderInFlight = true;
+      _lastRenderStartedAt = Date.now();
+      var myGen = ++_renderGeneration;
+
+      if (req.silent) {
+        if (_staleTimer) clearTimeout(_staleTimer);
+        _staleTimer = setTimeout(function() {
+          _staleTimer = null;
+          if (_renderInFlight) {
+            _renderInFlight = false;
+            _drainRenderQueue();
+          }
+        }, _STREAM_STALE_MS);
+      }
+
+      Promise.resolve(window.__doRender(req.code, req.shimUrl, req.silent, myGen))
+        .catch(function() {})
+        .finally(function() {
+          if (_staleTimer) { clearTimeout(_staleTimer); _staleTimer = null; }
+          _renderInFlight = false;
+          _drainRenderQueue();
+        });
+    }
+
+    function _scheduleRender(code, shimUrl, silent) {
+      _queuedRender = { code: code, shimUrl: shimUrl, silent: !!silent };
+      if (!silent && _renderTimer) {
+        clearTimeout(_renderTimer);
+        _renderTimer = null;
+      }
+      _drainRenderQueue();
+    }
+
+    window.__scheduleSilentRender = function(code, shimUrl) {
+      _scheduleRender(code, shimUrl, true);
+    };
+
     window.addEventListener('message', function(ev) {
       if (!ev.data || !ev.data.type) return;
 
@@ -222,6 +596,10 @@
         renderApp(ev.data.code, ev.data.shimUrl, !!ev.data.silent);
       } else if (ev.data.type === 'abort') {
         document.getElementById('root').innerHTML = '';
+      } else if (ev.data.type === 'clear') {
+        if (window.__clearRoot) window.__clearRoot();
+      } else if (ev.data.type === 'set-locked') {
+        _sacSetLocked(!!ev.data.locked);
       }
     });
 
@@ -231,9 +609,8 @@
         return;
       }
       if (window.__moduleReady && window.__doRender) {
-        window.__doRender(code, shimUrl, silent);
+        _scheduleRender(code, shimUrl, silent);
       } else {
-        // Module not ready yet — queue
         window.__pendingModuleRender = { code: code, shimUrl: shimUrl, silent: silent };
       }
     }

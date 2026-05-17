@@ -20,6 +20,8 @@
  *   renderer.on('error', (err) => console.error(err));
  */
 
+export { autoClose };
+
 export class SaCRenderer {
   constructor(iframeElement, options = {}) {
     this._iframe = iframeElement;
