@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import AsyncIterator, Protocol
 
-from sac.runtime.pipeline.evolve import evolve_pipeline, stream_evolve_pipeline
+from sac.runtime.pipeline.evolve import evolve_pipeline, stream_evolve_pipeline, stream_evolve_pipeline_diff
 from sac.runtime.pipeline.generate import generate_pipeline, stream_generate_pipeline
 from sac.runtime.providers.base import LLMProvider
 from sac.types import App, ConversationSettings, PipelineEvent
@@ -99,7 +99,7 @@ class DefaultCodeProducer:
                 version=version,
                 content=content,
             )
-        return stream_evolve_pipeline(
+        return stream_evolve_pipeline_diff(
             new_intent=intent,
             current_code=prior_app.code,
             original_intent=prior_app.intent,

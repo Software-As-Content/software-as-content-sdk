@@ -218,6 +218,16 @@ class PipelineChunkEvent(BaseModel):
     data: str
 
 
+class PipelineSnapshotEvent(BaseModel):
+    """Full code snapshot emitted by progressive evolve after each diff block is applied.
+
+    Unlike PipelineChunkEvent (append to buffer), the frontend should REPLACE
+    its buffer with this code for rendering.
+    """
+    type: Literal["snapshot"] = "snapshot"
+    code: str
+
+
 class PipelineCompleteEvent(BaseModel):
     type: Literal["complete"] = "complete"
     app: App
@@ -228,7 +238,7 @@ class PipelineErrorEvent(BaseModel):
     error: str
 
 
-PipelineEvent = PipelineStageEvent | PipelineSearchEvent | PipelineChunkEvent | PipelineCompleteEvent | PipelineErrorEvent
+PipelineEvent = PipelineStageEvent | PipelineSearchEvent | PipelineChunkEvent | PipelineSnapshotEvent | PipelineCompleteEvent | PipelineErrorEvent
 
 
 # ─── LLM Message ──────────────────────────────────────────────────

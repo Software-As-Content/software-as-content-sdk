@@ -398,6 +398,32 @@ function setupEventSource(convId) {
     streamPush(chunk);
   });
 
+  es.addEventListener('snapshot', (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    const code = data.code;
+    if (!code) return;
+
+    // First snapshot: prepare UI
+    if (!streamBuffer) {
+      placeholder.classList.add('hidden');
+      iframe.classList.remove('hidden');
+      codeMeta.textContent = 'Applying changes...';
+      showStatus('Evolving...', 'running');
+    }
+
+    // REPLACE buffer (not append) — snapshot is the full updated code
+    streamBuffer = code;
+    codeDisplay.textContent = code;
+
+    // Flush to iframe immediately
+    if (streamFlushTimer) {
+      clearTimeout(streamFlushTimer);
+      streamFlushTimer = null;
+    }
+    streamFlush();
+  });
+
   es.addEventListener('error', (e) => {
     // Server-sent error event (not SSE connection error)
     let data;
@@ -511,6 +537,15 @@ function handleSSEEvent(eventType, data) {
           `<span style="font-size:12px;color:#78716c;">${escHtml(r.query)} (${r.sources?.length || 0})</span>`
         ).join('');
       }
+      break;
+    }
+
+    case 'snapshot': {
+      // Progressive evolve: full code snapshot replaces buffer
+      streamBuffer = data.code;
+      codeDisplay.textContent = data.code;
+      if (streamFlushTimer) { clearTimeout(streamFlushTimer); streamFlushTimer = null; }
+      streamFlush();
       break;
     }
 

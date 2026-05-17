@@ -15,10 +15,13 @@ import json
 import re
 from typing import AsyncIterator
 
+import logging
+
+from sac.runtime.pipeline._diff_filter import DiffChunkFilter
 from sac.runtime.pipeline._tsx_filter import TsxChunkFilter
 from sac.runtime.pipeline.events import PipelineEmitter
 from sac.runtime.prompts.app import build_final_system_prompt
-from sac.runtime.prompts.growth import build_growth_prompt
+from sac.runtime.prompts.growth import build_growth_prompt, build_growth_prompt_diff
 from sac.runtime.providers.base import LLMProvider
 from sac.types import (
     App,
@@ -30,9 +33,12 @@ from sac.types import (
     PipelineCompleteEvent,
     PipelineErrorEvent,
     PipelineEvent,
+    PipelineSnapshotEvent,
     PipelineStageEvent,
     StageStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def evolve_pipeline(
@@ -140,7 +146,123 @@ async def stream_evolve_pipeline(
     ))
 
 
+# ─── Progressive Evolve (diff-based) ──────────────────────────────
+
+
+async def stream_evolve_pipeline_diff(
+    new_intent: str,
+    current_code: str,
+    original_intent: str,
+    model: str,
+    llm: LLMProvider,
+    settings: ConversationSettings,
+    version: int = 2,
+    parent_version: int = 1,
+    content: str | None = None,
+) -> AsyncIterator[PipelineEvent]:
+    """Progressive evolve: LLM outputs search/replace diffs instead of full code.
+
+    On each completed diff block, emits a PipelineSnapshotEvent with the full
+    updated code so the frontend can render incrementally. If any diff fails
+    to apply, falls back to the standard full-code evolve pipeline.
+    """
+    system_prompt = build_final_system_prompt(
+        custom_instructions=settings.custom_instructions,
+        include_design_system=settings.use_design_system,
+    )
+
+    yield PipelineStageEvent(name="generate", status=StageStatus.RUNNING)
+
+    growth_prompt = build_growth_prompt_diff(
+        current_code=current_code,
+        original_intent=original_intent,
+        new_intent=new_intent,
+        system_prompt=system_prompt,
+        custom_growth_rules=settings.growth_rules or None,
+        content=content,
+    )
+
+    diff_filter = DiffChunkFilter(current_code)
+    try:
+        async for token in llm.stream(model, [Message(role="user", content=growth_prompt)]):
+            for snapshot in diff_filter.feed(token):
+                yield PipelineSnapshotEvent(code=snapshot)
+        for snapshot in diff_filter.finalize():
+            yield PipelineSnapshotEvent(code=snapshot)
+    except Exception as exc:
+        yield PipelineStageEvent(name="generate", status=StageStatus.ERROR)
+        yield PipelineErrorEvent(error=str(exc))
+        return
+
+    # Check if diff application succeeded
+    if diff_filter.failed:
+        logger.warning(
+            "Progressive evolve failed (%s), falling back to full-code evolve",
+            diff_filter.error,
+        )
+        yield PipelineStageEvent(name="generate", status=StageStatus.ERROR)
+        yield PipelineStageEvent(name="fallback", status=StageStatus.RUNNING)
+
+        # Delegate to full-code evolve pipeline
+        async for event in stream_evolve_pipeline(
+            new_intent=new_intent,
+            current_code=current_code,
+            original_intent=original_intent,
+            model=model,
+            llm=llm,
+            settings=settings,
+            version=version,
+            parent_version=parent_version,
+            content=content,
+        ):
+            # Skip the duplicate "generate RUNNING" stage from the fallback
+            if isinstance(event, PipelineStageEvent) and event.name == "generate" and event.status == StageStatus.RUNNING:
+                continue
+            yield event
+        return
+
+    # Success — parse growth decision from the raw response
+    decision = _parse_growth_decision(diff_filter.raw_response)
+    final_code = diff_filter.result_code
+
+    logger.info(
+        "Progressive evolve succeeded: %d blocks applied",
+        diff_filter.blocks_applied,
+    )
+
+    yield PipelineStageEvent(name="generate", status=StageStatus.COMPLETED)
+    yield PipelineCompleteEvent(app=App(
+        code=final_code,
+        version=version,
+        intent=new_intent,
+        parent_version=parent_version,
+        model=model,
+        growth_decision=decision,
+    ))
+
+
 # ─── Internal helpers ──────────────────────────────────────────────
+
+
+def _parse_growth_decision(response: str) -> GrowthDecision:
+    """Extract just the JSON growth decision from the LLM response."""
+    decision = GrowthDecision(growth_type=GrowthType.EXTEND_CURRENT, reason="Default to extend")
+
+    json_match = re.search(r"```json\s*([\s\S]*?)```", response)
+    if json_match:
+        try:
+            parsed = json.loads(json_match.group(1).strip())
+            growth_type = parsed.get("growthType", "extend_current")
+            if growth_type in ("extend_current", "new_page"):
+                decision = GrowthDecision(
+                    growth_type=GrowthType(growth_type),
+                    reason=parsed.get("reason", "No reason provided"),
+                    changes=parsed.get("changes", ""),
+                )
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
+
+    return decision
 
 
 def _parse_growth_response(response: str) -> tuple[GrowthDecision, str]:

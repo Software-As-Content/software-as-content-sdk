@@ -450,6 +450,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             PipelineChunkEvent,
             PipelineCompleteEvent,
             PipelineErrorEvent,
+            PipelineSnapshotEvent,
             PipelineStageEvent,
         )
         from sac.agent.prompts.intent import (
@@ -475,6 +476,8 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             ):
                 if isinstance(event, PipelineChunkEvent):
                     pubsub.publish(conv.id, "chunk", {"data": event.data})
+                elif isinstance(event, PipelineSnapshotEvent):
+                    pubsub.publish(conv.id, "snapshot", {"code": event.code})
                 elif isinstance(event, PipelineStageEvent):
                     pubsub.publish(
                         conv.id, "stage", {"name": event.name, "status": event.status}
