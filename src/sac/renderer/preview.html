@@ -125,9 +125,20 @@
     window.__React = React;
     window.React = React;
 
-    // Persistent React root — reused across renders (never unmounted)
+    // Persistent React root — reused across renders (never unmounted).
+    // onCaughtError: React 19 API — suppresses the default console.error
+    // that React emits for errors caught by an ErrorBoundary. During
+    // streaming, partial code routinely triggers runtime errors (e.g.
+    // rendering an object as a child); these are caught by ErrorBoundary
+    // and handled via last-good-frame fallback. Logging them is pure noise.
     const rootEl = document.getElementById('root');
-    const reactRoot = ReactDOM.createRoot(rootEl);
+    let _silentRenderActive = false;
+    const reactRoot = ReactDOM.createRoot(rootEl, {
+      onCaughtError(error) {
+        if (_silentRenderActive) return;
+        console.error(error);
+      },
+    });
     let _renderCounter = 0;
 
     // Auto-scroll to bottom during streaming
@@ -471,6 +482,7 @@
         if (generation !== undefined && generation !== window._renderGeneration) return;
 
         _streamingScrollActive = !!silent;
+        _silentRenderActive = !!silent;
         reactRoot.render(boundary);
 
         if (!silent) window.parent.postMessage({ type: 'render-success' }, '*');
@@ -523,6 +535,33 @@
 
   <!-- Message handler + render scheduler (non-module, runs immediately) -->
   <script>
+    // ─── Console muting for streaming ─────────────────────────────────
+    // During streaming, partial code inevitably triggers React warnings
+    // (DOM nesting, className="true") and runtime errors caught by
+    // ErrorBoundary ("X is not defined", "Objects are not valid as React
+    // child"). These are all expected and handled by the last-good-frame
+    // mechanism. We mute console for the ENTIRE streaming session rather
+    // than per-render (React 19 concurrent mode defers render work past
+    // any per-frame restore timer). Console is restored on final render
+    // or abort so real errors surface normally.
+    var _origConsoleError = console.error;
+    var _origConsoleWarn = console.warn;
+    var _consoleMuted = false;
+
+    function _muteConsole() {
+      if (_consoleMuted) return;
+      _consoleMuted = true;
+      console.error = function(){};
+      console.warn = function(){};
+    }
+
+    function _restoreConsole() {
+      if (!_consoleMuted) return;
+      _consoleMuted = false;
+      console.error = _origConsoleError;
+      console.warn = _origConsoleWarn;
+    }
+
     // Stream render scheduler (latest-wins + in-flight serialization)
     var _STREAM_MIN_INTERVAL_MS = 280;
     var _STREAM_STALE_MS = 1500;
@@ -578,6 +617,14 @@
 
     function _scheduleRender(code, shimUrl, silent) {
       _queuedRender = { code: code, shimUrl: shimUrl, silent: !!silent };
+
+      // Mute console on first silent render; restore on final (non-silent).
+      if (silent) {
+        _muteConsole();
+      } else {
+        _restoreConsole();
+      }
+
       if (!silent && _renderTimer) {
         clearTimeout(_renderTimer);
         _renderTimer = null;
@@ -595,8 +642,10 @@
       if (ev.data.type === 'render') {
         renderApp(ev.data.code, ev.data.shimUrl, !!ev.data.silent);
       } else if (ev.data.type === 'abort') {
+        _restoreConsole();
         document.getElementById('root').innerHTML = '';
       } else if (ev.data.type === 'clear') {
+        _restoreConsole();
         if (window.__clearRoot) window.__clearRoot();
       } else if (ev.data.type === 'set-locked') {
         _sacSetLocked(!!ev.data.locked);
