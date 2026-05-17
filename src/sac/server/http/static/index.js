@@ -43,6 +43,7 @@ let appVersions = [];          // successful generation/growth events with code 
 let viewedVersion = 0;         // version currently shown in the iframe
 let statusTimer = null;
 const callbackCards = new Map(); // run_id -> { el, eventsEl, rawEl, seen }
+let liveStream = null;          // active renderer stream from PubSub chunks
 
 // ─── Tab switching ───────────────────────────────────────────
 
@@ -248,6 +249,13 @@ function setupEventSource(convId) {
   es.addEventListener('version', async (e) => {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
+
+    // Finalize any in-progress live stream before applying the version.
+    if (liveStream) {
+      liveStream.end();
+      liveStream = null;
+    }
+
     // New App version pushed by an agent — fetch latest code and re-render.
     try {
       const res = await fetch('/conversations/' + convId);
@@ -315,6 +323,46 @@ function setupEventSource(convId) {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
     renderCallbackLog(data);
+  });
+
+  // ─── Streaming events (from /inbox generation) ──────────────
+
+  es.addEventListener('stage', (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    showStatus(`${data.name}: ${data.status}`, 'running');
+  });
+
+  es.addEventListener('chunk', (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    const chunk = data.data;
+    if (!chunk) return;
+
+    // Lazily create the streaming renderer on first chunk
+    if (!liveStream) {
+      liveStream = renderer.createStream();
+      placeholder.classList.add('hidden');
+      iframe.classList.remove('hidden');
+      codeDisplay.textContent = '';
+      codeMeta.textContent = 'Streaming generated code...';
+      showStatus('Generating...', 'running');
+    }
+    codeDisplay.textContent += chunk;
+    liveStream.push(chunk);
+  });
+
+  es.addEventListener('error', (e) => {
+    // Server-sent error event (not SSE connection error)
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    if (liveStream) {
+      liveStream.abort();
+      liveStream = null;
+    }
+    showStatus('Error: ' + (data.error || 'unknown'), 'error');
+    addChatMsg('system', 'Error: ' + (data.error || 'unknown'));
+    setPending(false);
   });
 
   es.addEventListener('ping', () => {

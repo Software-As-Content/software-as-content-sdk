@@ -437,13 +437,20 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 "type": "chat",
             }
 
-        # Φˢ — render new App version directly via conv.ingest()
-        # No StandaloneAgent detour — /inbox owns event recording here.
+        # Φˢ — render new App version via streaming ingest.
+        # Chunks are broadcast through PubSub so any connected viewer
+        # (via /c/{id}/events SSE) sees progressive code generation in
+        # real-time. The REST response is still synchronous — callers
+        # (agents) get the final result when generation completes.
         from sac.types import (
             EventStatus,
             GenerationEvent,
             GrowthEvent,
             IntentSuggestion,
+            PipelineChunkEvent,
+            PipelineCompleteEvent,
+            PipelineErrorEvent,
+            PipelineStageEvent,
         )
         from sac.agent.prompts.intent import (
             get_intent_suggestion_prompt,
@@ -460,9 +467,25 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         )
 
         try:
-            app_result = await conv.ingest(
+            # Stream generation — publish each event to PubSub for
+            # live viewer updates while awaiting the final App result.
+            app_result = None
+            async for event in conv.stream_ingest(
                 content=req.content, intent=intent
-            )
+            ):
+                if isinstance(event, PipelineChunkEvent):
+                    pubsub.publish(conv.id, "chunk", {"data": event.data})
+                elif isinstance(event, PipelineStageEvent):
+                    pubsub.publish(
+                        conv.id, "stage", {"name": event.name, "status": event.status}
+                    )
+                elif isinstance(event, PipelineCompleteEvent):
+                    app_result = event.app
+                elif isinstance(event, PipelineErrorEvent):
+                    raise RuntimeError(event.error)
+
+            if app_result is None:
+                raise RuntimeError("Stream ended without producing an App")
 
             # Suggestions: use agent-provided override, or generate defaults
             if req.suggestions is not None:
@@ -519,6 +542,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                     error=str(exc),
                 )
             )
+            pubsub.publish(conv.id, "error", {"error": str(exc)})
             raise HTTPException(status_code=500, detail=str(exc))
 
         pubsub.publish(
