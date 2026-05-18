@@ -77,6 +77,7 @@ let appVersions = [];          // successful generation/growth events with code 
 let viewedVersion = 0;         // version currently shown in the iframe
 let statusTimer = null;
 const callbackCards = new Map(); // run_id -> { el, eventsEl, rawEl, seen }
+let lastUserIntent = '';         // tracks the most recent user intent for pending cards
 
 // ─── Streaming preview state ────────────────────────────────
 // Matches the product's approach: accumulate chunks in a buffer,
@@ -351,7 +352,10 @@ function setupEventSource(convId) {
             latest.stages = [...(latest.stages || []), ...pendingStages];
             pendingStages = [];
           }
-          ensureVersionCard(latest);
+
+          // Convert any pending callback card into the final version card
+          const pendingRuns = finalizePendingCards(data.version);
+          ensureVersionCard(latest, pendingRuns);
           applyAppVersion(latest, { announce: true });
         } else {
           // conv info removed from header
@@ -370,7 +374,6 @@ function setupEventSource(convId) {
           (ev) => (ev.type === 'generation' || ev.type === 'growth') && ev.status === 'success'
         );
         renderSuggestions(last?.intent_suggestions || []);
-        markLatestCallbackVersion(data.version);
       }
     } catch (err) {
       console.warn('Failed to apply version event', err);
@@ -685,6 +688,7 @@ function handleSSEEvent(eventType, data) {
 // ─── Chat UI helpers ─────────────────────────────────────────
 
 function addChatMsg(role, content) {
+  if (role === 'user') lastUserIntent = content;
   const area = document.getElementById('chat-area');
   const msg = document.createElement('div');
   msg.className = `chat-msg ${role}`;
@@ -754,7 +758,7 @@ function applyAppVersion(version, opts = {}) {
   }
 }
 
-function ensureVersionCard(version) {
+function ensureVersionCard(version, callbackRuns) {
   const area = document.getElementById('chat-area');
   const id = `version-card-${version.version}`;
   let wrapper = document.getElementById(id);
@@ -762,17 +766,72 @@ function ensureVersionCard(version) {
     wrapper = document.createElement('div');
     wrapper.id = id;
     wrapper.className = 'version-card';
-    area.appendChild(wrapper);
+    // If there's an absorb reference (from a merged callback card), insert there
+    const absorbRef = area.querySelector('[data-absorb-ref]');
+    if (absorbRef) {
+      area.insertBefore(wrapper, absorbRef);
+      absorbRef.remove();
+    } else {
+      area.appendChild(wrapper);
+    }
   }
   const kindLabel = version.kind === 'generated' ? 'generated' : 'evolved';
   const timeStr = version.createdAt ? formatTime(version.createdAt) : '';
   const sources = version.sources || [];
   const stages = version.stages || [];
-  const hasDetails = sources.length > 0 || stages.length > 0;
+  const runs = callbackRuns || [];
 
+  // Build collapsible detail sections
   let detailsHtml = '';
-  if (hasDetails) {
-    const sourcesHtml = sources.length > 0 ? `
+  const sections = [];
+
+  // Agent activity section (from callback runs)
+  if (runs.length > 0) {
+    const agentEvents = [];
+    for (const run of runs) {
+      for (const log of (run.logs || []).slice(-10)) {
+        const kind = log.kind || 'log';
+        const detail = log.detail || '';
+        // Skip noise
+        if (kind === 'raw') continue;
+        if (/ignoring interface\.|stream disconnected|manifest|loader/.test(detail)) continue;
+        // Skip post-publish noise
+        if (kind === 'turn_completed') continue;
+        if (kind === 'command_completed' && detail.includes('/inbox')) continue;
+        // Skip agent messages that are just URL confirmations
+        if (kind === 'agent_message' && detail.includes('Updated the SaC app')) continue;
+
+        const iconMap = { agent_message: '💬', command_started: '▶', command_completed: '✓', thread_started: '⚡', turn_started: '◌', version_updated: '✦', warning: '⚠' };
+        const icon = iconMap[kind] || '·';
+        const label = kind === 'agent_message' ? 'Agent' :
+                      kind === 'command_started' ? 'Running' :
+                      kind === 'command_completed' ? 'Completed' :
+                      kind === 'thread_started' ? 'Thread' :
+                      kind === 'turn_started' ? 'Thinking' :
+                      kind === 'warning' ? 'Warning' :
+                      log.label || kind;
+        const displayDetail = kind === 'command_started' || kind === 'command_completed'
+          ? formatCommand(detail) : kind === 'thread_started' ? (detail.slice(0, 12) + '...') : compactText(detail, 200);
+        agentEvents.push(`<div class="vc-agent-event"><span class="vc-agent-icon">${icon}</span><span class="vc-agent-label">${escHtml(label)}</span>${displayDetail ? `<span class="vc-agent-detail">${escHtml(displayDetail)}</span>` : ''}</div>`);
+      }
+    }
+    if (agentEvents.length > 0) {
+      const adapter = runs[0].adapter ? adapterLabel(runs[0].adapter) : 'Agent';
+      sections.push(`
+        <div class="vc-detail-section">
+          <div class="vc-detail-toggle" data-section="agent">
+            <span class="vc-detail-arrow">›</span>
+            ${escHtml(adapter)} (${agentEvents.length} events)
+          </div>
+          <div class="vc-detail-body" data-section-body="agent">
+            ${agentEvents.join('')}
+          </div>
+        </div>`);
+    }
+  }
+
+  if (sources.length > 0) {
+    sections.push(`
       <div class="vc-detail-section">
         <div class="vc-detail-toggle" data-section="sources">
           <span class="vc-detail-arrow">›</span>
@@ -782,9 +841,11 @@ function ensureVersionCard(version) {
           ${sources.slice(0, 10).map(s => `<div class="vc-source-item">${s.url ? `<a href="${escHtml(s.url)}" target="_blank" rel="noopener">${escHtml(compactText(s.title || s.url, 60))}</a>` : escHtml(compactText(s.title, 60))}</div>`).join('')}
           ${sources.length > 10 ? `<div class="vc-source-item" style="color:#a8a29e;">+${sources.length - 10} more</div>` : ''}
         </div>
-      </div>` : '';
+      </div>`);
+  }
 
-    const stagesHtml = stages.length > 0 ? `
+  if (stages.length > 0) {
+    sections.push(`
       <div class="vc-detail-section">
         <div class="vc-detail-toggle" data-section="stages">
           <span class="vc-detail-arrow">›</span>
@@ -793,13 +854,19 @@ function ensureVersionCard(version) {
         <div class="vc-detail-body" data-section-body="stages">
           ${stages.map(s => `<div class="vc-stage-item"><span class="vc-stage-name">${escHtml(s.name)}</span>${s.duration ? `<span class="vc-stage-dur">${s.duration.toFixed(1)}s</span>` : ''}</div>`).join('')}
         </div>
-      </div>` : '';
-
-    detailsHtml = `<div class="vc-details">${sourcesHtml}${stagesHtml}</div>`;
+      </div>`);
   }
+
+  if (sections.length > 0) detailsHtml = `<div class="vc-details">${sections.join('')}</div>`;
+
+  // Status indicator
+  const statusDot = runs.length > 0
+    ? (runs.every(r => r.status === 'succeeded') ? 'success' : runs.some(r => r.status === 'failed') ? 'failed' : 'success')
+    : 'success';
 
   wrapper.innerHTML = `
     <div class="vc-header">
+      <span class="vc-dot vc-dot-${statusDot}"></span>
       <span class="version-card-badge">v${version.version}</span>
       <span class="version-card-title">${escHtml(version.title || `Version ${version.version}`)}</span>
       <span class="version-card-kind">${escHtml(kindLabel)}${timeStr ? ' · ' + escHtml(timeStr) : ''}</span>
@@ -847,38 +914,56 @@ function flashVersionCard(versionNumber) {
 }
 
 function renderCallbackRun(run) {
-  const card = ensureCallbackCard(run);
   const status = run.status || 'unknown';
 
-  // Update status badge
-  const statusEl = card.el.querySelector('.cb-status');
-  statusEl.textContent = runStatusLabel(status);
-  statusEl.className = `cb-status ${status}`;
+  // If this run already has a version card, skip completely
+  if (run.result_version && document.getElementById(`version-card-${run.result_version}`)) {
+    if (callbackCards.has(run.id)) {
+      callbackCards.get(run.id).el.remove();
+      callbackCards.delete(run.id);
+    }
+    return;
+  }
 
-  // Update header meta
-  const meta = card.el.querySelector('.cb-meta');
-  const facts = [`#${(run.id || '').slice(0, 8)}`];
-  if (run.returncode !== undefined) facts.push(`exit ${run.returncode}`);
-  meta.textContent = facts.join(' · ');
+  // If this run already has a pending card that was converted to a version card, skip
+  if (!document.getElementById(`pending-card-${run.id}`) && callbackCards.has(run.id)) {
+    // Card was already converted — the el was replaced by ensureVersionCard
+    if (status === 'succeeded' || status === 'failed' || status === 'no_update') {
+      callbackCards.delete(run.id);
+    }
+    return;
+  }
 
-  // Update card status class (preserve expanded)
-  const wasExpanded = card.el.classList.contains('expanded');
-  card.el.className = `callback-card ${escClass(status)}${wasExpanded ? ' expanded' : ''}`;
+  const card = ensureCallbackCard(run);
 
-  // Replay persisted logs FIRST (chronological agent activity)
+  // Update pending card status display
+  const kindEl = card.el.querySelector('.version-card-kind');
+  const dotEl = card.el.querySelector('.vc-dot');
+  if (status === 'running' || status === 'queued') {
+    if (kindEl) kindEl.textContent = `${adapterLabel(run.adapter)} · ${status === 'running' ? 'running' : 'queued'}`;
+    if (dotEl) { dotEl.className = 'vc-dot vc-dot-pending'; }
+    card.el.className = 'version-card pending';
+  } else if (status === 'succeeded') {
+    if (kindEl) kindEl.textContent = `${adapterLabel(run.adapter)} · success`;
+    if (dotEl) { dotEl.className = 'vc-dot vc-dot-success'; }
+    card.el.classList.remove('pending');
+  } else if (status === 'failed' || status === 'no_update') {
+    if (kindEl) kindEl.textContent = `${adapterLabel(run.adapter)} · ${status}`;
+    if (dotEl) { dotEl.className = 'vc-dot vc-dot-failed'; }
+    card.el.classList.remove('pending');
+  }
+
+  // Replay persisted logs
   if (Array.isArray(run.logs)) {
     for (const log of run.logs.slice(-12)) renderCallbackLog(log);
   }
 
-  // THEN add Published/error events (so they appear after agent activity)
-  if (run.loop_closed && run.result_version) {
-    addCallbackEvent(card, 'version_updated', 'Published', `App updated to v${run.result_version}`);
-  }
+  // Add error events
   if (run.error) {
     addCallbackEvent(card, 'warning', 'Error', compactText(run.error, 200));
   }
 
-  // Remove transient loading states on terminal states (after all events added)
+  // Clean up loading states on terminal
   if (status === 'succeeded' || status === 'failed' || status === 'no_update') {
     card.eventsEl.querySelectorAll('.cb-working, .cb-turn, .cb-finalizing').forEach(el => el.remove());
   }
@@ -1015,21 +1100,40 @@ function ensureCallbackCard(run, afterEl) {
   if (card) return card;
 
   const area = document.getElementById('chat-area');
+  const adapter = adapterLabel(run.adapter);
+  const title = lastUserIntent || 'Processing...';
   const el = document.createElement('div');
-  el.className = 'callback-card';
+  el.className = 'version-card pending';
+  el.id = `pending-card-${run.id}`;
   el.dataset.runId = run.id;
   el.innerHTML = `
-    <div class="cb-header">
-      <div class="cb-icon-wrap"><span class="cb-icon">↔</span></div>
-      <div class="cb-header-text">
-        <div class="cb-title">${escHtml(adapterLabel(run.adapter))}</div>
-        <div class="cb-meta">#${escHtml((run.id || '').slice(0, 8))}</div>
-      </div>
-      <span class="cb-status ${escClass(run.status || 'queued')}">${escHtml(runStatusLabel(run.status || 'queued'))}</span>
+    <div class="vc-header">
+      <span class="vc-dot vc-dot-pending"></span>
+      <span class="version-card-title">${escHtml(compactText(title, 50))}</span>
+      <span class="version-card-kind">${escHtml(adapter)} · pending</span>
     </div>
-    <div class="cb-events"></div>`;
-  el.querySelector('.cb-header').addEventListener('click', () => {
-    el.classList.toggle('expanded');
+    <div class="vc-details">
+      <div class="vc-detail-section">
+        <div class="vc-detail-toggle vc-steps-toggle" data-section="steps">
+          <span class="vc-detail-arrow">⌄</span>
+          Steps
+        </div>
+        <div class="vc-detail-body expanded" data-section-body="steps">
+        </div>
+      </div>
+    </div>`;
+  // Toggle steps section
+  el.querySelector('.vc-steps-toggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const body = el.querySelector('[data-section-body="steps"]');
+    const arrow = el.querySelector('.vc-detail-arrow');
+    if (body.classList.contains('expanded')) {
+      body.classList.remove('expanded');
+      arrow.textContent = '›';
+    } else {
+      body.classList.add('expanded');
+      arrow.textContent = '⌄';
+    }
   });
   // Insert after a specific element if provided, otherwise append
   if (afterEl && afterEl.nextSibling) {
@@ -1037,7 +1141,7 @@ function ensureCallbackCard(run, afterEl) {
   } else {
     area.appendChild(el);
   }
-  card = { el, eventsEl: el.querySelector('.cb-events'), rawEl: null, rawCount: 0, seen: new Set(), published: false };
+  card = { el, eventsEl: el.querySelector('[data-section-body="steps"]'), rawEl: null, rawCount: 0, seen: new Set(), published: false };
   callbackCards.set(run.id, card);
   scrollChatToBottom();
   return card;
@@ -1057,21 +1161,49 @@ function appendCallbackRaw(card, label, raw) {
   pre.textContent = `${pre.textContent}${pre.textContent ? '\n' : ''}${String(raw).slice(0, 2000)}`.slice(-6000);
 }
 
-function markLatestCallbackVersion(version) {
-  const cards = Array.from(callbackCards.values());
-  const card = cards.reverse().find(c => {
-    const statusEl = c.el.querySelector('.cb-status');
-    return statusEl?.classList.contains('running') ||
-      statusEl?.classList.contains('queued') ||
-      statusEl?.classList.contains('succeeded');
-  });
-  if (!card) return;
-  const event = {
-    run_id: card.el.dataset.runId,
-    kind: 'version_updated',
-    label: `App updated to v${version}`,
-  };
-  renderCallbackLog(event);
+// Convert live pending cards into data for ensureVersionCard.
+// The pending card's DOM element is reused as the version card container.
+function finalizePendingCards(version) {
+  const runs = [];
+  for (const [runId, card] of callbackCards) {
+    if (!card.el.classList.contains('pending') && !card.el.id.startsWith('pending-card-')) continue;
+
+    // Extract logs from the card's step events
+    const logs = [];
+    card.eventsEl.querySelectorAll('.cb-event:not(.cb-working)').forEach(ev => {
+      const classList = Array.from(ev.classList);
+      const kindClass = classList.find(c => c.startsWith('cb-') && c !== 'cb-event');
+      const kind = kindClass ? kindClass.replace('cb-', '').replace(/_/g, '_') : 'log';
+      const kindMap = {
+        agent_message: 'agent_message', command: 'command_started',
+        command_done: 'command_completed', thread: 'thread_started',
+        turn: 'turn_started', turn_done: 'turn_completed',
+        version_updated: 'version_updated', warning: 'warning',
+        finalizing: 'command_completed',
+      };
+      const labelEl = ev.querySelector('.cb-event-label');
+      const detailEl = ev.querySelector('.cb-event-detail');
+      logs.push({
+        kind: kindMap[kind] || kind,
+        label: labelEl?.textContent || '',
+        detail: detailEl?.textContent || '',
+      });
+    });
+
+    const adapterText = card.el.querySelector('.version-card-kind')?.textContent || '';
+    const adapterKey = adapterText.includes('Codex') ? 'codex_exec_resume' :
+                       adapterText.includes('OpenClaw') ? 'openclaw_gateway' : 'default';
+    runs.push({ id: runId, adapter: adapterKey, status: 'succeeded', result_version: version, logs });
+
+    // Remove the pending card — ensureVersionCard will create the final one in its place
+    const ref = document.createElement('div');
+    ref.className = 'hidden';
+    ref.dataset.absorbRef = runId;
+    card.el.parentNode.insertBefore(ref, card.el);
+    card.el.remove();
+    callbackCards.delete(runId);
+  }
+  return runs.length > 0 ? runs : null;
 }
 
 // ─── Conversations tab ───────────────────────────────────────
@@ -1157,21 +1289,17 @@ window.loadConv = async function(id) {
       } else if ((evt.type === 'generation' || evt.type === 'growth') && evt.status === 'success') {
         const version = appVersions.find(v => v.code === evt.code);
         if (version) {
-          ensureVersionCard(version);
-          // Insert callback runs that produced this version right after the version card
+          // Pass associated callback runs into the version card (merged view)
           const runs = runsByVersion.get(version.version) || [];
-          const versionCardEl = document.getElementById(`version-card-${version.version}`);
-          for (const run of runs) {
-            ensureCallbackCard(run, versionCardEl);
-            renderCallbackRun(run);
-          }
+          ensureVersionCard(version, runs);
         }
         if (evt.intent_suggestions?.length) lastSuggestions = evt.intent_suggestions;
       }
     }
 
-    // Render orphan runs (no result_version) at the end
+    // Render orphan runs (no result_version — e.g. still running) as pending cards
     for (const run of orphanRuns.slice(-3)) {
+      lastUserIntent = run.intent || lastUserIntent || 'Processing...';
       renderCallbackRun(run);
     }
 
