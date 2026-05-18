@@ -16,7 +16,7 @@ function createRenderer() {
     hidePreviewNotice();
   });
   r.on('error', (err) => {
-    showPreviewNotice('Generated app needs a revision', `${err.type || 'render'}: ${err.message || err}`);
+    showPreviewNotice('Generated app needs a revision', `${err.type || 'render'}: ${err.message || err}`, { fixable: !!conversationId });
   });
   r.on('action', ({ intent, context }) => {
     if (!conversationId || !intent) return;
@@ -1473,10 +1473,22 @@ function flashStatus(text, kind = 'success', ms = 2400) {
   }, ms);
 }
 
-function showPreviewNotice(title, detail) {
+function showPreviewNotice(title, detail, { fixable = false } = {}) {
   previewNotice.classList.remove('hidden');
-  previewNotice.innerHTML = `<strong>${escHtml(title)}</strong><span>${escHtml(detail)}</span>`;
+  const fixBtn = fixable
+    ? `<button class="preview-fix-btn" onclick="this.disabled=true;this.textContent='Fixing...';window.__sacFixRenderError()">✨ Fix it</button>`
+    : '';
+  previewNotice.innerHTML = `<strong>${escHtml(title)}</strong><span title="${escHtml(detail)}">${escHtml(detail)}</span>${fixBtn}`;
 }
+
+// Called by the fix button in the preview notice
+window.__sacFixRenderError = function() {
+  const detail = previewNotice.querySelector('span')?.textContent || '';
+  const truncated = detail.slice(0, 300);
+  hidePreviewNotice();
+  addChatMsg('system', 'Asking SaC to fix the render error...');
+  routeUserIntent(`Fix the rendering error in the current code: ${truncated}`);
+};
 
 function hidePreviewNotice() {
   previewNotice.classList.add('hidden');
