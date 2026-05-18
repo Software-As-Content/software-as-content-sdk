@@ -77,6 +77,7 @@ let appVersions = [];          // successful generation/growth events with code 
 let viewedVersion = 0;         // version currently shown in the iframe
 let statusTimer = null;
 const callbackCards = new Map(); // run_id -> { el, eventsEl, rawEl, seen }
+const finalizedRunIds = new Set(); // run IDs already absorbed into version cards
 let lastUserIntent = '';         // tracks the most recent user intent for pending cards
 
 // ─── Streaming preview state ────────────────────────────────
@@ -795,24 +796,35 @@ function ensureVersionCard(version, callbackRuns) {
         // Skip noise
         if (kind === 'raw') continue;
         if (/ignoring interface\.|stream disconnected|manifest|loader/.test(detail)) continue;
-        // Skip post-publish noise
-        if (kind === 'turn_completed') continue;
+        // Skip transient/post-publish noise
+        if (kind === 'turn_started' || kind === 'turn_completed') continue;
         if (kind === 'command_completed' && detail.includes('/inbox')) continue;
         // Skip agent messages that are just URL confirmations
         if (kind === 'agent_message' && detail.includes('Updated the SaC app')) continue;
 
-        const iconMap = { agent_message: '💬', command_started: '▶', command_completed: '✓', thread_started: '⚡', turn_started: '◌', version_updated: '✦', warning: '⚠' };
-        const icon = iconMap[kind] || '·';
-        const label = kind === 'agent_message' ? 'Agent' :
-                      kind === 'command_started' ? 'Running' :
-                      kind === 'command_completed' ? 'Completed' :
-                      kind === 'thread_started' ? 'Thread' :
-                      kind === 'turn_started' ? 'Thinking' :
-                      kind === 'warning' ? 'Warning' :
-                      log.label || kind;
-        const displayDetail = kind === 'command_started' || kind === 'command_completed'
-          ? formatCommand(detail) : kind === 'thread_started' ? (detail.slice(0, 12) + '...') : compactText(detail, 200);
-        agentEvents.push(`<div class="vc-agent-event"><span class="vc-agent-icon">${icon}</span><span class="vc-agent-label">${escHtml(label)}</span>${displayDetail ? `<span class="vc-agent-detail">${escHtml(displayDetail)}</span>` : ''}</div>`);
+        // Two-role rendering: sac vs agent
+        let role, text;
+        if (kind === 'thread_started') {
+          role = 'sac';
+          text = `Started agent thread ${detail ? detail.slice(0, 12) + '...' : ''}`;
+        } else if (kind === 'agent_message') {
+          role = 'agent';
+          text = compactText(detail, 200);
+        } else if (kind === 'command_started') {
+          role = 'agent-sub';
+          const fmt = formatCommand(detail);
+          text = fmt.includes('/inbox') ? 'POST /inbox' : fmt;
+        } else if (kind === 'warning') {
+          role = 'sac';
+          text = `Warning: ${compactText(detail, 200)}`;
+        } else {
+          role = 'agent-sub';
+          text = compactText(detail || log.label || kind, 200);
+        }
+
+        const roleLabel = role === 'agent-sub' ? '' : (role === 'sac' ? 'sac' : 'agent');
+        const isSub = role === 'agent-sub';
+        agentEvents.push(`<div class="cb-step cb-step-${escClass(role)}"><span class="cb-step-role">${roleLabel}</span><span class="cb-step-text${isSub ? ' cb-step-sub' : ''}">${escHtml(text)}</span></div>`);
       }
     }
     if (agentEvents.length > 0) {
@@ -916,6 +928,9 @@ function flashVersionCard(versionNumber) {
 function renderCallbackRun(run) {
   const status = run.status || 'unknown';
 
+  // If this run was already finalized into a version card, skip completely
+  if (finalizedRunIds.has(run.id)) return;
+
   // If this run already has a version card, skip completely
   if (run.result_version && document.getElementById(`version-card-${run.result_version}`)) {
     if (callbackCards.has(run.id)) {
@@ -960,17 +975,21 @@ function renderCallbackRun(run) {
 
   // Add error events
   if (run.error) {
-    addCallbackEvent(card, 'warning', 'Error', compactText(run.error, 200));
+    addCallbackEvent(card, 'sac', `Error: ${compactText(run.error, 200)}`);
   }
 
-  // Clean up loading states on terminal
+  // Clean up transient states on terminal
   if (status === 'succeeded' || status === 'failed' || status === 'no_update') {
-    card.eventsEl.querySelectorAll('.cb-working, .cb-turn, .cb-finalizing').forEach(el => el.remove());
+    card.eventsEl.querySelectorAll('.cb-step-transient').forEach(el => el.remove());
   }
 }
 
 function renderCallbackLog(log) {
   if (!log.run_id) return;
+
+  // If this run was already finalized into a version card, ignore late events
+  if (finalizedRunIds.has(log.run_id)) return;
+
   const card = ensureCallbackCard({ id: log.run_id, adapter: 'codex_exec_resume', status: 'running' });
 
   const kind = log.kind || 'log';
@@ -994,103 +1013,88 @@ function renderCallbackLog(log) {
     return;
   }
 
-  // Route to the right display
+  // Route to two-role display: sac (orchestrator) vs agent (external)
   switch (kind) {
+    case 'thread_started':
+      addCallbackEvent(card, 'sac', `Started agent thread ${detail ? detail.slice(0, 12) + '...' : ''}`);
+      break;
     case 'agent_message':
-      addCallbackEvent(card, 'agent_message', 'Agent', detail);
+      addCallbackEvent(card, 'agent', detail);
+      break;
+    case 'turn_started':
+      addCallbackEvent(card, 'agent-sub', 'thinking...');
+      break;
+    case 'turn_completed':
+      // transient — turn_started already removed, nothing to show
       break;
     case 'command_started': {
       const fmt = formatCommand(detail);
-      addCallbackEvent(card, 'command', 'Running', fmt);
+      if (fmt.includes('/inbox')) {
+        // /inbox POST started — SaC is about to receive content and run evolve.
+        // Show "Updating app..." now (not on command_completed, which arrives AFTER
+        // the version event due to HTTP response timing).
+        addCallbackEvent(card, 'agent-sub', 'POST /inbox');
+        card.published = true;
+        addCallbackEvent(card, 'sac', 'Updating app...');
+      } else {
+        addCallbackEvent(card, 'agent-sub', fmt);
+      }
       break;
     }
     case 'command_completed': {
-      const fmt = formatCommand(detail);
-      if (fmt.includes('/inbox')) {
-        // SaC publish completed — mark card as published, show "Finalizing..."
-        card.published = true;
-        addCallbackEvent(card, 'finalizing', 'Finalizing...', '');
-      } else {
-        addCallbackEvent(card, 'command_done', 'Completed', fmt);
-      }
+      // For /inbox: already handled by command_started. Just capture raw output.
       if (log.line) appendCallbackRaw(card, label, log.line);
       break;
     }
-    case 'thread_started':
-      addCallbackEvent(card, 'thread', 'Thread started', detail ? detail.slice(0, 12) + '...' : '');
-      break;
-    case 'turn_started':
-      addCallbackEvent(card, 'turn', 'Thinking...', '');
-      break;
-    case 'turn_completed':
-      addCallbackEvent(card, 'turn_done', 'Turn complete', detail);
-      break;
     case 'version_updated':
       card.published = true;
-      addCallbackEvent(card, 'version_updated', label, detail);
       break;
     case 'warning':
-      addCallbackEvent(card, 'warning', 'Warning', detail);
+      addCallbackEvent(card, 'sac', `Warning: ${detail}`);
       if (log.line) appendCallbackRaw(card, label, log.line);
       break;
     default:
       if (label === 'stderr log') {
         if (log.line) appendCallbackRaw(card, label, log.line);
-      } else {
-        addCallbackEvent(card, 'log', label, detail);
-        if (log.raw_visible && log.line) appendCallbackRaw(card, label, log.line);
+      } else if (log.raw_visible && log.line) {
+        appendCallbackRaw(card, label, log.line);
       }
   }
   scrollChatToBottom();
 }
 
-function addCallbackEvent(card, kind, label, detail) {
-  // Dedup version_updated by label to prevent triple "Published" events
-  if (kind === 'version_updated') {
-    const key = `vu:${label}`;
-    if (card.seen.has(key)) return;
-    card.seen.add(key);
-  }
+function addCallbackEvent(card, role, text) {
+  // role: 'sac' | 'agent' | 'agent-sub'
+  // 'agent-sub' = indented sub-step under agent (thinking, commands)
 
-  // Remove any existing working indicator before adding new events
-  const existingWorking = card.eventsEl.querySelector('.cb-working');
-  if (existingWorking) existingWorking.remove();
+  // Remove transient states when new events arrive
+  // "thinking..." (agent-sub transient) — remove when next non-sub event arrives
+  if (role !== 'agent-sub') {
+    card.eventsEl.querySelectorAll('.cb-step-transient').forEach(el => el.remove());
+  }
 
   const el = document.createElement('div');
-  el.className = `cb-event cb-${escClass(kind)}`;
+  const isTransient = (role === 'agent-sub' && /thinking/i.test(text))
+                   || (role === 'sac' && /updating app/i.test(text));
+  el.className = `cb-step cb-step-${escClass(role)}${isTransient ? ' cb-step-transient' : ''}`;
 
-  const iconMap = {
-    agent_message: '💬', command: '▶', command_done: '✓', thread: '⚡',
-    turn: '◌', turn_done: '✓', version_updated: '✦', warning: '⚠',
-    finalizing: '◌', log: '·',
-  };
-  const icon = iconMap[kind] || '·';
-
-  el.innerHTML = `
-    <span class="cb-event-icon">${icon}</span>
-    <div class="cb-event-body">
-      <span class="cb-event-label">${escHtml(label)}</span>
-      ${detail ? `<div class="cb-event-detail">${escHtml(compactText(detail, 400))}</div>` : ''}
-    </div>`;
+  if (role === 'agent-sub') {
+    // Indented sub-step — no role label
+    el.innerHTML = `<span class="cb-step-role"></span><span class="cb-step-text cb-step-sub">${escHtml(compactText(text, 200))}</span>`;
+  } else {
+    const roleLabel = role === 'sac' ? 'sac' : 'agent';
+    el.innerHTML = `<span class="cb-step-role">${roleLabel}</span><span class="cb-step-text">${escHtml(compactText(text, 400))}</span>`;
+  }
   card.eventsEl.appendChild(el);
 
-  // After agent_message or command events, show a working indicator
-  // (will be removed when the next event arrives)
-  if (kind === 'agent_message' || kind === 'command' || kind === 'turn' || kind === 'finalizing') {
-    const working = document.createElement('div');
-    working.className = 'cb-event cb-working';
-    working.innerHTML = '<span class="cb-event-icon cb-working-dot">●</span><div class="cb-event-body"><span class="cb-event-label cb-working-text">Working...</span></div>';
-    card.eventsEl.appendChild(working);
-  }
-
-  // Keep last 15 events visible (exclude working indicator from count)
-  const events = card.eventsEl.querySelectorAll('.cb-event:not(.cb-working)');
-  while (events.length > 15) card.eventsEl.removeChild(card.eventsEl.querySelector('.cb-event:not(.cb-working)'));
+  // Keep last 12 visible (exclude transient from count)
+  const steps = card.eventsEl.querySelectorAll('.cb-step:not(.cb-step-transient)');
+  while (steps.length > 12) card.eventsEl.removeChild(card.eventsEl.querySelector('.cb-step:not(.cb-step-transient)'));
 }
 
 function formatCommand(text) {
   const cmd = String(text || '');
-  if (cmd.includes('/inbox')) return 'POST /inbox (publishing to SaC)';
+  if (cmd.includes('/inbox')) return 'POST /inbox';
   if (cmd.includes('curl')) return cmd.replace(/^.*?(curl\s)/, '$1').slice(0, 120);
   return compactText(cmd, 120);
 }
@@ -1168,26 +1172,19 @@ function finalizePendingCards(version) {
   for (const [runId, card] of callbackCards) {
     if (!card.el.classList.contains('pending') && !card.el.id.startsWith('pending-card-')) continue;
 
-    // Extract logs from the card's step events
+    // Extract logs from the card's step events for version card rebuild
     const logs = [];
-    card.eventsEl.querySelectorAll('.cb-event:not(.cb-working)').forEach(ev => {
-      const classList = Array.from(ev.classList);
-      const kindClass = classList.find(c => c.startsWith('cb-') && c !== 'cb-event');
-      const kind = kindClass ? kindClass.replace('cb-', '').replace(/_/g, '_') : 'log';
-      const kindMap = {
-        agent_message: 'agent_message', command: 'command_started',
-        command_done: 'command_completed', thread: 'thread_started',
-        turn: 'turn_started', turn_done: 'turn_completed',
-        version_updated: 'version_updated', warning: 'warning',
-        finalizing: 'command_completed',
-      };
-      const labelEl = ev.querySelector('.cb-event-label');
-      const detailEl = ev.querySelector('.cb-event-detail');
-      logs.push({
-        kind: kindMap[kind] || kind,
-        label: labelEl?.textContent || '',
-        detail: detailEl?.textContent || '',
-      });
+    card.eventsEl.querySelectorAll('.cb-step:not(.cb-step-transient)').forEach(ev => {
+      const roleEl = ev.querySelector('.cb-step-role');
+      const textEl = ev.querySelector('.cb-step-text');
+      const role = roleEl?.textContent || '';
+      const text = textEl?.textContent || '';
+      // Map back to callback log kinds for version card rendering
+      let kind = 'log';
+      if (role === 'sac' && text.startsWith('Started agent')) kind = 'thread_started';
+      else if (role === 'agent') kind = 'agent_message';
+      else if (role === '' && ev.classList.contains('cb-step-agent-sub')) kind = 'command_started';
+      logs.push({ kind, label: role, detail: text });
     });
 
     const adapterText = card.el.querySelector('.version-card-kind')?.textContent || '';
@@ -1202,6 +1199,7 @@ function finalizePendingCards(version) {
     card.el.parentNode.insertBefore(ref, card.el);
     card.el.remove();
     callbackCards.delete(runId);
+    finalizedRunIds.add(runId);
   }
   return runs.length > 0 ? runs : null;
 }

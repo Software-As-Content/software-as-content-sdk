@@ -275,102 +275,50 @@ body {
 @keyframes vcPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
 .version-card.pending { border-color: rgba(59,130,246,0.12); background: rgba(239,246,255,0.3); }
 
-/* Agent events inside version card */
-.vc-agent-event {
+/* ─── Two-role step styles (used inside pending & version cards) ─── */
+
+/* Two-role step layout: sac | agent */
+.cb-step {
   display: flex;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: baseline;
+  gap: 8px;
   padding: 2px 0;
   font-size: 11px;
   line-height: 1.5;
   color: #57534e;
 }
-.vc-agent-icon {
-  flex: 0 0 14px;
-  text-align: center;
+.cb-step-role {
+  flex-shrink: 0;
+  width: 34px;
   font-size: 10px;
+  font-weight: 600;
+  text-transform: lowercase;
   color: #a8a29e;
+  text-align: right;
 }
-.vc-agent-label {
-  flex: 0 0 auto;
-  font-weight: 500;
-  color: #44403c;
-}
-.vc-agent-detail {
+.cb-step-sac .cb-step-role { color: #b45309; }
+.cb-step-agent .cb-step-role { color: #6366f1; }
+.cb-step-text {
   flex: 1;
   min-width: 0;
-  color: #a8a29e;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-/* ─── Callback event styles (used inside pending & version cards) ─── */
-
-/* Individual event */
-.cb-event {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 3px 0;
-  font-size: 11px;
-  line-height: 1.4;
-  color: #57534e;
-}
-.cb-event-icon {
-  flex-shrink: 0;
-  width: 16px;
-  text-align: center;
-  font-size: 10px;
-  line-height: 16px;
-  color: #a8a29e;
-}
-.cb-agent_message .cb-event-icon { color: #15803d; }
-.cb-command .cb-event-icon, .cb-command_done .cb-event-icon { color: #f97316; }
-.cb-version_updated .cb-event-icon { color: #f97316; }
-.cb-warning .cb-event-icon { color: #dc2626; }
-.cb-event-body { flex: 1; min-width: 0; }
-.cb-event-label { font-weight: 500; color: #44403c; }
-.cb-event-detail {
-  color: #a8a29e;
-  margin-top: 1px;
   word-break: break-word;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
-.cb-agent_message .cb-event-detail {
-  color: #57534e;
-  -webkit-line-clamp: 6;
-}
-.cb-version_updated {
-  padding-top: 6px;
-  margin-top: 4px;
-  border-top: 1px solid rgba(28,25,23,0.04);
-}
-.cb-version_updated .cb-event-icon { color: #f97316; font-size: 11px; }
-.cb-version_updated .cb-event-label { color: #9a3412; }
-
-/* Finalizing event */
-.cb-finalizing .cb-event-icon { color: #3b82f6; animation: cbPulse 1.2s ease-in-out infinite; font-size: 8px; }
-.cb-finalizing .cb-event-label { color: #a8a29e; font-weight: 400; font-style: italic; }
-
-/* Working indicator */
-.cb-working { opacity: 0.6; }
-.cb-working-dot {
-  animation: cbPulse 1.2s ease-in-out infinite;
-  font-size: 8px;
-  color: #3b82f6;
-}
-.cb-working-text {
-  color: #a8a29e !important;
-  font-weight: 400 !important;
+.cb-step-agent .cb-step-text { color: #44403c; }
+.cb-step-sub {
+  color: #a8a29e;
   font-style: italic;
+  -webkit-line-clamp: 1;
+}
+/* Transient steps pulse */
+.cb-step-transient .cb-step-text {
+  animation: cbPulse 1.5s ease-in-out infinite;
 }
 @keyframes cbPulse {
-  0%, 100% { opacity: 0.3; }
+  0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
 }
 
