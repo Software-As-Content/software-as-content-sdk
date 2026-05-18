@@ -1010,7 +1010,7 @@ function formatCommand(text) {
   return compactText(cmd, 120);
 }
 
-function ensureCallbackCard(run) {
+function ensureCallbackCard(run, afterEl) {
   let card = callbackCards.get(run.id);
   if (card) return card;
 
@@ -1031,7 +1031,12 @@ function ensureCallbackCard(run) {
   el.querySelector('.cb-header').addEventListener('click', () => {
     el.classList.toggle('expanded');
   });
-  area.appendChild(el);
+  // Insert after a specific element if provided, otherwise append
+  if (afterEl && afterEl.nextSibling) {
+    area.insertBefore(el, afterEl.nextSibling);
+  } else {
+    area.appendChild(el);
+  }
   card = { el, eventsEl: el.querySelector('.cb-events'), rawEl: null, rawCount: 0, seen: new Set(), published: false };
   callbackCards.set(run.id, card);
   scrollChatToBottom();
@@ -1119,7 +1124,28 @@ window.loadConv = async function(id) {
     appVersions = extractAppVersions(events);
     viewedVersion = appVersions[appVersions.length - 1]?.version || 0;
 
-    // Rebuild chat from events
+    // Pre-fetch callback runs so we can interleave them with version cards
+    let allRuns = [];
+    try {
+      const runsRes = await fetch(`/c/${id}/callback-runs`);
+      if (runsRes.ok) {
+        const runsData = await runsRes.json();
+        allRuns = runsData.runs || [];
+      }
+    } catch {}
+
+    // Build version → runs lookup (a version may have multiple runs, use result_version)
+    const runsByVersion = new Map();
+    for (const run of allRuns) {
+      if (run.result_version) {
+        if (!runsByVersion.has(run.result_version)) runsByVersion.set(run.result_version, []);
+        runsByVersion.get(run.result_version).push(run);
+      }
+    }
+    // Runs without result_version go at the end
+    const orphanRuns = allRuns.filter(r => !r.result_version);
+
+    // Rebuild chat from events, interleaving callback cards after version cards
     const chatArea = document.getElementById('chat-area');
     chatArea.innerHTML = '';
     callbackCards.clear();
@@ -1128,29 +1154,29 @@ window.loadConv = async function(id) {
     for (const evt of events) {
       if (evt.type === 'message') {
         addChatMsg(evt.role, evt.content);
-      } else if (evt.type === 'generation' && evt.status === 'success') {
+      } else if ((evt.type === 'generation' || evt.type === 'growth') && evt.status === 'success') {
         const version = appVersions.find(v => v.code === evt.code);
-        if (version) ensureVersionCard(version);
-        if (evt.intent_suggestions?.length) lastSuggestions = evt.intent_suggestions;
-      } else if (evt.type === 'growth' && evt.status === 'success') {
-        const version = appVersions.find(v => v.code === evt.code);
-        if (version) ensureVersionCard(version);
+        if (version) {
+          ensureVersionCard(version);
+          // Insert callback runs that produced this version right after the version card
+          const runs = runsByVersion.get(version.version) || [];
+          const versionCardEl = document.getElementById(`version-card-${version.version}`);
+          for (const run of runs) {
+            ensureCallbackCard(run, versionCardEl);
+            renderCallbackRun(run);
+          }
+        }
         if (evt.intent_suggestions?.length) lastSuggestions = evt.intent_suggestions;
       }
     }
 
+    // Render orphan runs (no result_version) at the end
+    for (const run of orphanRuns.slice(-3)) {
+      renderCallbackRun(run);
+    }
+
     // Show suggestions from the last generation/growth event
     renderSuggestions(lastSuggestions);
-
-    try {
-      const runsRes = await fetch(`/c/${id}/callback-runs`);
-      if (runsRes.ok) {
-        const runsData = await runsRes.json();
-        for (const run of (runsData.runs || []).slice(-5)) {
-          renderCallbackRun(run);
-        }
-      }
-    } catch {}
 
     // Render latest code if available
     const latestVersion = appVersions[appVersions.length - 1];
