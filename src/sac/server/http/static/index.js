@@ -17,7 +17,6 @@ function createRenderer() {
   });
   r.on('error', (err) => {
     showPreviewNotice('Generated app needs a revision', `${err.type || 'render'}: ${err.message || err}`);
-    showStatus('Render issue detected. The conversation is still active.', 'error');
   });
   r.on('action', ({ intent, context }) => {
     if (!conversationId || !intent) return;
@@ -247,6 +246,7 @@ async function handleSend() {
   if (!message || pendingAction) return;
 
   setPending(true);
+  beginNewAttempt();
   intentInput.value = '';
   resizeIntentInput();
   addChatMsg('user', message);
@@ -304,7 +304,6 @@ async function handleSend() {
       hideStatus();
       setPending(false);
     } else {
-      addChatMsg('system', data.type === 'generate' ? 'Generating UI...' : 'Evolving UI...');
       await streamGenerate({ intent: message, conversation_id: conversationId });
       // streamGenerate clears pending on complete/error
     }
@@ -321,6 +320,7 @@ async function handleSend() {
 async function routeUserIntent(intent, context = null) {
   if (pendingAction) return;  // debounce — wait for current action to finish
   setPending(true);
+  beginNewAttempt();
 
   if (callbackUrl) {
     showStatus('Sent to agent, waiting...', 'running');
@@ -396,7 +396,6 @@ function setupEventSource(convId) {
           placeholder.classList.add('hidden');
           iframe.classList.remove('hidden');
           renderer.render(conversation.latest_code);
-          addChatMsg('system', `Updated to v${currentVersion}`);
           flashStatus(`App updated to v${currentVersion}`, 'success');
         }
         setPending(false);
@@ -570,6 +569,7 @@ function renderSuggestions(suggestions) {
 // ─── Streaming generation (POST-based SSE) ───────────────────
 
 async function streamGenerate(body) {
+  beginNewAttempt();
   showStatus('Generating...', 'running');
 
   codeDisplay.textContent = '';
@@ -788,8 +788,7 @@ function applyAppVersion(version, opts = {}) {
   hidePreviewNotice();
   renderer.render(version.code);
   markActiveVersionCard(version.version);
-    if (opts.announce) {
-    addChatMsg('system', `App updated to v${version.version}`);
+  if (opts.announce) {
     flashStatus(`App updated to v${version.version}`, 'success');
     flashVersionCard(version.version);
   }
@@ -862,16 +861,16 @@ function ensureVersionCard(version, callbackRuns) {
           text = compactText(detail || log.label || kind, 200);
         }
 
-        const roleLabel = role === 'agent-sub' ? '' : (role === 'sac' ? 'sac' : 'agent');
+        const roleLabel = role === 'agent-sub' ? '' : (role === 'sac' ? 'SaC' : 'Agent');
         const isSub = role === 'agent-sub';
-        agentEvents.push(`<div class="cb-step cb-step-${escClass(role)}"><span class="cb-step-role">${roleLabel}</span><span class="cb-step-text${isSub ? ' cb-step-sub' : ''}">${escHtml(text)}</span></div>`);
+        agentEvents.push(`<div class="cb-step cb-step-${escClass(role)}"><span class="cb-step-role">${roleLabel}</span><span class="cb-step-text${isSub ? ' cb-step-sub' : ''}" title="${escHtml(detail || text)}">${escHtml(text)}</span></div>`);
       }
       // Ensure "App updated" appears as the final step (it's added client-side
       // by finalizePendingCards but not persisted to the backend).
       if (run.status === 'succeeded' && run.loop_closed) {
         const lastEvt = agentEvents[agentEvents.length - 1] || '';
         if (!lastEvt.includes('App updated')) {
-          agentEvents.push(`<div class="cb-step cb-step-sac"><span class="cb-step-role">sac</span><span class="cb-step-text">App updated</span></div>`);
+          agentEvents.push(`<div class="cb-step cb-step-sac"><span class="cb-step-role">SaC</span><span class="cb-step-text" title="App updated">App updated</span></div>`);
         }
       }
     }
@@ -925,10 +924,9 @@ function ensureVersionCard(version, callbackRuns) {
     : 'success';
 
   wrapper.innerHTML = `
-    <div class="vc-header">
+    <div class="vc-header vc-header-version">
       <span class="vc-dot vc-dot-${statusDot}"></span>
       <span class="version-card-badge">v${version.version}</span>
-      <span class="version-card-title">${escHtml(version.title || `Version ${version.version}`)}</span>
       <span class="version-card-kind">${escHtml(kindLabel)}${timeStr ? ' · ' + escHtml(timeStr) : ''}</span>
     </div>
     ${detailsHtml}
@@ -1020,6 +1018,7 @@ function renderCallbackRun(run) {
     // was delivered — agent is now working. Keep card pending until /inbox POST arrives.
     if (!hasStreamingLogs && !run.loop_closed) {
       card.el.className = 'version-card pending';
+      if (kindEl) kindEl.textContent = `${adapterLabel(run.adapter)} · running`;
       addCallbackEvent(card, 'sac', 'Message delivered, agent is working...');
     } else {
       card.el.classList.remove('pending');
@@ -1141,10 +1140,10 @@ function addCallbackEvent(card, role, text) {
 
   if (role === 'agent-sub') {
     // Indented sub-step — no role label
-    el.innerHTML = `<span class="cb-step-role"></span><span class="cb-step-text cb-step-sub">${escHtml(compactText(text, 200))}</span>`;
+    el.innerHTML = `<span class="cb-step-role"></span><span class="cb-step-text cb-step-sub" title="${escHtml(text)}">${escHtml(compactText(text, 240))}</span>`;
   } else {
-    const roleLabel = role === 'sac' ? 'sac' : 'agent';
-    el.innerHTML = `<span class="cb-step-role">${roleLabel}</span><span class="cb-step-text">${escHtml(compactText(text, 400))}</span>`;
+    const roleLabel = role === 'sac' ? 'SaC' : 'Agent';
+    el.innerHTML = `<span class="cb-step-role">${roleLabel}</span><span class="cb-step-text" title="${escHtml(text)}">${escHtml(compactText(text, 420))}</span>`;
   }
   card.eventsEl.appendChild(el);
 
@@ -1167,6 +1166,7 @@ function ensureCallbackCard(run, afterEl) {
   const area = document.getElementById('chat-area');
   const adapter = adapterLabel(run.adapter);
   const title = lastUserIntent || 'Processing...';
+  const status = run.status || 'pending';
   const el = document.createElement('div');
   el.className = 'version-card pending';
   el.id = `pending-card-${run.id}`;
@@ -1174,8 +1174,8 @@ function ensureCallbackCard(run, afterEl) {
   el.innerHTML = `
     <div class="vc-header">
       <span class="vc-dot vc-dot-pending"></span>
-      <span class="version-card-title">${escHtml(compactText(title, 50))}</span>
-      <span class="version-card-kind">${escHtml(adapter)} · pending</span>
+      <span class="version-card-title" title="${escHtml(title)}">${escHtml(compactText(title, 140))}</span>
+      <span class="version-card-kind">${escHtml(adapter)} · ${escHtml(runStatusLabel(status).toLowerCase())}</span>
     </div>
     <div class="vc-details">
       <div class="vc-detail-section">
@@ -1246,9 +1246,9 @@ function finalizePendingCards(version) {
       const text = textEl?.textContent || '';
       // Map back to callback log kinds for version card rendering
       let kind = 'log';
-      if (role === 'sac' && text.startsWith('Started agent')) kind = 'thread_started';
-      else if (role === 'sac' && text === 'App updated') kind = 'app_updated';
-      else if (role === 'agent') kind = 'agent_message';
+      if ((role === 'sac' || role === 'SaC') && text.startsWith('Started agent')) kind = 'thread_started';
+      else if ((role === 'sac' || role === 'SaC') && text === 'App updated') kind = 'app_updated';
+      else if (role === 'agent' || role === 'Agent') kind = 'agent_message';
       else if (role === '' && ev.classList.contains('cb-step-agent-sub')) kind = 'command_started';
       logs.push({ kind, label: role, detail: text });
     });
@@ -1485,6 +1485,10 @@ function hideSuggestions() {
   document.getElementById('suggestions-area').classList.add('hidden');
 }
 
+function beginNewAttempt() {
+  hidePreviewNotice();
+}
+
 function setPending(value) {
   pendingAction = value;
   document.body.classList.toggle('is-pending', value);
@@ -1499,7 +1503,7 @@ function setPending(value) {
 
 function resizeIntentInput() {
   intentInput.style.height = 'auto';
-  intentInput.style.height = `${Math.min(intentInput.scrollHeight, 96)}px`;
+  intentInput.style.height = `${Math.max(20, Math.min(intentInput.scrollHeight, 96))}px`;
 }
 
 function escHtml(s) {

@@ -503,11 +503,29 @@
 
         if (!silent) {
           window.parent.postMessage({ type: 'render-success' }, '*');
-          // Report change count so parent can show/hide "Show Changes" button
-          requestAnimationFrame(function() {
+          // Report change count so parent can show/hide "Show Changes" button.
+          // React 19 concurrent mode: render() doesn't guarantee synchronous
+          // commit, so rAF may fire before the DOM updates. Use a MutationObserver
+          // to wait for the actual commit, with a timeout fallback.
+          var _countReported = false;
+          function _reportChangeCount() {
+            if (_countReported) return;
+            _countReported = true;
             var count = rootEl.querySelectorAll('[data-sac-changed]').length;
             window.parent.postMessage({ type: 'sac-change-count', count: count }, '*');
+          }
+          var _commitObserver = new MutationObserver(function() {
+            _commitObserver.disconnect();
+            // One more rAF to ensure paint is complete
+            requestAnimationFrame(_reportChangeCount);
           });
+          _commitObserver.observe(rootEl, { childList: true, subtree: true });
+          // Fallback: if no DOM mutation within 500ms (e.g. re-render with
+          // same structure), report anyway.
+          setTimeout(function() {
+            _commitObserver.disconnect();
+            _reportChangeCount();
+          }, 500);
         }
       } catch(err) {
         if (appBlob) URL.revokeObjectURL(appBlob);

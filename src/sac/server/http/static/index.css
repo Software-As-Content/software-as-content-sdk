@@ -228,10 +228,11 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   word-wrap: break-word;
 }
 .chat-msg.user .chat-bubble {
-  background: #e3e0dc;
-  color: var(--text);
+  background: rgba(232,229,225,0.72);
+  color: #2f2b27;
   border-radius: 20px 20px 6px 20px;
   font-weight: 400;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.72) inset, 0 8px 22px rgba(28,25,23,0.045);
 }
 .chat-msg.assistant .chat-bubble {
   background: rgba(255,255,255,0.88);
@@ -292,8 +293,10 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   font-weight: 560;
   color: #3f3a35;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  white-space: normal;
 }
 .version-card .version-card-kind {
   flex: 0 0 auto;
@@ -316,6 +319,15 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   border-radius: 15px;
   transition: background 0.12s;
 }
+.vc-header-version .version-card-kind {
+  margin-left: auto;
+}
+.version-card.pending .vc-header {
+  align-items: flex-start;
+}
+.version-card.pending .version-card-kind {
+  padding-top: 2px;
+}
 .vc-header:hover { background: rgba(28,25,23,0.025); }
 
 /* Expandable details area */
@@ -324,10 +336,10 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
 .vc-detail-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 2px;
+  gap: 6px;
+  padding: 8px 2px;
   font-size: 12px;
-  font-weight: 560;
+  font-weight: 500;
   color: var(--text-faint);
   cursor: pointer;
   transition: color 0.15s;
@@ -343,7 +355,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
 }
 .vc-detail-body {
   display: none;
-  padding: 3px 0 8px 18px;
+  padding: 3px 0 10px 4px;
 }
 .vc-detail-body.expanded { display: block; }
 .vc-source-item {
@@ -391,40 +403,53 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
 
 /* Two-role step layout: sac | agent */
 .cb-step {
-  display: flex;
-  align-items: baseline;
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  align-items: start;
   gap: 10px;
-  padding: 4px 0;
+  padding: 5px 0;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--text-muted);
 }
 .cb-step-role {
-  flex-shrink: 0;
-  width: 38px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: lowercase;
+  justify-self: end;
+  min-width: 0;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--text-faint);
-  text-align: right;
+  background: rgba(255,255,255,0.58);
+  box-shadow: 0 1px 4px rgba(28,25,23,0.045), 0 1px 0 rgba(255,255,255,0.8) inset;
+  text-align: center;
 }
-.cb-step-sac .cb-step-role { color: #b45309; }
-.cb-step-agent .cb-step-role { color: var(--indigo); }
+.cb-step-sac .cb-step-role {
+  color: #a54212;
+  background: rgba(255,247,237,0.82);
+}
+.cb-step-agent .cb-step-role {
+  color: #3657d9;
+  background: rgba(239,246,255,0.84);
+}
 .cb-step-text {
   flex: 1;
   min-width: 0;
   font-weight: 400;
+  color: #5f5852;
   word-break: break-word;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
-.cb-step-agent .cb-step-text { color: #44403c; font-weight: 400; }
+.cb-step-agent .cb-step-text { color: #4a4540; font-weight: 400; }
 .cb-step-sub {
   color: var(--text-faint);
   font-style: italic;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 3;
 }
 /* Transient steps pulse */
 .cb-step-transient .cb-step-text {
@@ -464,7 +489,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
 .input-area { padding: 14px 24px 22px; background: var(--bg); }
 .input-wrapper {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0;
   background: rgba(255,255,255,0.92);
   border-radius: 20px;
@@ -483,17 +508,21 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
 }
 .input-area textarea {
   flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   font-size: 14px;
   font-family: inherit;
-  line-height: 1.45;
+  line-height: 20px;
   resize: none;
-  min-height: 24px;
+  height: 20px;
+  min-height: 20px;
   max-height: 96px;
-  padding: 7px 0;
+  padding: 0;
   background: transparent;
   color: var(--text);
+  overflow: hidden;
+  white-space: nowrap;
 }
 .input-area textarea::placeholder { color: #c7c4c0; }
 .send-btn-inline {
