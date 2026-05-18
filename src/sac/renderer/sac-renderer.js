@@ -147,7 +147,7 @@ export class SaCRenderer {
     }
   }
 
-  _processCode(code) {
+  _processCode(code, { skipAutoImport = false } = {}) {
     // Extract code from LLM response.
     // Evolve responses contain ```json (decision) + ```tsx (code).
     // Generate responses contain ```tsx (code) only.
@@ -175,9 +175,19 @@ export class SaCRenderer {
     processed = this._rewriteLucideImports(processed);
 
     // Rewrite @/components/ui/* and @/lib/utils imports
-    return processed
+    processed = processed
       .replace(/from\s+["']@\/components\/ui\/[^"']+["']/g, 'from "__ui_shim__"')
       .replace(/from\s+["']@\/lib\/utils["']/g, 'from "__ui_shim__"');
+
+    // Auto-import missing shim components (skip during streaming).
+    // LLMs frequently use a shadcn component in JSX but forget the import.
+    // During streaming, partial code may be missing its own imports that
+    // haven't arrived yet — patching would cause duplicate-identifier errors.
+    if (!skipAutoImport) {
+      processed = _autoImportMissingShimComponents(processed);
+    }
+
+    return processed;
   }
 
   _rewriteLucideImports(code) {
@@ -243,6 +253,115 @@ export class SaCRenderer {
       silent: silent, // iframe won't report errors for silent renders
     }, '*');
   }
+}
+
+
+// ─── Auto-import missing shim components ────────────────────────────
+//
+// LLMs occasionally use a shadcn component (<Table>, <Dialog>, ...) in JSX
+// but forget to write the matching import statement. At runtime the module
+// lookup fails with "X is not defined".
+//
+// This whitelist is the set of component names that shim.js exports.
+// `_autoImportMissingShimComponents` scans the code for capital-letter JSX
+// tags that aren't already in scope, and if any match the whitelist, prepends
+// a consolidated import line. Only runs on final (non-streaming) code.
+
+const _SHIM_COMPONENTS = new Set([
+  "Accordion", "AccordionContent", "AccordionItem", "AccordionTrigger",
+  "Alert", "AlertDescription", "AlertTitle",
+  "AlertDialog", "AlertDialogAction", "AlertDialogCancel", "AlertDialogContent",
+  "AlertDialogDescription", "AlertDialogFooter", "AlertDialogHeader",
+  "AlertDialogTitle", "AlertDialogTrigger",
+  "Avatar", "AvatarFallback", "AvatarImage",
+  "Badge",
+  "Breadcrumb", "BreadcrumbItem", "BreadcrumbLink",
+  "BreadcrumbList", "BreadcrumbPage", "BreadcrumbSeparator",
+  "Button",
+  "Card", "CardContent", "CardDescription", "CardFooter", "CardHeader", "CardTitle",
+  "Checkbox",
+  "Collapsible", "CollapsibleContent", "CollapsibleTrigger",
+  "Dialog", "DialogClose", "DialogContent", "DialogDescription",
+  "DialogHeader", "DialogTitle", "DialogTrigger",
+  "Drawer", "DrawerClose", "DrawerContent", "DrawerDescription",
+  "DrawerFooter", "DrawerHeader", "DrawerTitle", "DrawerTrigger",
+  "DropdownMenu", "DropdownMenuContent", "DropdownMenuGroup", "DropdownMenuItem",
+  "DropdownMenuLabel", "DropdownMenuSeparator", "DropdownMenuTrigger",
+  "HoverCard", "HoverCardContent", "HoverCardTrigger",
+  "Input", "Label",
+  "Menubar", "MenubarContent", "MenubarItem", "MenubarMenu",
+  "MenubarSeparator", "MenubarTrigger",
+  "NavigationMenu", "NavigationMenuContent", "NavigationMenuItem",
+  "NavigationMenuLink", "NavigationMenuList", "NavigationMenuTrigger",
+  "Pagination", "PaginationContent", "PaginationItem",
+  "PaginationLink", "PaginationNext", "PaginationPrevious",
+  "Popover", "PopoverContent", "PopoverTrigger",
+  "Progress",
+  "RadioGroup", "RadioGroupItem",
+  "ResizableHandle", "ResizablePanel", "ResizablePanelGroup",
+  "ScrollArea",
+  "Select", "SelectContent", "SelectItem", "SelectTrigger", "SelectValue",
+  "Separator",
+  "Sheet", "SheetClose", "SheetContent", "SheetDescription",
+  "SheetHeader", "SheetTitle", "SheetTrigger",
+  "Skeleton", "Slider", "Spinner", "Switch",
+  "Table", "TableBody", "TableCell", "TableHead", "TableHeader", "TableRow",
+  "Tabs", "TabsContent", "TabsList", "TabsTrigger",
+  "Textarea",
+  "Toggle", "ToggleGroup",
+  "Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger",
+]);
+
+function _autoImportMissingShimComponents(code) {
+  // 1. Collect capital-letter JSX tag names used in the code.
+  const usedTags = new Set();
+  const jsxRegex = /<\s*([A-Z][A-Za-z0-9_]*)/g;
+  let m;
+  while ((m = jsxRegex.exec(code)) !== null) {
+    usedTags.add(m[1]);
+  }
+  if (usedTags.size === 0) return code;
+
+  // 2. Collect names already in scope: named imports, default/namespace
+  //    imports, and top-level const/let/var/function/class declarations.
+  const inScope = new Set();
+
+  // Named imports: `import { A, B as Alias } from "..."`
+  const namedImportRegex = /import\s+\{([^}]+)\}\s*from\s*["'][^"']+["']/g;
+  while ((m = namedImportRegex.exec(code)) !== null) {
+    for (const raw of m[1].split(",")) {
+      const trimmed = raw.trim();
+      if (/^type\s+/.test(trimmed)) continue;
+      const parts = trimmed.split(/\s+as\s+/i);
+      const name = parts[parts.length - 1].trim();
+      if (name) inScope.add(name);
+    }
+  }
+
+  // Default / namespace imports
+  const defaultImportRegex = /import\s+(?:\*\s+as\s+)?([A-Z][A-Za-z0-9_]*)\s*(?:,|from)/g;
+  while ((m = defaultImportRegex.exec(code)) !== null) {
+    inScope.add(m[1]);
+  }
+
+  // Local top-level declarations
+  const localDeclRegex = /\b(?:const|let|var|function|class)\s+([A-Z][A-Za-z0-9_]*)/g;
+  while ((m = localDeclRegex.exec(code)) !== null) {
+    inScope.add(m[1]);
+  }
+
+  // 3. Diff: usedTags - inScope, filtered by shim whitelist
+  const missing = [];
+  for (const name of usedTags) {
+    if (inScope.has(name)) continue;
+    if (_SHIM_COMPONENTS.has(name)) missing.push(name);
+  }
+  if (missing.length === 0) return code;
+
+  // 4. Inject a consolidated import at the top
+  const importLine = `import { ${missing.join(", ")} } from "__ui_shim__";\n`;
+  console.debug("[SaCRenderer] auto-imported missing shim components:", missing);
+  return importLine + code;
 }
 
 

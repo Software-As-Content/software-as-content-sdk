@@ -110,7 +110,9 @@ function streamFlush() {
   if (!streamBuffer) return;
   // Strip fences and rewrite imports. The iframe's own repairPartialTsx +
   // render scheduler handles partial code repair and last-good-frame fallback.
-  const processed = renderer._processCode(streamBuffer);
+  // Skip auto-import during streaming — partial code may still be missing
+  // its own imports that haven't arrived yet.
+  const processed = renderer._processCode(streamBuffer, { skipAutoImport: true });
   if (processed && processed.trim()) {
     renderer._sendToIframe(processed, true);
   }
