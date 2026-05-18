@@ -847,80 +847,122 @@ function flashVersionCard(versionNumber) {
 }
 
 function renderCallbackRun(run) {
-  const shortId = (run.id || '').slice(0, 8);
   const card = ensureCallbackCard(run);
   const status = run.status || 'unknown';
-  const title = card.el.querySelector('.callback-card-title');
-  const subtitle = card.el.querySelector('.callback-card-subtitle');
-  const meta = card.el.querySelector('.callback-card-meta');
-  const statusEl = card.el.querySelector('.callback-status');
 
-  card.el.className = `callback-card ${escClass(status)}${card.el.classList.contains('expanded') ? ' expanded' : ''}`;
-  title.textContent = `${adapterLabel(run.adapter)}`;
-  subtitle.textContent = compactText(run.intent || run.last_event || 'Waiting for agent activity', 140);
-  const facts = [`#${shortId}`];
-  if (run.cwd && status === 'running') facts.push(compactPath(run.cwd));
-  if (run.returncode !== undefined) facts.push(`exit ${run.returncode}`);
-  if (run.error) facts.push(compactText(run.error, 80));
-  meta.textContent = facts.join(' · ');
+  // Update status badge
+  const statusEl = card.el.querySelector('.cb-status');
   statusEl.textContent = runStatusLabel(status);
-  statusEl.className = `callback-status ${status}`;
+  statusEl.className = `cb-status ${status}`;
 
-  if (run.status === 'failed' && run.stderr_tail) {
-    appendCallbackRaw(run.id, 'stderr tail', run.stderr_tail.slice(-1200));
+  // Update header meta
+  const meta = card.el.querySelector('.cb-meta');
+  const facts = [`#${(run.id || '').slice(0, 8)}`];
+  if (run.returncode !== undefined) facts.push(`exit ${run.returncode}`);
+  meta.textContent = facts.join(' · ');
+
+  // Update card status class (preserve expanded)
+  const wasExpanded = card.el.classList.contains('expanded');
+  card.el.className = `callback-card ${escClass(status)}${wasExpanded ? ' expanded' : ''}`;
+
+  // Handle result info
+  if (run.loop_closed && run.result_version) {
+    addCallbackEvent(card, 'version_updated', 'Published', `App updated to v${run.result_version}`);
   }
+  if (run.error) {
+    addCallbackEvent(card, 'warning', 'Error', compactText(run.error, 200));
+  }
+
+  // Render persisted logs
   if (Array.isArray(run.logs)) {
-    for (const log of run.logs.slice(-8)) renderCallbackLog(log);
+    for (const log of run.logs.slice(-12)) renderCallbackLog(log);
   }
 }
 
 function renderCallbackLog(log) {
   if (!log.run_id) return;
   const card = ensureCallbackCard({ id: log.run_id, adapter: 'codex_exec_resume', status: 'running' });
-  let label = log.label || `${log.stream || 'callback'} log`;
-  let detail = log.detail || '';
-  const commandSummary = summarizeCommandLog(label, detail || log.line);
-  if (commandSummary) {
-    label = commandSummary.label;
-    detail = commandSummary.detail;
-    if (log.line || log.detail) appendCallbackRaw(log.run_id, log.label || label, log.line || log.detail);
-  }
-  const isDiagnosticNoise =
-    label === 'stderr log' ||
-    log.kind === 'warning' ||
-    /ignoring interface\.|stream disconnected|manifest|loader/.test(detail);
-  if (isDiagnosticNoise) {
-    if (log.line || detail) appendCallbackRaw(log.run_id, label, log.line || detail);
-    return;
-  }
-  const eventKey = `${log.timestamp || ''}:${log.kind || ''}:${log.label || ''}:${log.detail || ''}`;
+
+  const kind = log.kind || 'log';
+  const label = log.label || `${log.stream || 'callback'} log`;
+  const detail = log.detail || '';
+
+  // Dedup
+  const eventKey = `${log.timestamp || ''}:${kind}:${label}:${detail}`;
   if (card.seen.has(eventKey)) return;
   card.seen.add(eventKey);
 
-  const event = document.createElement('div');
-  event.className = `callback-event ${escClass(log.kind || 'log')}`;
-  event.innerHTML = `
-    <span class="callback-event-dot"></span>
-    <span>
-      <span class="callback-event-label">${escHtml(label)}</span>
-      ${detail ? `<div class="callback-event-detail">${escHtml(compactText(detail, 500))}</div>` : ''}
-    </span>`;
-  card.eventsEl.appendChild(event);
+  // Skip pure noise (stderr spam, loader warnings)
+  if (/ignoring interface\.|stream disconnected|manifest|loader/.test(detail)) return;
+  if (kind === 'raw') return;
 
-  while (card.eventsEl.children.length > 5) card.eventsEl.removeChild(card.eventsEl.firstChild);
-  if (log.raw_visible && log.line) appendCallbackRaw(log.run_id, label, log.line);
+  // Route to the right display
+  switch (kind) {
+    case 'agent_message':
+      addCallbackEvent(card, 'agent_message', 'Agent', detail);
+      break;
+    case 'command_started':
+      addCallbackEvent(card, 'command', 'Running', formatCommand(detail));
+      break;
+    case 'command_completed':
+      addCallbackEvent(card, 'command_done', 'Completed', formatCommand(detail));
+      if (log.line) appendCallbackRaw(card, label, log.line);
+      break;
+    case 'thread_started':
+      addCallbackEvent(card, 'thread', 'Thread started', detail ? detail.slice(0, 12) + '...' : '');
+      break;
+    case 'turn_started':
+      addCallbackEvent(card, 'turn', 'Thinking...', '');
+      break;
+    case 'turn_completed':
+      addCallbackEvent(card, 'turn_done', 'Turn complete', detail);
+      break;
+    case 'version_updated':
+      addCallbackEvent(card, 'version_updated', label, detail);
+      break;
+    case 'warning':
+      addCallbackEvent(card, 'warning', 'Warning', detail);
+      if (log.line) appendCallbackRaw(card, label, log.line);
+      break;
+    default:
+      if (label === 'stderr log') {
+        if (log.line) appendCallbackRaw(card, label, log.line);
+      } else {
+        addCallbackEvent(card, 'log', label, detail);
+        if (log.raw_visible && log.line) appendCallbackRaw(card, label, log.line);
+      }
+  }
   scrollChatToBottom();
 }
 
-function summarizeCommandLog(label, text) {
-  if (!/^Command (started|completed)$/i.test(label || '')) return null;
-  const raw = String(text || '');
-  const inboxTarget = raw.includes('/inbox') ? 'POST /inbox' : 'Command';
-  const state = /completed/i.test(label) ? 'completed' : 'started';
-  return {
-    label: `Agent bridge ${state}`,
-    detail: inboxTarget,
+function addCallbackEvent(card, kind, label, detail) {
+  const el = document.createElement('div');
+  el.className = `cb-event cb-${escClass(kind)}`;
+
+  const iconMap = {
+    agent_message: '💬', command: '▶', command_done: '✓', thread: '⚡',
+    turn: '◌', turn_done: '✓', version_updated: '✦', warning: '⚠',
+    log: '·',
   };
+  const icon = iconMap[kind] || '·';
+
+  el.innerHTML = `
+    <span class="cb-event-icon">${icon}</span>
+    <div class="cb-event-body">
+      <span class="cb-event-label">${escHtml(label)}</span>
+      ${detail ? `<div class="cb-event-detail">${escHtml(compactText(detail, 400))}</div>` : ''}
+    </div>`;
+  card.eventsEl.appendChild(el);
+
+  // Keep last 15 events visible
+  while (card.eventsEl.children.length > 15) card.eventsEl.removeChild(card.eventsEl.firstChild);
+}
+
+function formatCommand(text) {
+  const cmd = String(text || '');
+  if (cmd.includes('/inbox')) return 'POST /inbox (publishing to SaC)';
+  if (cmd.includes('curl')) return cmd.replace(/^.*?(curl\s)/, '$1').slice(0, 120);
+  return compactText(cmd, 120);
 }
 
 function ensureCallbackCard(run) {
@@ -932,47 +974,43 @@ function ensureCallbackCard(run) {
   el.className = 'callback-card';
   el.dataset.runId = run.id;
   el.innerHTML = `
-    <div class="callback-card-header">
-      <div class="callback-card-main">
-        <div class="callback-icon">↔</div>
-        <div>
-          <div class="callback-card-title">${escHtml(adapterLabel(run.adapter))}</div>
-          <div class="callback-card-subtitle">Waiting for agent activity</div>
-          <div class="callback-card-meta">#${escHtml((run.id || '').slice(0, 8))}</div>
-        </div>
+    <div class="cb-header">
+      <div class="cb-icon-wrap"><span class="cb-icon">↔</span></div>
+      <div class="cb-header-text">
+        <div class="cb-title">${escHtml(adapterLabel(run.adapter))}</div>
+        <div class="cb-meta">#${escHtml((run.id || '').slice(0, 8))}</div>
       </div>
-      <span class="callback-status ${escClass(run.status || 'queued')}">${escHtml(runStatusLabel(run.status || 'queued'))}</span>
+      <span class="cb-status ${escClass(run.status || 'queued')}">${escHtml(runStatusLabel(run.status || 'queued'))}</span>
     </div>
-    <div class="callback-events"></div>`;
-  el.querySelector('.callback-card-header').addEventListener('click', () => {
+    <div class="cb-events"></div>`;
+  el.querySelector('.cb-header').addEventListener('click', () => {
     el.classList.toggle('expanded');
   });
   area.appendChild(el);
-  card = { el, eventsEl: el.querySelector('.callback-events'), rawEl: null, rawCount: 0, seen: new Set() };
+  card = { el, eventsEl: el.querySelector('.cb-events'), rawEl: null, rawCount: 0, seen: new Set() };
   callbackCards.set(run.id, card);
   scrollChatToBottom();
   return card;
 }
 
-function appendCallbackRaw(runId, label, raw) {
-  const card = callbackCards.get(runId);
+function appendCallbackRaw(card, label, raw) {
   if (!card || !raw) return;
   if (!card.rawEl) {
     card.rawEl = document.createElement('details');
-    card.rawEl.className = 'callback-raw';
-    card.rawEl.innerHTML = '<summary>Diagnostics</summary><pre></pre>';
+    card.rawEl.className = 'cb-raw';
+    card.rawEl.innerHTML = '<summary>Raw output</summary><pre></pre>';
     card.el.appendChild(card.rawEl);
   }
   card.rawCount += 1;
-  card.rawEl.querySelector('summary').textContent = `Diagnostics (${card.rawCount})`;
+  card.rawEl.querySelector('summary').textContent = `Raw output (${card.rawCount})`;
   const pre = card.rawEl.querySelector('pre');
-  pre.textContent = `${pre.textContent}${pre.textContent ? '\n\n' : ''}[${label}]\n${String(raw).slice(0, 2000)}`.slice(-8000);
+  pre.textContent = `${pre.textContent}${pre.textContent ? '\n' : ''}${String(raw).slice(0, 2000)}`.slice(-6000);
 }
 
 function markLatestCallbackVersion(version) {
   const cards = Array.from(callbackCards.values());
   const card = cards.reverse().find(c => {
-    const statusEl = c.el.querySelector('.callback-status');
+    const statusEl = c.el.querySelector('.cb-status');
     return statusEl?.classList.contains('running') ||
       statusEl?.classList.contains('queued') ||
       statusEl?.classList.contains('succeeded');
