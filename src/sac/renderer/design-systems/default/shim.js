@@ -95,11 +95,76 @@ export const Separator = fwd("hr", "border-gray-200 my-4");
 export const ScrollArea = fwd("div", "overflow-auto");
 
 // ─── Tabs ─────────────────────────────────────────────────────────
+//
+// Real implementation — the fwd helper strips `onValueChange` and
+// `defaultValue` as invalid DOM props, which silently turns every
+// <Tabs> into a stateless div (all TabsContent stacked, clicks do
+// nothing). Uses React Context so TabsTrigger and TabsContent can
+// coordinate active state.
 
-export const Tabs = fwd("div", "");
+const TabsContext = React.createContext({ value: "", setValue: () => {} });
+
+export const Tabs = React.forwardRef(
+  ({ className, value, defaultValue, onValueChange, children, ...p }, ref) => {
+    const [internal, setInternal] = React.useState(defaultValue || "");
+    const current = value !== undefined ? value : internal;
+    const setValue = (next) => {
+      if (value === undefined) setInternal(next);
+      if (onValueChange) onValueChange(next);
+    };
+    return e(
+      TabsContext.Provider,
+      { value: { value: current, setValue } },
+      e("div", { ref, className, ...p }, children)
+    );
+  }
+);
+
 export const TabsList = fwd("div", "inline-flex h-10 items-center rounded-lg bg-gray-100 p-1 gap-1");
-export const TabsTrigger = fwd("button", "inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md cursor-pointer border-none bg-transparent hover:bg-white");
-export const TabsContent = fwd("div", "mt-2");
+
+export const TabsTrigger = React.forwardRef(
+  ({ className, value, children, ...p }, ref) => {
+    const ctx = React.useContext(TabsContext);
+    const isActive = ctx.value === value;
+    const base =
+      "inline-flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md cursor-pointer border-none transition-all";
+    const stateCls = isActive
+      ? "bg-white text-gray-900 shadow-sm"
+      : "bg-transparent text-gray-500 hover:text-gray-900";
+    return e(
+      "button",
+      {
+        ref,
+        type: "button",
+        role: "tab",
+        "aria-selected": isActive,
+        "data-state": isActive ? "active" : "inactive",
+        className: cn(base, stateCls, className),
+        onClick: () => ctx.setValue(value),
+        ...p,
+      },
+      children
+    );
+  }
+);
+
+export const TabsContent = React.forwardRef(
+  ({ className, value, children, ...p }, ref) => {
+    const ctx = React.useContext(TabsContext);
+    if (ctx.value !== value) return null;
+    return e(
+      "div",
+      {
+        ref,
+        role: "tabpanel",
+        "data-state": "active",
+        className: cn("mt-2", className),
+        ...p,
+      },
+      children
+    );
+  }
+);
 
 // ─── Avatar ───────────────────────────────────────────────────────
 
