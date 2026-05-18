@@ -30,7 +30,22 @@ export function cn(...classes) {
 
 // ─── Button ───────────────────────────────────────────────────────
 
-export const Button = React.forwardRef(({ className, variant, size, ...p }, ref) => {
+// Detect "SaC action" buttons — those whose onClick triggers the
+// `window.__sac_action` bridge back to the agent. We stringify the handler
+// and look for the literal `__sac_action` token. This covers arrow
+// functions (`() => window.__sac_action(...)`), wrapped handlers, and
+// function declarations. The detected flag flows to the DOM as
+// `data-sac-action="true"` so CSS in preview.html can show the indicator.
+function _isSacActionHandler(fn) {
+  if (typeof fn !== "function") return false;
+  try {
+    return /__sac_action/.test(Function.prototype.toString.call(fn));
+  } catch {
+    return false;
+  }
+}
+
+export const Button = React.forwardRef(({ className, variant, size, onClick, ...p }, ref) => {
   const base = "inline-flex items-center justify-center rounded-lg font-medium text-sm cursor-pointer border-none transition-colors";
   const variants = {
     default: "bg-orange-500 text-white hover:bg-orange-600",
@@ -46,8 +61,14 @@ export const Button = React.forwardRef(({ className, variant, size, ...p }, ref)
     lg: "h-11 px-8",
     icon: "h-10 w-10",
   };
-  const cls = [base, variants[variant] || variants.default, sizes[size] || sizes.default, className].filter(Boolean).join(" ");
-  return e("button", { ref, className: cls, ...p });
+  const isSacAction = _isSacActionHandler(onClick);
+  return e("button", {
+    ref,
+    className: cn(base, variants[variant] || variants.default, sizes[size] || sizes.default, className),
+    onClick,
+    ...(isSacAction && { "data-sac-action": "true" }),
+    ...p,
+  });
 });
 
 // ─── Card ─────────────────────────────────────────────────────────

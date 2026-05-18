@@ -210,7 +210,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 24px;
 }
 
 /* ─── Chat bubbles (product style) ─────────────────────── */
