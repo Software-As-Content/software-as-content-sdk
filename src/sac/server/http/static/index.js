@@ -5,6 +5,7 @@ import { SaCRenderer } from '/renderer/sac-renderer.js';
 const iframe = document.getElementById('preview');
 const placeholder = document.getElementById('placeholder');
 const previewNotice = document.getElementById('preview-notice');
+const showChangesBtn = document.getElementById('show-changes-btn');
 let renderer = createRenderer();
 
 function createRenderer() {
@@ -31,6 +32,31 @@ function resetRenderer() {
   if (renderer && renderer.destroy) renderer.destroy();
   renderer = createRenderer();
 }
+
+// ─── Show Changes button ─────────────────────────────────────
+
+let _changeIndex = 0;   // cycles through highlighted elements
+
+showChangesBtn.addEventListener('click', () => {
+  const iframeDoc = iframe.contentWindow;
+  if (!iframeDoc) return;
+  iframeDoc.postMessage({ type: 'scroll-to-change', index: _changeIndex }, '*');
+  _changeIndex++;
+});
+
+// Listen for change-count from iframe to show/hide button + reset index
+window.addEventListener('message', (ev) => {
+  if (ev.data?.type === 'sac-change-count') {
+    const count = ev.data.count || 0;
+    if (count > 0) {
+      showChangesBtn.textContent = `Show Changes (${count})`;
+      showChangesBtn.classList.remove('hidden');
+      _changeIndex = 0;
+    } else {
+      showChangesBtn.classList.add('hidden');
+    }
+  }
+});
 
 // ─── State ────────────────────────────────────────────────────
 

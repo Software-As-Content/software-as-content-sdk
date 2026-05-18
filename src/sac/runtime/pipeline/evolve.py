@@ -17,6 +17,7 @@ from typing import AsyncIterator
 
 import logging
 
+from sac.runtime.pipeline._diff import _HIGHLIGHT_ATTR_RE
 from sac.runtime.pipeline._diff_filter import DiffChunkFilter
 from sac.runtime.pipeline._tsx_filter import TsxChunkFilter
 from sac.runtime.pipeline.events import PipelineEmitter
@@ -173,8 +174,12 @@ async def stream_evolve_pipeline_diff(
 
     yield PipelineStageEvent(name="generate", status=StageStatus.RUNNING)
 
+    # Strip old highlight markers so LLM sees clean code and new markers
+    # don't nest inside old ones. Previous versions keep their markers intact.
+    clean_code = _HIGHLIGHT_ATTR_RE.sub("", current_code)
+
     growth_prompt = build_growth_prompt_diff(
-        current_code=current_code,
+        current_code=clean_code,
         original_intent=original_intent,
         new_intent=new_intent,
         system_prompt=system_prompt,
@@ -182,7 +187,7 @@ async def stream_evolve_pipeline_diff(
         content=content,
     )
 
-    diff_filter = DiffChunkFilter(current_code)
+    diff_filter = DiffChunkFilter(clean_code)
     try:
         async for token in llm.stream(model, [Message(role="user", content=growth_prompt)]):
             for snapshot in diff_filter.feed(token):
@@ -204,7 +209,7 @@ async def stream_evolve_pipeline_diff(
         # not a user-facing failure. Just continue with full-code evolve.
         async for event in stream_evolve_pipeline(
             new_intent=new_intent,
-            current_code=current_code,
+            current_code=clean_code,
             original_intent=original_intent,
             model=model,
             llm=llm,

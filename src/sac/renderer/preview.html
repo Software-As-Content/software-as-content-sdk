@@ -499,6 +499,11 @@
 
         if (!silent) {
           window.parent.postMessage({ type: 'render-success' }, '*');
+          // Report change count so parent can show/hide "Show Changes" button
+          requestAnimationFrame(function() {
+            var count = rootEl.querySelectorAll('[data-sac-changed]').length;
+            window.parent.postMessage({ type: 'sac-change-count', count: count }, '*');
+          });
         }
       } catch(err) {
         if (appBlob) URL.revokeObjectURL(appBlob);
@@ -672,6 +677,12 @@
         if (window.__clearRoot) window.__clearRoot();
       } else if (ev.data.type === 'set-locked') {
         _sacSetLocked(!!ev.data.locked);
+      } else if (ev.data.type === 'scroll-to-change') {
+        var els = document.querySelectorAll('[data-sac-changed]');
+        if (els.length > 0) {
+          var idx = (ev.data.index || 0) % els.length;
+          els[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       }
     });
 

@@ -10,6 +10,8 @@
   .conv-pill { padding: 4px 9px; border: 1px solid #e7e5e4; border-radius: 999px; background:#fff; }
   .latest-btn { flex: 0 0 auto; border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; border-radius: 999px; padding: 6px 11px; font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.15s, transform 0.15s; }
   .latest-btn:hover { background: #ffedd5; transform: translateY(-1px); }
+  .changes-btn { flex: 0 0 auto; border: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; border-radius: 999px; padding: 6px 11px; font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.15s, transform 0.15s; }
+  .changes-btn:hover { background: #ffedd5; transform: translateY(-1px); }
   .main { display: flex; height: calc(100vh - 57px); }
   .sidebar { order: 2; flex: 0 0 clamp(360px, 32vw, 520px); min-width: 0; background: rgba(255,255,255,0.94); border-left: 1px solid #e7e5e4; display: flex; flex-direction: column; box-shadow: -18px 0 50px rgba(28,25,23,0.04); }
 
