@@ -865,7 +865,12 @@ function renderCallbackRun(run) {
   const wasExpanded = card.el.classList.contains('expanded');
   card.el.className = `callback-card ${escClass(status)}${wasExpanded ? ' expanded' : ''}`;
 
-  // Handle result info
+  // Replay persisted logs FIRST (chronological agent activity)
+  if (Array.isArray(run.logs)) {
+    for (const log of run.logs.slice(-12)) renderCallbackLog(log);
+  }
+
+  // THEN add Published/error events (so they appear after agent activity)
   if (run.loop_closed && run.result_version) {
     addCallbackEvent(card, 'version_updated', 'Published', `App updated to v${run.result_version}`);
   }
@@ -873,9 +878,9 @@ function renderCallbackRun(run) {
     addCallbackEvent(card, 'warning', 'Error', compactText(run.error, 200));
   }
 
-  // Render persisted logs
-  if (Array.isArray(run.logs)) {
-    for (const log of run.logs.slice(-12)) renderCallbackLog(log);
+  // Remove transient loading states on terminal states (after all events added)
+  if (status === 'succeeded' || status === 'failed' || status === 'no_update') {
+    card.eventsEl.querySelectorAll('.cb-working, .cb-turn, .cb-finalizing').forEach(el => el.remove());
   }
 }
 
@@ -896,18 +901,36 @@ function renderCallbackLog(log) {
   if (/ignoring interface\.|stream disconnected|manifest|loader/.test(detail)) return;
   if (kind === 'raw') return;
 
+  // Once SaC has published, suppress post-publish noise (agent confirmation,
+  // duplicate command_completed, turn_completed). These just echo what SaC
+  // already reported via the version event.
+  if (card.published && kind !== 'version_updated' && kind !== 'warning') {
+    if (log.line) appendCallbackRaw(card, label, log.line);
+    return;
+  }
+
   // Route to the right display
   switch (kind) {
     case 'agent_message':
       addCallbackEvent(card, 'agent_message', 'Agent', detail);
       break;
-    case 'command_started':
-      addCallbackEvent(card, 'command', 'Running', formatCommand(detail));
+    case 'command_started': {
+      const fmt = formatCommand(detail);
+      addCallbackEvent(card, 'command', 'Running', fmt);
       break;
-    case 'command_completed':
-      addCallbackEvent(card, 'command_done', 'Completed', formatCommand(detail));
+    }
+    case 'command_completed': {
+      const fmt = formatCommand(detail);
+      if (fmt.includes('/inbox')) {
+        // SaC publish completed — mark card as published, show "Finalizing..."
+        card.published = true;
+        addCallbackEvent(card, 'finalizing', 'Finalizing...', '');
+      } else {
+        addCallbackEvent(card, 'command_done', 'Completed', fmt);
+      }
       if (log.line) appendCallbackRaw(card, label, log.line);
       break;
+    }
     case 'thread_started':
       addCallbackEvent(card, 'thread', 'Thread started', detail ? detail.slice(0, 12) + '...' : '');
       break;
@@ -918,6 +941,7 @@ function renderCallbackLog(log) {
       addCallbackEvent(card, 'turn_done', 'Turn complete', detail);
       break;
     case 'version_updated':
+      card.published = true;
       addCallbackEvent(card, 'version_updated', label, detail);
       break;
     case 'warning':
@@ -936,13 +960,24 @@ function renderCallbackLog(log) {
 }
 
 function addCallbackEvent(card, kind, label, detail) {
+  // Dedup version_updated by label to prevent triple "Published" events
+  if (kind === 'version_updated') {
+    const key = `vu:${label}`;
+    if (card.seen.has(key)) return;
+    card.seen.add(key);
+  }
+
+  // Remove any existing working indicator before adding new events
+  const existingWorking = card.eventsEl.querySelector('.cb-working');
+  if (existingWorking) existingWorking.remove();
+
   const el = document.createElement('div');
   el.className = `cb-event cb-${escClass(kind)}`;
 
   const iconMap = {
     agent_message: '💬', command: '▶', command_done: '✓', thread: '⚡',
     turn: '◌', turn_done: '✓', version_updated: '✦', warning: '⚠',
-    log: '·',
+    finalizing: '◌', log: '·',
   };
   const icon = iconMap[kind] || '·';
 
@@ -954,8 +989,18 @@ function addCallbackEvent(card, kind, label, detail) {
     </div>`;
   card.eventsEl.appendChild(el);
 
-  // Keep last 15 events visible
-  while (card.eventsEl.children.length > 15) card.eventsEl.removeChild(card.eventsEl.firstChild);
+  // After agent_message or command events, show a working indicator
+  // (will be removed when the next event arrives)
+  if (kind === 'agent_message' || kind === 'command' || kind === 'turn' || kind === 'finalizing') {
+    const working = document.createElement('div');
+    working.className = 'cb-event cb-working';
+    working.innerHTML = '<span class="cb-event-icon cb-working-dot">●</span><div class="cb-event-body"><span class="cb-event-label cb-working-text">Working...</span></div>';
+    card.eventsEl.appendChild(working);
+  }
+
+  // Keep last 15 events visible (exclude working indicator from count)
+  const events = card.eventsEl.querySelectorAll('.cb-event:not(.cb-working)');
+  while (events.length > 15) card.eventsEl.removeChild(card.eventsEl.querySelector('.cb-event:not(.cb-working)'));
 }
 
 function formatCommand(text) {
@@ -987,7 +1032,7 @@ function ensureCallbackCard(run) {
     el.classList.toggle('expanded');
   });
   area.appendChild(el);
-  card = { el, eventsEl: el.querySelector('.cb-events'), rawEl: null, rawCount: 0, seen: new Set() };
+  card = { el, eventsEl: el.querySelector('.cb-events'), rawEl: null, rawCount: 0, seen: new Set(), published: false };
   callbackCards.set(run.id, card);
   scrollChatToBottom();
   return card;

@@ -370,6 +370,27 @@ body {
 .cb-version_updated .cb-event-icon { color: #f97316; font-size: 11px; }
 .cb-version_updated .cb-event-label { color: #9a3412; }
 
+/* Finalizing event */
+.cb-finalizing .cb-event-icon { color: #3b82f6; animation: cbPulse 1.2s ease-in-out infinite; font-size: 8px; }
+.cb-finalizing .cb-event-label { color: #a8a29e; font-weight: 400; font-style: italic; }
+
+/* Working indicator */
+.cb-working { opacity: 0.6; }
+.cb-working-dot {
+  animation: cbPulse 1.2s ease-in-out infinite;
+  font-size: 8px;
+  color: #3b82f6;
+}
+.cb-working-text {
+  color: #a8a29e !important;
+  font-weight: 400 !important;
+  font-style: italic;
+}
+@keyframes cbPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
 /* Raw output */
 .cb-raw {
   margin: 2px 12px 8px;
