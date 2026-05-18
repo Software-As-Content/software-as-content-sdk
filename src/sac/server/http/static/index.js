@@ -86,6 +86,8 @@ const callbackCards = new Map(); // run_id -> { el, eventsEl, rawEl, seen }
 let streamBuffer = '';
 let streamFlushTimer = null;
 const STREAM_FLUSH_MS = 150;
+let pendingSearchSources = [];   // search results accumulated during a generation cycle
+let pendingStages = [];          // stage events accumulated during a generation cycle
 
 function streamPush(chunk) {
   if (!streamBuffer) {
@@ -341,6 +343,14 @@ function setupEventSource(convId) {
         const latest = appVersions[appVersions.length - 1];
         currentVersion = latest?.version || data.version || currentVersion;
         if (latest) {
+          if (pendingSearchSources.length > 0) {
+            latest.sources = [...(latest.sources || []), ...pendingSearchSources];
+            pendingSearchSources = [];
+          }
+          if (pendingStages.length > 0) {
+            latest.stages = [...(latest.stages || []), ...pendingStages];
+            pendingStages = [];
+          }
           ensureVersionCard(latest);
           applyAppVersion(latest, { announce: true });
         } else {
@@ -407,6 +417,22 @@ function setupEventSource(convId) {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
     showStatus(`${data.name}: ${data.status}`, 'running');
+    if ((data.status === 'complete' || data.status === 'success') && data.duration) {
+      pendingStages.push({ name: data.name, duration: data.duration });
+    }
+  });
+
+  es.addEventListener('search', (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    for (const r of (data.results || [])) {
+      for (const src of (r.sources || [])) {
+        pendingSearchSources.push({ title: src.title || src.url, url: src.url, query: r.query });
+      }
+    }
+    if (data.results?.length > 0) {
+      showStatus(`Searched: ${data.results.map(r => r.query).join(', ')}`, 'running');
+    }
   });
 
   es.addEventListener('chunk', (e) => {
@@ -562,19 +588,20 @@ function handleSSEEvent(eventType, data) {
   switch (eventType) {
     case 'stage':
       showStatus(`${data.name}: ${data.status}`, 'running');
+      if (data.status === 'complete' || data.status === 'success') {
+        pendingStages.push({ name: data.name, duration: data.duration });
+      }
       break;
 
     case 'search': {
       const results = data.results || [];
+      for (const r of results) {
+        for (const src of (r.sources || [])) {
+          pendingSearchSources.push({ title: src.title || src.url, url: src.url, query: r.query });
+        }
+      }
       if (results.length > 0) {
-        const area = document.getElementById('suggestions-area');
-        const list = document.getElementById('suggestions-list');
-        const label = document.querySelector('.suggestions-label');
-        area.classList.remove('hidden');
-        if (label) label.textContent = 'Sources';
-        list.innerHTML = results.map(r =>
-          `<span style="font-size:12px;color:#78716c;">${escHtml(r.query)} (${r.sources?.length || 0})</span>`
-        ).join('');
+        showStatus(`Searched: ${results.map(r => r.query).join(', ')}`, 'running');
       }
       break;
     }
@@ -615,13 +642,18 @@ function handleSSEEvent(eventType, data) {
 
       if (data.conversation_id) conversationId = data.conversation_id;
       currentVersion = app.version;
+      const stagesData = (app.stages || []).length > 0 ? app.stages : pendingStages;
       const version = {
         version: app.version,
         title: app.intent || `Version ${app.version}`,
         code: app.code,
         kind: app.parent_version ? 'evolved' : 'generated',
         createdAt: app.created_at,
+        sources: [...pendingSearchSources],
+        stages: stagesData,
       };
+      pendingSearchSources = [];
+      pendingStages = [];
       upsertAppVersion(version);
 
       // Update header
@@ -633,10 +665,10 @@ function handleSSEEvent(eventType, data) {
       // Show suggestions
       renderSuggestions(app.suggestions || []);
 
-      const stages = (app.stages || []).map(s =>
+      const stagesSummary = (stagesData || []).map(s =>
         `${s.name}: ${s.duration ? s.duration.toFixed(1) + 's' : s.status}`
       ).join(' → ');
-      flashStatus(stages || `App updated to v${version.version}`, 'success');
+      flashStatus(stagesSummary || `App updated to v${version.version}`, 'success');
       setPending(false);
       break;
     }
@@ -663,7 +695,15 @@ function addChatMsg(role, content) {
 
 function extractAppVersions(events) {
   const versions = [];
+  let pendingSources = [];
   for (const event of events || []) {
+    if (event.type === 'search' && event.status === 'success') {
+      for (const r of (event.results || [])) {
+        for (const src of (r.sources || [])) {
+          pendingSources.push({ title: src.title || src.url, url: src.url });
+        }
+      }
+    }
     if ((event.type === 'generation' || event.type === 'growth') && event.status === 'success' && event.code) {
       versions.push({
         version: versions.length + 1,
@@ -672,7 +712,10 @@ function extractAppVersions(events) {
         kind: event.type === 'generation' ? 'generated' : 'evolved',
         createdAt: event.timestamp,
         suggestions: event.intent_suggestions || [],
+        sources: [...pendingSources],
+        stages: event.stages || [],
       });
+      pendingSources = [];
     }
   }
   return versions;
@@ -714,22 +757,76 @@ function applyAppVersion(version, opts = {}) {
 function ensureVersionCard(version) {
   const area = document.getElementById('chat-area');
   const id = `version-card-${version.version}`;
-  let button = document.getElementById(id);
-  if (!button) {
-    button = document.createElement('button');
-    button.id = id;
-    button.type = 'button';
-    button.className = 'version-card';
-    button.addEventListener('click', () => applyAppVersion(version));
-    area.appendChild(button);
+  let wrapper = document.getElementById(id);
+  if (!wrapper) {
+    wrapper = document.createElement('div');
+    wrapper.id = id;
+    wrapper.className = 'version-card';
+    area.appendChild(wrapper);
   }
   const kindLabel = version.kind === 'generated' ? 'generated' : 'evolved';
   const timeStr = version.createdAt ? formatTime(version.createdAt) : '';
-  button.innerHTML = `
-    <span class="version-card-badge">v${version.version}</span>
-    <span class="version-card-title">${escHtml(version.title || `Version ${version.version}`)}</span>
-    <span class="version-card-kind">${escHtml(kindLabel)}${timeStr ? ' · ' + escHtml(timeStr) : ''}</span>
+  const sources = version.sources || [];
+  const stages = version.stages || [];
+  const hasDetails = sources.length > 0 || stages.length > 0;
+
+  let detailsHtml = '';
+  if (hasDetails) {
+    const sourcesHtml = sources.length > 0 ? `
+      <div class="vc-detail-section">
+        <div class="vc-detail-toggle" data-section="sources">
+          <span class="vc-detail-arrow">›</span>
+          Sources (${sources.length})
+        </div>
+        <div class="vc-detail-body" data-section-body="sources">
+          ${sources.slice(0, 10).map(s => `<div class="vc-source-item">${s.url ? `<a href="${escHtml(s.url)}" target="_blank" rel="noopener">${escHtml(compactText(s.title || s.url, 60))}</a>` : escHtml(compactText(s.title, 60))}</div>`).join('')}
+          ${sources.length > 10 ? `<div class="vc-source-item" style="color:#a8a29e;">+${sources.length - 10} more</div>` : ''}
+        </div>
+      </div>` : '';
+
+    const stagesHtml = stages.length > 0 ? `
+      <div class="vc-detail-section">
+        <div class="vc-detail-toggle" data-section="stages">
+          <span class="vc-detail-arrow">›</span>
+          Pipeline (${stages.length} stages)
+        </div>
+        <div class="vc-detail-body" data-section-body="stages">
+          ${stages.map(s => `<div class="vc-stage-item"><span class="vc-stage-name">${escHtml(s.name)}</span>${s.duration ? `<span class="vc-stage-dur">${s.duration.toFixed(1)}s</span>` : ''}</div>`).join('')}
+        </div>
+      </div>` : '';
+
+    detailsHtml = `<div class="vc-details">${sourcesHtml}${stagesHtml}</div>`;
+  }
+
+  wrapper.innerHTML = `
+    <div class="vc-header">
+      <span class="version-card-badge">v${version.version}</span>
+      <span class="version-card-title">${escHtml(version.title || `Version ${version.version}`)}</span>
+      <span class="version-card-kind">${escHtml(kindLabel)}${timeStr ? ' · ' + escHtml(timeStr) : ''}</span>
+    </div>
+    ${detailsHtml}
   `;
+
+  // Click header to switch version
+  wrapper.querySelector('.vc-header').addEventListener('click', () => applyAppVersion(version));
+
+  // Toggle detail sections
+  wrapper.querySelectorAll('.vc-detail-toggle').forEach(toggle => {
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const section = toggle.dataset.section;
+      const body = wrapper.querySelector(`[data-section-body="${section}"]`);
+      const arrow = toggle.querySelector('.vc-detail-arrow');
+      if (body.classList.contains('expanded')) {
+        body.classList.remove('expanded');
+        arrow.textContent = '›';
+      } else {
+        body.classList.add('expanded');
+        arrow.textContent = '⌄';
+      }
+    });
+  });
+
   markActiveVersionCard(viewedVersion);
   scrollChatToBottom();
 }

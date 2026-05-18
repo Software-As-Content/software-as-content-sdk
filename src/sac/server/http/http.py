@@ -450,6 +450,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             PipelineChunkEvent,
             PipelineCompleteEvent,
             PipelineErrorEvent,
+            PipelineSearchEvent,
             PipelineSnapshotEvent,
             PipelineStageEvent,
         )
@@ -479,9 +480,17 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 elif isinstance(event, PipelineSnapshotEvent):
                     pubsub.publish(conv.id, "snapshot", {"code": event.code})
                 elif isinstance(event, PipelineStageEvent):
-                    pubsub.publish(
-                        conv.id, "stage", {"name": event.name, "status": event.status}
-                    )
+                    stage_data: dict = {"name": event.name, "status": event.status}
+                    if hasattr(event, "duration") and event.duration is not None:
+                        stage_data["duration"] = event.duration
+                    pubsub.publish(conv.id, "stage", stage_data)
+                elif isinstance(event, PipelineSearchEvent):
+                    pubsub.publish(conv.id, "search", {
+                        "results": [
+                            {"query": r.query, "sources": [{"title": s.title, "url": s.url} for s in (r.sources or [])]}
+                            for r in (event.results or [])
+                        ]
+                    })
                 elif isinstance(event, PipelineCompleteEvent):
                     app_result = event.app
                 elif isinstance(event, PipelineErrorEvent):

@@ -113,7 +113,7 @@ body {
 }
 
 /* ─── Chat bubbles (product style) ─────────────────────── */
-.chat-msg { display: flex; }
+.chat-msg { display: flex; flex-shrink: 0; }
 .chat-msg.user { justify-content: flex-end; }
 .chat-msg.assistant { justify-content: flex-start; }
 .chat-msg.system { justify-content: center; }
@@ -152,18 +152,14 @@ body {
 /* ─── Version cards (compact inline) ───────────────────── */
 .version-card {
   width: 100%;
-  padding: 8px 12px;
   border: 1px solid rgba(28,25,23,0.06);
   border-radius: 12px;
   background: #fff;
   text-align: left;
-  cursor: pointer;
   transition: all 0.15s;
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-shrink: 0;
 }
-.version-card:hover { border-color: rgba(28,25,23,0.12); background: #fff; }
+.version-card:hover { border-color: rgba(28,25,23,0.12); }
 .version-card.active {
   border-color: rgba(249,115,22,0.3);
   background: rgba(255,247,237,0.6);
@@ -200,6 +196,71 @@ body {
 .version-card .version-card-footer { display: none; }
 .version-card.just-updated { animation: versionPulse 1.4s ease-out; }
 
+/* Version card header row (clickable to switch version) */
+.vc-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 11px;
+  transition: background 0.12s;
+}
+.vc-header:hover { background: rgba(28,25,23,0.02); }
+
+/* Expandable details area */
+.vc-details { padding: 0 12px 6px; }
+.vc-detail-section { margin-top: 2px; }
+.vc-detail-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #a8a29e;
+  cursor: pointer;
+  transition: color 0.15s;
+  user-select: none;
+}
+.vc-detail-toggle:hover { color: #57534e; }
+.vc-detail-arrow {
+  display: inline-flex;
+  width: 12px;
+  font-size: 12px;
+  color: #d6d3d1;
+  transition: transform 0.15s;
+}
+.vc-detail-body {
+  display: none;
+  padding: 2px 0 4px 16px;
+}
+.vc-detail-body.expanded { display: block; }
+.vc-source-item {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #57534e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vc-source-item a {
+  color: #57534e;
+  text-decoration: none;
+  transition: color 0.12s;
+}
+.vc-source-item a:hover { color: #1c1917; text-decoration: underline; }
+.vc-stage-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #57534e;
+}
+.vc-stage-name { font-weight: 500; }
+.vc-stage-dur { color: #a8a29e; font-variant-numeric: tabular-nums; }
+
 /* ─── Callback cards (compact) ─────────────────────────── */
 .callback-card {
   margin: 2px 0;
@@ -208,6 +269,7 @@ body {
   background: #fff;
   overflow: hidden;
   transition: all 0.15s;
+  flex-shrink: 0;
 }
 .callback-card.running, .callback-card.queued { border-color: rgba(59,130,246,0.15); }
 .callback-card.succeeded { border-color: rgba(34,197,94,0.15); }
