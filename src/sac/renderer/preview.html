@@ -24,10 +24,14 @@
 
     /* ─── Progressive evolve: change highlighting ───────────────────
      * Elements with data-sac-changed are newly added or modified by
-     * progressive evolve. A brief orange glow draws the user's eye
-     * to what changed, then fades out.                                */
+     * progressive evolve. A pulsing orange glow draws the user's eye
+     * to what changed.                                                 */
     [data-sac-changed] {
-      box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.5), 0 0 12px rgba(249, 115, 22, 0.15);
+      animation: sac-change-pulse 2s ease-in-out infinite;
+    }
+    @keyframes sac-change-pulse {
+      0%, 100% { box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.25), 0 0 8px rgba(249, 115, 22, 0.08); }
+      50%      { box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.6),  0 0 16px rgba(249, 115, 22, 0.2); }
     }
 
     /* ─── SaC action button hover cue ─────────────────────────────── */
@@ -495,6 +499,13 @@
 
         if (!silent) {
           window.parent.postMessage({ type: 'render-success' }, '*');
+          // Scroll to first highlighted change after React paints
+          requestAnimationFrame(function() {
+            var first = rootEl.querySelector('[data-sac-changed]');
+            if (first) {
+              first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          });
         }
       } catch(err) {
         if (appBlob) URL.revokeObjectURL(appBlob);
