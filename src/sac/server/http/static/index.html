@@ -9,11 +9,9 @@
 <body>
 
 <div class="header">
+  <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Toggle sidebar">☰</button>
   <h1>SaC SDK</h1>
-  <span class="version" id="version-badge">v0.1.0</span>
-  <span id="health-dot" class="health"></span>
-  <span id="conv-info" class="conv-info"></span>
-  <button class="latest-btn hidden" id="latest-version-btn" type="button">Back to Latest Version</button>
+  <div style="flex:1"></div>
   <button class="changes-btn hidden" id="show-changes-btn" type="button">Show Changes</button>
 </div>
 
@@ -22,14 +20,13 @@
     <div class="tab-bar">
       <div class="tab active" data-tab="chat">Activity</div>
       <div class="tab" data-tab="conversations">History</div>
-      <div class="tab" data-tab="code">Code</div>
     </div>
 
-    <!-- Chat tab -->
+    <!-- Activity tab -->
     <div class="tab-content" id="tab-chat" style="display:flex;flex-direction:column;">
       <div class="chat-area" id="chat-area">
         <div class="chat-msg system">
-          <div class="chat-bubble">Send a message to start. I'll chat or generate UI based on your intent.</div>
+          <div class="chat-bubble">Send a message to start.</div>
         </div>
       </div>
       <div class="status hidden" id="status-bar"></div>
@@ -38,86 +35,22 @@
         <div id="suggestions-list"></div>
       </div>
       <div class="input-area">
-        <textarea id="intent" placeholder="Say anything — chat or describe a UI to generate..."></textarea>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="send-btn">Send</button>
-          <button class="btn btn-ghost" id="new-conv-btn" title="New conversation">+ New</button>
+        <div class="input-wrapper">
+          <textarea id="intent" placeholder="What's next?" rows="1"></textarea>
+          <button class="send-btn-inline" id="send-btn" type="button" title="Send">↑</button>
         </div>
       </div>
     </div>
 
-    <!-- Code tab -->
-    <div class="tab-content hidden" id="tab-code">
-      <div class="code-toolbar">
-        <div>
-          <div class="code-toolbar-title">Generated code</div>
-          <div class="code-toolbar-meta" id="code-meta">No app version selected</div>
-        </div>
-        <div class="code-toolbar-actions">
-          <button class="btn btn-secondary btn-sm" id="expand-code-btn" type="button" title="Toggle fullscreen">⤢ Expand</button>
-          <button class="btn btn-secondary btn-sm" id="copy-code-btn" type="button">Copy</button>
-        </div>
-      </div>
-      <pre id="code-display" class="code-display">Generate something to see the code here.</pre>
-    </div>
-
-    <!-- API Explorer tab (hidden from tab bar, accessible programmatically) -->
-    <div class="tab-content hidden" id="tab-api">
-      <div class="api-panel">
-        <div class="api-section">
-          <div class="api-row">
-            <span class="method-badge method-get">GET</span>
-            <span class="endpoint-path">/health</span>
-            <button class="btn btn-secondary btn-sm" onclick="apiCall('GET', '/health', 'health-result')">Run</button>
-          </div>
-          <div class="api-result" id="health-result">Click "Run" to test</div>
-        </div>
-        <div class="api-section">
-          <div class="api-row">
-            <span class="method-badge method-get">GET</span>
-            <span class="endpoint-path">/models</span>
-            <button class="btn btn-secondary btn-sm" onclick="apiCall('GET', '/models', 'models-result')">Run</button>
-          </div>
-          <div class="api-result" id="models-result">Click "Run" to test</div>
-        </div>
-        <div class="api-section">
-          <div class="api-row">
-            <span class="method-badge method-get">GET</span>
-            <span class="endpoint-path">/conversations</span>
-            <button class="btn btn-secondary btn-sm" onclick="apiCall('GET', '/conversations', 'convs-result')">Run</button>
-          </div>
-          <div class="api-result" id="convs-result">Click "Run" to test</div>
-        </div>
-        <div class="api-section">
-          <div class="api-row">
-            <span class="method-badge method-post">POST</span>
-            <span class="endpoint-path">/send</span>
-          </div>
-          <div style="margin-bottom:8px;">
-            <input class="input-sm" id="api-send-msg" placeholder="message" value="hello" style="width:100%;">
-          </div>
-          <div class="api-row">
-            <button class="btn btn-secondary btn-sm" onclick="apiSend()">Run</button>
-          </div>
-          <div class="api-result" id="send-result" style="max-height:200px;">Click "Run" to test</div>
-        </div>
-        <div class="api-section">
-          <div class="api-row">
-            <span class="method-badge method-post">POST</span>
-            <span class="endpoint-path">/stream</span>
-            <span style="font-size:11px;color:#a8a29e;">SSE</span>
-          </div>
-          <p style="font-size:12px;color:#a8a29e;">Used automatically when generating/evolving UI via Chat tab</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Conversations tab -->
+    <!-- History tab -->
     <div class="tab-content hidden" id="tab-conversations">
       <div class="api-panel">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
           <h3 style="font-size:14px;font-weight:600;">Conversations</h3>
-          <button class="btn btn-secondary btn-sm" onclick="loadConversations()">Refresh</button>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-secondary btn-sm" id="new-conv-btn" title="New conversation">+ New</button>
+            <button class="btn btn-secondary btn-sm" onclick="loadConversations()">Refresh</button>
+          </div>
         </div>
         <div id="conv-list"><p style="font-size:13px;color:#a8a29e;">Click Refresh to load</p></div>
       </div>
@@ -125,12 +58,28 @@
   </div>
 
   <div class="preview-area">
+    <div class="preview-tabs" id="preview-tabs">
+      <div class="preview-tab active" data-ptab="app">App</div>
+      <div class="preview-tab" data-ptab="code">Code</div>
+    </div>
     <div class="loading" id="placeholder">
       <span style="font-size:32px;">✦</span>
       <span>The generated app appears here</span>
     </div>
     <div class="preview-notice hidden" id="preview-notice"></div>
     <iframe id="preview" class="hidden"></iframe>
+    <div class="preview-code-panel hidden" id="preview-code-panel">
+      <div class="code-toolbar">
+        <div>
+          <div class="code-toolbar-title">Generated code</div>
+          <div class="code-toolbar-meta" id="code-meta">No app version selected</div>
+        </div>
+        <div class="code-toolbar-actions">
+          <button class="btn btn-secondary btn-sm" id="copy-code-btn" type="button">Copy</button>
+        </div>
+      </div>
+      <pre id="code-display" class="code-display">Generate something to see the code here.</pre>
+    </div>
   </div>
 </div>
 

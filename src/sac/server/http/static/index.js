@@ -129,64 +129,61 @@ function streamReset() {
   streamBuffer = '';
 }
 
-// ─── Tab switching ───────────────────────────────────────────
+// ─── Sidebar tab switching ───────────────────────────────────
 
-document.querySelectorAll('.tab').forEach(tab => {
+document.querySelectorAll('.sidebar .tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+    document.querySelectorAll('.sidebar .tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.sidebar .tab-content').forEach(c => c.classList.add('hidden'));
     tab.classList.add('active');
     document.getElementById('tab-' + tab.dataset.tab).classList.remove('hidden');
-    if (tab.dataset.tab !== 'code') setCodeFullscreen(false);
     if (tab.dataset.tab === 'conversations') loadConversations();
   });
 });
 
-// ─── Health check on load ────────────────────────────────────
+// ─── Preview tab switching (App / Code) ─────────────────────
 
-(async () => {
-  try {
-    const res = await fetch('/health');
-    const data = await res.json();
-    document.getElementById('health-dot').innerHTML =
-      `<span class="dot dot-green"></span>${data.status}`;
-    document.getElementById('version-badge').textContent = 'v' + data.version;
-  } catch {
-    document.getElementById('health-dot').innerHTML =
-      `<span class="dot dot-red"></span>offline`;
-  }
-})();
+const previewCodePanel = document.getElementById('preview-code-panel');
+
+document.querySelectorAll('.preview-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const mode = tab.dataset.ptab;
+    if (mode === 'code') {
+      iframe.classList.add('hidden');
+      placeholder.classList.add('hidden');
+      previewCodePanel.classList.remove('hidden');
+    } else {
+      previewCodePanel.classList.add('hidden');
+      // Show iframe or placeholder depending on state
+      if (viewedVersion > 0) {
+        iframe.classList.remove('hidden');
+      } else {
+        placeholder.classList.remove('hidden');
+      }
+    }
+  });
+});
+
+// ─── Sidebar toggle ─────────────────────────────────────────
+
+document.getElementById('sidebar-toggle').addEventListener('click', () => {
+  document.querySelector('.sidebar').classList.toggle('collapsed');
+});
 
 // ─── Send handler (unified entry point) ──────────────────────
 
 const sendBtn = document.getElementById('send-btn');
 const intentInput = document.getElementById('intent');
-const latestVersionBtn = document.getElementById('latest-version-btn');
 const codeDisplay = document.getElementById('code-display');
 const codeMeta = document.getElementById('code-meta');
 const copyCodeBtn = document.getElementById('copy-code-btn');
-const expandCodeBtn = document.getElementById('expand-code-btn');
-const tabCode = document.getElementById('tab-code');
-
-function setCodeFullscreen(on) {
-  tabCode.classList.toggle('fullscreen', on);
-  expandCodeBtn.textContent = on ? '⤡ Collapse' : '⤢ Expand';
-}
-expandCodeBtn.addEventListener('click', () => {
-  setCodeFullscreen(!tabCode.classList.contains('fullscreen'));
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && tabCode.classList.contains('fullscreen')) setCodeFullscreen(false);
-});
-
 sendBtn.addEventListener('click', () => handleSend());
 intentInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
 });
-latestVersionBtn.addEventListener('click', () => {
-  const latest = getLatestVersion();
-  if (latest) applyAppVersion(latest);
-});
+// "Back to Latest" now handled programmatically — no header button
 copyCodeBtn.addEventListener('click', async () => {
   const code = codeDisplay.textContent || '';
   if (!code.trim()) return;
@@ -205,9 +202,7 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
   appVersions = [];
   callbackUrl = null;
   if (eventSource) { eventSource.close(); eventSource = null; }
-  document.getElementById('conv-info').textContent = '';
-  latestVersionBtn.classList.add('hidden');
-    hidePreviewNotice();
+  hidePreviewNotice();
   document.getElementById('chat-area').innerHTML =
     '<div class="chat-msg system"><div class="chat-bubble">New conversation started.</div></div>';
   callbackCards.clear();
@@ -349,7 +344,7 @@ function setupEventSource(convId) {
           ensureVersionCard(latest);
           applyAppVersion(latest, { announce: true });
         } else {
-          setConversationInfo(`Updated to v${currentVersion}`, `${conversation.latest_code.length} chars`);
+          // conv info removed from header
           codeDisplay.textContent = conversation.latest_code;
           codeMeta.textContent = `Updated to v${currentVersion} · ${formatCodeSize(conversation.latest_code)}`;
           placeholder.classList.add('hidden');
@@ -701,13 +696,14 @@ function applyAppVersion(version, opts = {}) {
   viewedVersion = version.version;
   codeDisplay.textContent = version.code;
   codeMeta.textContent = `v${version.version} · ${formatCodeSize(version.code)}`;
+  // Ensure App tab is active in preview
+  previewCodePanel.classList.add('hidden');
   placeholder.classList.add('hidden');
   iframe.classList.remove('hidden');
+  document.querySelectorAll('.preview-tab').forEach(t => t.classList.toggle('active', t.dataset.ptab === 'app'));
   hidePreviewNotice();
   renderer.render(version.code);
-  setConversationInfo(`Viewing v${version.version}`, compactText(version.title, 34));
   markActiveVersionCard(version.version);
-  updateLatestButton();
     if (opts.announce) {
     addChatMsg('system', `App updated to v${version.version}`);
     flashStatus(`App updated to v${version.version}`, 'success');
@@ -727,21 +723,15 @@ function ensureVersionCard(version) {
     button.addEventListener('click', () => applyAppVersion(version));
     area.appendChild(button);
   }
+  const kindLabel = version.kind === 'generated' ? 'generated' : 'evolved';
+  const timeStr = version.createdAt ? formatTime(version.createdAt) : '';
   button.innerHTML = `
-    <span class="version-card-top">
-      <span class="version-card-badge">v${version.version}</span>
-      <span class="version-card-kind">${escHtml(version.kind || 'version')}</span>
-    </span>
+    <span class="version-card-badge">v${version.version}</span>
     <span class="version-card-title">${escHtml(version.title || `Version ${version.version}`)}</span>
-    <span class="version-card-meta">${version.createdAt ? escHtml(formatTime(version.createdAt)) : `${version.code.length} chars`}</span>
-    <span class="version-card-footer">
-      <span>${escHtml(formatCodeSize(version.code))}</span>
-      <span class="version-card-cta">View version →</span>
-    </span>
+    <span class="version-card-kind">${escHtml(kindLabel)}${timeStr ? ' · ' + escHtml(timeStr) : ''}</span>
   `;
   markActiveVersionCard(viewedVersion);
-  updateLatestButton();
-    scrollChatToBottom();
+  scrollChatToBottom();
 }
 
 function markActiveVersionCard(versionNumber) {
@@ -759,12 +749,6 @@ function flashVersionCard(versionNumber) {
   window.setTimeout(() => card.classList.remove('just-updated'), 1500);
 }
 
-function updateLatestButton() {
-  const latest = getLatestVersion();
-  latestVersionBtn.classList.toggle('hidden', !latest || viewedVersion >= latest.version);
-}
-
-
 function renderCallbackRun(run) {
   const shortId = (run.id || '').slice(0, 8);
   const card = ensureCallbackCard(run);
@@ -774,8 +758,8 @@ function renderCallbackRun(run) {
   const meta = card.el.querySelector('.callback-card-meta');
   const statusEl = card.el.querySelector('.callback-status');
 
-  card.el.className = `callback-card ${escClass(status)}`;
-  title.textContent = `${adapterLabel(run.adapter)} agent bridge`;
+  card.el.className = `callback-card ${escClass(status)}${card.el.classList.contains('expanded') ? ' expanded' : ''}`;
+  title.textContent = `${adapterLabel(run.adapter)}`;
   subtitle.textContent = compactText(run.intent || run.last_event || 'Waiting for agent activity', 140);
   const facts = [`#${shortId}`];
   if (run.cwd && status === 'running') facts.push(compactPath(run.cwd));
@@ -855,7 +839,7 @@ function ensureCallbackCard(run) {
       <div class="callback-card-main">
         <div class="callback-icon">↔</div>
         <div>
-          <div class="callback-card-title">${escHtml(adapterLabel(run.adapter))} agent bridge</div>
+          <div class="callback-card-title">${escHtml(adapterLabel(run.adapter))}</div>
           <div class="callback-card-subtitle">Waiting for agent activity</div>
           <div class="callback-card-meta">#${escHtml((run.id || '').slice(0, 8))}</div>
         </div>
@@ -863,6 +847,9 @@ function ensureCallbackCard(run) {
       <span class="callback-status ${escClass(run.status || 'queued')}">${escHtml(runStatusLabel(run.status || 'queued'))}</span>
     </div>
     <div class="callback-events"></div>`;
+  el.querySelector('.callback-card-header').addEventListener('click', () => {
+    el.classList.toggle('expanded');
+  });
   area.appendChild(el);
   card = { el, eventsEl: el.querySelector('.callback-events'), rawEl: null, rawCount: 0, seen: new Set() };
   callbackCards.set(run.id, card);
@@ -901,47 +888,6 @@ function markLatestCallbackVersion(version) {
   };
   renderCallbackLog(event);
 }
-
-// ─── API Explorer helpers ────────────────────────────────────
-
-window.apiCall = async function(method, path, resultId) {
-  const el = document.getElementById(resultId);
-  el.textContent = 'Loading...';
-  try {
-    const res = await fetch(path, { method });
-    const data = await res.json();
-    el.textContent = JSON.stringify(data, null, 2);
-  } catch (err) {
-    el.textContent = 'Error: ' + err.message;
-  }
-};
-
-window.apiSend = async function() {
-  const el = document.getElementById('send-result');
-  const message = document.getElementById('api-send-msg').value.trim();
-  if (!message) return;
-  el.textContent = 'Sending...';
-  try {
-    const res = await fetch('/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
-    });
-    const data = await res.json();
-    const summary = { ...data };
-    if (summary.app) {
-      summary.app = {
-        version: data.app.version,
-        intent: data.app.intent,
-        code_length: data.app.code?.length,
-        model: data.app.model,
-      };
-    }
-    el.textContent = JSON.stringify(summary, null, 2);
-  } catch (err) {
-    el.textContent = 'Error: ' + err.message;
-  }
-};
 
 // ─── Conversations tab ───────────────────────────────────────
 
@@ -989,7 +935,7 @@ window.loadConv = async function(id) {
     currentVersion = conv.event_count;
     callbackUrl = conv.callback_url || null;  // determines routing mode
     setupEventSource(id);                      // subscribe to live updates
-    setConversationInfo(conv.title || 'Untitled', callbackUrl ? 'agent-driven' : 'local');
+    // conv info display removed from header
     appVersions = extractAppVersions(events);
     viewedVersion = appVersions[appVersions.length - 1]?.version || 0;
 
@@ -1078,9 +1024,7 @@ window.deleteConv = async function(id) {
       currentVersion = 0;
       viewedVersion = 0;
       appVersions = [];
-      document.getElementById('conv-info').textContent = '';
-      latestVersionBtn.classList.add('hidden');
-            hidePreviewNotice();
+      hidePreviewNotice();
       document.getElementById('chat-area').innerHTML =
         '<div class="chat-msg system"><div class="chat-bubble">Conversation deleted.</div></div>';
       placeholder.classList.remove('hidden');
@@ -1130,15 +1074,6 @@ function showPreviewNotice(title, detail) {
 function hidePreviewNotice() {
   previewNotice.classList.add('hidden');
   previewNotice.innerHTML = '';
-}
-
-function setConversationInfo(primary, secondary = '') {
-  const el = document.getElementById('conv-info');
-  if (!primary) {
-    el.textContent = '';
-    return;
-  }
-  el.innerHTML = `<strong>${escHtml(primary)}</strong>${secondary ? `<span class="conv-pill">${escHtml(secondary)}</span>` : ''}`;
 }
 
 function hideSuggestions() {
