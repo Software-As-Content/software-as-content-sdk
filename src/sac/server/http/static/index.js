@@ -39,6 +39,7 @@ let _changeIndex = 0;   // cycles through highlighted elements
 let _changeCount = 0;
 
 showChangesBtn.addEventListener('click', () => {
+  if (_changeCount <= 0) return;
   const iframeWin = iframe.contentWindow;
   if (!iframeWin) return;
   iframeWin.postMessage({ type: 'scroll-to-change', index: _changeIndex }, '*');
@@ -50,17 +51,20 @@ window.addEventListener('message', (ev) => {
   if (ev.data?.type === 'sac-change-count') {
     _changeCount = ev.data.count || 0;
     if (_changeCount > 0) {
-      showChangesBtn.textContent = `Show Changes (${_changeCount})`;
-      showChangesBtn.classList.remove('hidden');
+      showChangesBtn.textContent = `Check Changes (${_changeCount})`;
+      showChangesBtn.disabled = false;
+      showChangesBtn.classList.remove('changes-btn-empty');
       _changeIndex = 0;
     } else {
-      showChangesBtn.classList.add('hidden');
+      showChangesBtn.textContent = 'Changes';
+      showChangesBtn.disabled = true;
+      showChangesBtn.classList.add('changes-btn-empty');
     }
   }
   if (ev.data?.type === 'sac-highlights-visible') {
     if (!ev.data.visible && _changeCount > 0) {
       // Highlights dismissed — update button text
-      showChangesBtn.textContent = `Show Changes (${_changeCount})`;
+      showChangesBtn.textContent = `Check Changes (${_changeCount})`;
       _changeIndex = 0;
     }
   }
@@ -251,7 +255,7 @@ async function handleSend() {
   // to /inbox; SSE delivers it. No local streamGenerate path.
   // pendingAction stays true — cleared when SSE delivers version/chat event.
   if (callbackUrl && conversationId) {
-    showStatus('Sent to agent, waiting...', 'running');
+    showStatus('Thinking...', 'running');
     try {
       const res = await fetch(`/c/${conversationId}/action`, {
         method: 'POST',
@@ -263,8 +267,15 @@ async function handleSend() {
         addChatMsg('system', `Forwarding failed (HTTP ${res.status}): ${detail}`);
         hideStatus();
         setPending(false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        if (data.type === 'chat') {
+          // Pre-classified as chat — NL reply delivered via SSE, nothing more to wait for
+          return;
+        }
+        showStatus('Sent to agent, waiting...', 'running');
       }
-      // On success: don't clear pending — wait for SSE event
+      // On success (non-chat): don't clear pending — wait for SSE event
     } catch (err) {
       addChatMsg('system', 'Error: ' + err.message);
       hideStatus();

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import sys
 from collections import defaultdict
@@ -32,6 +33,8 @@ from sac.runtime.store.file import FileStore
 from sac.sac import SaC
 from sac.server.http.callbacks import CallbackManager
 from sac.types import ConversationSettings
+
+logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _RENDERER_DIR = Path(__file__).parent.parent.parent / "renderer"
@@ -614,7 +617,12 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     @app.post("/c/{conv_id}/action")
     async def conversation_action(conv_id: str, req: ActionRequest, request: Request) -> dict[str, Any]:
-        """Forward a user action to the agent's registered callback_url."""
+        """Forward a user action to the agent's registered callback_url.
+
+        Pre-classifies the intent: chat-type messages (greetings, small
+        talk) get a direct NL reply without invoking the external agent,
+        saving 60-90s of unnecessary round-trip.
+        """
         conv_data = await sac._store.get_conversation(conv_id)
         if conv_data is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
@@ -626,6 +634,31 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                     "agent must include callback_url in its first /inbox call."
                 ),
             )
+
+        # ── Pre-classify: intercept chat-type intents before dispatching ──
+        # Only for text input from the chat panel (no context = not a button
+        # click in the app). Button clicks always go to the agent.
+        if req.context is None:
+            conv = await _get_or_create_conv(conv_id, user_id=_get_user_id(request))
+            try:
+                classification = await conv.classify(req.intent)
+                if classification.get("type") == "chat":
+                    from sac.types import MessageEvent
+
+                    reply = classification.get("reply", "")
+                    # Store user message + assistant reply
+                    await sac._store.add_event(
+                        MessageEvent(conversation_id=conv_id, role="user", content=req.intent)
+                    )
+                    await sac._store.add_event(
+                        MessageEvent(conversation_id=conv_id, role="assistant", content=reply)
+                    )
+                    # Push to frontend via SSE
+                    pubsub.publish(conv_id, "chat", {"role": "assistant", "content": reply})
+                    return {"ok": True, "type": "chat", "reply": reply}
+            except Exception:
+                # Classify failed — fall through to agent dispatch
+                logger.debug("Pre-classify failed for conv %s, dispatching to agent", conv_id, exc_info=True)
 
         run = await callback_manager.dispatch(
             conv_id=conv_id,
