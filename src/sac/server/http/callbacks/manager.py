@@ -37,7 +37,9 @@ class CallbackManager:
     """Dispatch SaC app actions to external agents and stream callback status."""
 
     # Keys excluded from the on-disk snapshot (large / transient).
-    _TRANSIENT_KEYS = frozenset({"logs", "stdout_tail", "stderr_tail", "context"})
+    _TRANSIENT_KEYS = frozenset({"stdout_tail", "stderr_tail", "context"})
+    # Within each log entry, only these keys are persisted (the rest are large/raw).
+    _LOG_PERSIST_KEYS = frozenset({"kind", "label", "detail", "raw_visible", "timestamp"})
 
     def __init__(
         self,
@@ -355,10 +357,16 @@ class CallbackManager:
             return
         runs = self._runs.get(conv_id, [])
         # Strip transient / large keys to keep the file small.
-        compact = [
-            {k: v for k, v in r.items() if k not in self._TRANSIENT_KEYS}
-            for r in runs
-        ]
+        compact = []
+        for r in runs:
+            entry = {k: v for k, v in r.items() if k not in self._TRANSIENT_KEYS}
+            # Slim down logs: keep only the display-relevant fields per entry.
+            if "logs" in entry and isinstance(entry["logs"], list):
+                entry["logs"] = [
+                    {k: v for k, v in log.items() if k in self._LOG_PERSIST_KEYS}
+                    for log in entry["logs"]
+                ]
+            compact.append(entry)
         try:
             path.write_text(
                 json.dumps(compact, ensure_ascii=False, separators=(",", ":")),
