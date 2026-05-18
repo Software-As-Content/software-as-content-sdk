@@ -758,6 +758,9 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             ".html": "text/html",
             ".js": "application/javascript",
             ".css": "text/css",
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
         }
         return FileResponse(
             file,
