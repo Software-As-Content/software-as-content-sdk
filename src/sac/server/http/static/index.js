@@ -811,9 +811,13 @@ function ensureVersionCard(version, callbackRuns) {
           role = 'agent';
           text = compactText(detail, 200);
         } else if (kind === 'command_started') {
-          role = 'agent-sub';
           const fmt = formatCommand(detail);
-          text = fmt.includes('/inbox') ? 'POST /inbox' : fmt;
+          if (fmt.includes('/inbox')) continue; // skip — replaced by "sac: App updated"
+          role = 'agent-sub';
+          text = fmt;
+        } else if (kind === 'app_updated') {
+          role = 'sac';
+          text = 'App updated';
         } else if (kind === 'warning') {
           role = 'sac';
           text = `Warning: ${compactText(detail, 200)}`;
@@ -1033,7 +1037,6 @@ function renderCallbackLog(log) {
         // /inbox POST started — SaC is about to receive content and run evolve.
         // Show "Updating app..." now (not on command_completed, which arrives AFTER
         // the version event due to HTTP response timing).
-        addCallbackEvent(card, 'agent-sub', 'POST /inbox');
         card.published = true;
         addCallbackEvent(card, 'sac', 'Updating app...');
       } else {
@@ -1172,9 +1175,13 @@ function finalizePendingCards(version) {
   for (const [runId, card] of callbackCards) {
     if (!card.el.classList.contains('pending') && !card.el.id.startsWith('pending-card-')) continue;
 
+    // Remove transient steps and add final "App updated" before extracting
+    card.eventsEl.querySelectorAll('.cb-step-transient').forEach(el => el.remove());
+    addCallbackEvent(card, 'sac', 'App updated');
+
     // Extract logs from the card's step events for version card rebuild
     const logs = [];
-    card.eventsEl.querySelectorAll('.cb-step:not(.cb-step-transient)').forEach(ev => {
+    card.eventsEl.querySelectorAll('.cb-step').forEach(ev => {
       const roleEl = ev.querySelector('.cb-step-role');
       const textEl = ev.querySelector('.cb-step-text');
       const role = roleEl?.textContent || '';
@@ -1182,6 +1189,7 @@ function finalizePendingCards(version) {
       // Map back to callback log kinds for version card rendering
       let kind = 'log';
       if (role === 'sac' && text.startsWith('Started agent')) kind = 'thread_started';
+      else if (role === 'sac' && text === 'App updated') kind = 'app_updated';
       else if (role === 'agent') kind = 'agent_message';
       else if (role === '' && ev.classList.contains('cb-step-agent-sub')) kind = 'command_started';
       logs.push({ kind, label: role, detail: text });
