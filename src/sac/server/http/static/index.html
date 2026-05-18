@@ -9,24 +9,30 @@
 <body>
 
 <div class="header">
-  <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Toggle sidebar">☰</button>
-  <h1>SaC SDK</h1>
-  <div style="flex:1"></div>
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">S</div>
+    <div>
+      <h1>SaC SDK</h1>
+      <div class="brand-subtitle">Local interaction layer</div>
+    </div>
+  </div>
+  <div class="header-spacer"></div>
   <button class="changes-btn hidden" id="show-changes-btn" type="button">Show Changes</button>
+  <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Toggle activity">☰</button>
 </div>
 
 <div class="main">
   <div class="sidebar">
     <div class="tab-bar">
-      <div class="tab active" data-tab="chat">Activity</div>
-      <div class="tab" data-tab="conversations">History</div>
+      <button class="tab active" data-tab="chat" type="button" aria-selected="true">Activity</button>
+      <button class="tab" data-tab="conversations" type="button" aria-selected="false">History</button>
     </div>
 
     <!-- Activity tab -->
-    <div class="tab-content" id="tab-chat" style="display:flex;flex-direction:column;">
+    <div class="tab-content tab-content-active" id="tab-chat">
       <div class="chat-area" id="chat-area">
         <div class="chat-msg system">
-          <div class="chat-bubble">Send a message to start.</div>
+          <div class="chat-bubble">Send a message to generate your first app.</div>
         </div>
       </div>
       <div class="status hidden" id="status-bar"></div>
@@ -36,7 +42,7 @@
       </div>
       <div class="input-area">
         <div class="input-wrapper">
-          <textarea id="intent" placeholder="What's next?" rows="1"></textarea>
+          <textarea id="intent" placeholder="Generate a research dashboard, trip planner, CRM cockpit..." rows="1"></textarea>
           <button class="send-btn-inline" id="send-btn" type="button" title="Send">↑</button>
         </div>
       </div>
@@ -45,26 +51,39 @@
     <!-- History tab -->
     <div class="tab-content hidden" id="tab-conversations">
       <div class="api-panel">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h3 style="font-size:14px;font-weight:600;">Conversations</h3>
-          <div style="display:flex;gap:6px;">
+        <div class="panel-heading">
+          <div>
+            <h3>Conversations</h3>
+            <p>Saved local runs</p>
+          </div>
+          <div class="panel-actions">
             <button class="btn btn-secondary btn-sm" id="new-conv-btn" title="New conversation">+ New</button>
             <button class="btn btn-secondary btn-sm" onclick="loadConversations()">Refresh</button>
           </div>
         </div>
-        <div id="conv-list"><p style="font-size:13px;color:#a8a29e;">Click Refresh to load</p></div>
+        <div id="conv-list">
+          <div class="empty-list">Open History to load saved conversations.</div>
+        </div>
       </div>
     </div>
   </div>
 
   <div class="preview-area">
     <div class="preview-tabs" id="preview-tabs">
-      <div class="preview-tab active" data-ptab="app">App</div>
-      <div class="preview-tab" data-ptab="code">Code</div>
+      <button class="preview-tab active" data-ptab="app" type="button" aria-selected="true">App</button>
+      <button class="preview-tab" data-ptab="code" type="button" aria-selected="false">Code</button>
     </div>
     <div class="loading" id="placeholder">
-      <span style="font-size:32px;">✦</span>
-      <span>The generated app appears here</span>
+      <div class="empty-hero">
+        <div class="empty-hero-kicker">Software as Content</div>
+        <h2>Generate an app, then keep evolving it.</h2>
+        <p>Use the activity panel to turn an intent into a runnable interface. Versions, code, callbacks, and agent activity stay attached to the conversation.</p>
+        <div class="example-prompts" id="example-prompts">
+          <button type="button" data-prompt="Build a compact dashboard for comparing three AI coding agents across cost, latency, and strengths.">Agent comparison dashboard</button>
+          <button type="button" data-prompt="Create a 3-day Kyoto itinerary planner with neighborhoods, food picks, and a map-like day structure.">Trip planner</button>
+          <button type="button" data-prompt="Make a customer success cockpit for an account renewal review, with risks, next actions, and timeline.">Renewal cockpit</button>
+        </div>
+      </div>
     </div>
     <div class="preview-notice hidden" id="preview-notice"></div>
     <iframe id="preview" class="hidden"></iframe>

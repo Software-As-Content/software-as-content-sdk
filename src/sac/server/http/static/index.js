@@ -137,9 +137,13 @@ function streamReset() {
 
 document.querySelectorAll('.sidebar .tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.sidebar .tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.sidebar .tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
     document.querySelectorAll('.sidebar .tab-content').forEach(c => c.classList.add('hidden'));
     tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
     document.getElementById('tab-' + tab.dataset.tab).classList.remove('hidden');
     if (tab.dataset.tab === 'conversations') loadConversations();
   });
@@ -151,8 +155,12 @@ const previewCodePanel = document.getElementById('preview-code-panel');
 
 document.querySelectorAll('.preview-tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.preview-tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
     tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
     const mode = tab.dataset.ptab;
     if (mode === 'code') {
       iframe.classList.add('hidden');
@@ -187,6 +195,16 @@ sendBtn.addEventListener('click', () => handleSend());
 intentInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
 });
+intentInput.addEventListener('input', resizeIntentInput);
+document.querySelectorAll('#example-prompts button').forEach((button) => {
+  button.addEventListener('click', () => {
+    if (pendingAction) return;
+    intentInput.value = button.dataset.prompt || button.textContent || '';
+    resizeIntentInput();
+    intentInput.focus();
+    handleSend();
+  });
+});
 // "Back to Latest" now handled programmatically — no header button
 copyCodeBtn.addEventListener('click', async () => {
   const code = codeDisplay.textContent || '';
@@ -217,6 +235,7 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
   hideStatus();
   codeDisplay.textContent = '';
   codeMeta.textContent = 'No app version selected';
+  resizeIntentInput();
 });
 
 async function handleSend() {
@@ -225,6 +244,7 @@ async function handleSend() {
 
   setPending(true);
   intentInput.value = '';
+  resizeIntentInput();
   addChatMsg('user', message);
 
   // External-agent mode: forward to /c/{id}/action; agent posts result back
@@ -528,6 +548,7 @@ function renderSuggestions(suggestions) {
   ).join('');
   list.querySelectorAll('.suggestion-btn').forEach(b => {
     b.addEventListener('click', () => {
+      if (pendingAction) return;
       const intent = b.dataset.prompt;
       addChatMsg('user', intent);
       routeUserIntent(intent);
@@ -748,7 +769,11 @@ function applyAppVersion(version, opts = {}) {
   previewCodePanel.classList.add('hidden');
   placeholder.classList.add('hidden');
   iframe.classList.remove('hidden');
-  document.querySelectorAll('.preview-tab').forEach(t => t.classList.toggle('active', t.dataset.ptab === 'app'));
+  document.querySelectorAll('.preview-tab').forEach(t => {
+    const isApp = t.dataset.ptab === 'app';
+    t.classList.toggle('active', isApp);
+    t.setAttribute('aria-selected', isApp ? 'true' : 'false');
+  });
   hidePreviewNotice();
   renderer.render(version.code);
   markActiveVersionCard(version.version);
@@ -830,6 +855,14 @@ function ensureVersionCard(version, callbackRuns) {
         const isSub = role === 'agent-sub';
         agentEvents.push(`<div class="cb-step cb-step-${escClass(role)}"><span class="cb-step-role">${roleLabel}</span><span class="cb-step-text${isSub ? ' cb-step-sub' : ''}">${escHtml(text)}</span></div>`);
       }
+      // Ensure "App updated" appears as the final step (it's added client-side
+      // by finalizePendingCards but not persisted to the backend).
+      if (run.status === 'succeeded' && run.loop_closed) {
+        const lastEvt = agentEvents[agentEvents.length - 1] || '';
+        if (!lastEvt.includes('App updated')) {
+          agentEvents.push(`<div class="cb-step cb-step-sac"><span class="cb-step-role">sac</span><span class="cb-step-text">App updated</span></div>`);
+        }
+      }
     }
     if (agentEvents.length > 0) {
       const adapter = runs[0].adapter ? adapterLabel(runs[0].adapter) : 'Agent';
@@ -855,7 +888,7 @@ function ensureVersionCard(version, callbackRuns) {
         </div>
         <div class="vc-detail-body" data-section-body="sources">
           ${sources.slice(0, 10).map(s => `<div class="vc-source-item">${s.url ? `<a href="${escHtml(s.url)}" target="_blank" rel="noopener">${escHtml(compactText(s.title || s.url, 60))}</a>` : escHtml(compactText(s.title, 60))}</div>`).join('')}
-          ${sources.length > 10 ? `<div class="vc-source-item" style="color:#a8a29e;">+${sources.length - 10} more</div>` : ''}
+          ${sources.length > 10 ? `<div class="vc-source-item vc-source-more">+${sources.length - 10} more</div>` : ''}
         </div>
       </div>`);
   }
@@ -954,6 +987,7 @@ function renderCallbackRun(run) {
   }
 
   const card = ensureCallbackCard(run);
+  const hasStreamingLogs = run.adapter === 'codex_exec_resume';
 
   // Update pending card status display
   const kindEl = card.el.querySelector('.version-card-kind');
@@ -962,10 +996,23 @@ function renderCallbackRun(run) {
     if (kindEl) kindEl.textContent = `${adapterLabel(run.adapter)} · ${status === 'running' ? 'running' : 'queued'}`;
     if (dotEl) { dotEl.className = 'vc-dot vc-dot-pending'; }
     card.el.className = 'version-card pending';
+    // Non-streaming adapters (OpenClaw, HTTP) don't emit callback_log events,
+    // so add a generic waiting indicator.
+    if (!hasStreamingLogs && status === 'running' && card.eventsEl.children.length === 0) {
+      addCallbackEvent(card, 'sac', 'Dispatched to agent');
+      addCallbackEvent(card, 'agent-sub', 'waiting for response...');
+    }
   } else if (status === 'succeeded') {
     if (kindEl) kindEl.textContent = `${adapterLabel(run.adapter)} · success`;
     if (dotEl) { dotEl.className = 'vc-dot vc-dot-success'; }
-    card.el.classList.remove('pending');
+    // For fire-and-forget adapters (OpenClaw, HTTP), "succeeded" means the message
+    // was delivered — agent is now working. Keep card pending until /inbox POST arrives.
+    if (!hasStreamingLogs && !run.loop_closed) {
+      card.el.className = 'version-card pending';
+      addCallbackEvent(card, 'sac', 'Message delivered, agent is working...');
+    } else {
+      card.el.classList.remove('pending');
+    }
   } else if (status === 'failed' || status === 'no_update') {
     if (kindEl) kindEl.textContent = `${adapterLabel(run.adapter)} · ${status}`;
     if (dotEl) { dotEl.className = 'vc-dot vc-dot-failed'; }
@@ -1216,13 +1263,15 @@ function finalizePendingCards(version) {
 
 window.loadConversations = async function() {
   const container = document.getElementById('conv-list');
+  container.innerHTML = '<div class="empty-list">Loading conversations...</div>';
   try {
     const res = await fetch('/conversations');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const convs = data.conversations || [];
 
     if (convs.length === 0) {
-      container.innerHTML = '<p style="font-size:13px;color:#a8a29e;">No conversations yet.</p>';
+      container.innerHTML = '<div class="empty-list">No conversations yet. Start from the Activity tab.</div>';
       return;
     }
 
@@ -1236,14 +1285,14 @@ window.loadConversations = async function() {
           ${c.id.substring(0, 8)}... | ${new Date(c.updated_at).toLocaleString()}
         </div>
         <div class="conv-card-actions" onclick="event.stopPropagation()">
-          <input class="input-sm" id="rename-${c.id}" placeholder="Rename" style="flex:1;" onclick="event.stopPropagation()">
+          <input class="input-sm" id="rename-${c.id}" placeholder="Rename" onclick="event.stopPropagation()">
           <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); renameConv('${c.id}')">Rename</button>
           <button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deleteConv('${c.id}')">Delete</button>
         </div>
       </div>
     `).join('');
   } catch (err) {
-    container.innerHTML = `<p style="font-size:13px;color:#dc2626;">Error: ${err.message}</p>`;
+    container.innerHTML = `<div class="empty-list">Could not load conversations: ${escHtml(err.message)}</div>`;
   }
 };
 
@@ -1327,9 +1376,14 @@ window.loadConv = async function(id) {
     }
 
     // Switch to chat tab
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
     document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-    document.querySelector('[data-tab="chat"]').classList.add('active');
+    const chatTab = document.querySelector('[data-tab="chat"]');
+    chatTab.classList.add('active');
+    chatTab.setAttribute('aria-selected', 'true');
     document.getElementById('tab-chat').classList.remove('hidden');
 
     chatArea.scrollTop = chatArea.scrollHeight;
@@ -1422,6 +1476,7 @@ function hideSuggestions() {
 
 function setPending(value) {
   pendingAction = value;
+  document.body.classList.toggle('is-pending', value);
   sendBtn.disabled = value;
   // Disable/enable suggestion buttons
   document.querySelectorAll('.suggestion-btn').forEach(b => {
@@ -1429,6 +1484,11 @@ function setPending(value) {
     b.style.opacity = value ? '0.5' : '';
     b.style.pointerEvents = value ? 'none' : '';
   });
+}
+
+function resizeIntentInput() {
+  intentInput.style.height = 'auto';
+  intentInput.style.height = `${Math.min(intentInput.scrollHeight, 96)}px`;
 }
 
 function escHtml(s) {
