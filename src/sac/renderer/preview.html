@@ -23,11 +23,15 @@
     #root { min-height: 100vh; background: #ffffff; }
 
     /* ─── Progressive evolve: change highlighting ───────────────────
-     * Elements with data-sac-changed are newly added or modified by
-     * progressive evolve. A pulsing orange glow draws the user's eye
-     * to what changed.                                                 */
+     * Elements with data-sac-changed pulse orange. Clicking anywhere
+     * dismisses (fade out). "Show Changes" button restores them.       */
     [data-sac-changed] {
       animation: sac-change-pulse 2s ease-in-out infinite;
+      transition: box-shadow 0.4s ease-out;
+    }
+    .sac-highlights-hidden [data-sac-changed] {
+      animation: none;
+      box-shadow: none !important;
     }
     @keyframes sac-change-pulse {
       0%, 100% { box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.25), 0 0 8px rgba(249, 115, 22, 0.08); }
@@ -678,12 +682,23 @@
       } else if (ev.data.type === 'set-locked') {
         _sacSetLocked(!!ev.data.locked);
       } else if (ev.data.type === 'scroll-to-change') {
+        // Re-show highlights + scroll to target
+        document.documentElement.classList.remove('sac-highlights-hidden');
+        window.parent.postMessage({ type: 'sac-highlights-visible', visible: true }, '*');
         var els = document.querySelectorAll('[data-sac-changed]');
         if (els.length > 0) {
           var idx = (ev.data.index || 0) % els.length;
           els[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       }
+    });
+
+    // Click anywhere in the app to dismiss highlights
+    document.addEventListener('click', function() {
+      if (document.documentElement.classList.contains('sac-highlights-hidden')) return;
+      if (!document.querySelector('[data-sac-changed]')) return;
+      document.documentElement.classList.add('sac-highlights-hidden');
+      window.parent.postMessage({ type: 'sac-highlights-visible', visible: false }, '*');
     });
 
     function renderApp(code, shimUrl, silent, scrollToChange) {

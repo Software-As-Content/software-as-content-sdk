@@ -36,24 +36,32 @@ function resetRenderer() {
 // ─── Show Changes button ─────────────────────────────────────
 
 let _changeIndex = 0;   // cycles through highlighted elements
+let _changeCount = 0;
 
 showChangesBtn.addEventListener('click', () => {
-  const iframeDoc = iframe.contentWindow;
-  if (!iframeDoc) return;
-  iframeDoc.postMessage({ type: 'scroll-to-change', index: _changeIndex }, '*');
+  const iframeWin = iframe.contentWindow;
+  if (!iframeWin) return;
+  iframeWin.postMessage({ type: 'scroll-to-change', index: _changeIndex }, '*');
   _changeIndex++;
 });
 
-// Listen for change-count from iframe to show/hide button + reset index
+// Listen for change-count and visibility updates from iframe
 window.addEventListener('message', (ev) => {
   if (ev.data?.type === 'sac-change-count') {
-    const count = ev.data.count || 0;
-    if (count > 0) {
-      showChangesBtn.textContent = `Show Changes (${count})`;
+    _changeCount = ev.data.count || 0;
+    if (_changeCount > 0) {
+      showChangesBtn.textContent = `Show Changes (${_changeCount})`;
       showChangesBtn.classList.remove('hidden');
       _changeIndex = 0;
     } else {
       showChangesBtn.classList.add('hidden');
+    }
+  }
+  if (ev.data?.type === 'sac-highlights-visible') {
+    if (!ev.data.visible && _changeCount > 0) {
+      // Highlights dismissed — update button text
+      showChangesBtn.textContent = `Show Changes (${_changeCount})`;
+      _changeIndex = 0;
     }
   }
 });
