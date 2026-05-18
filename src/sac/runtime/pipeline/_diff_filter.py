@@ -20,12 +20,17 @@ from __future__ import annotations
 
 from typing import Iterator
 
+import re
+
 from sac.runtime.pipeline._diff import (
     DiffApplyError,
     SearchReplaceBlock,
     apply_diff,
     parse_diff_blocks,
 )
+
+# Strip data-sac-changed attributes from stored code (display-only marker)
+_HIGHLIGHT_ATTR_RE = re.compile(r'\s*data-sac-changed(?:="[^"]*")?')
 
 
 class DiffChunkFilter:
@@ -100,7 +105,12 @@ class DiffChunkFilter:
 
     @property
     def result_code(self) -> str:
-        """Current code state after all successfully applied blocks."""
+        """Current code state after all successfully applied blocks.
+
+        Keeps data-sac-changed attributes so the final render shows
+        change highlighting. The frontend CSS makes them persistently
+        visible until the next evolve cycle.
+        """
         return self._current_code
 
     @property

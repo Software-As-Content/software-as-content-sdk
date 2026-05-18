@@ -18,6 +18,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+# Strip data-sac-changed attributes (display-only highlight markers) for fuzzy matching
+_HIGHLIGHT_ATTR_RE = re.compile(r'\s*data-sac-changed(?:="[^"]*")?')
+
 
 class DiffApplyError(Exception):
     """Raised when a search/replace block cannot be applied."""
@@ -68,6 +71,17 @@ def _normalize_whitespace(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.split("\n"))
 
 
+def _strip_highlight_attrs(text: str) -> str:
+    """Strip data-sac-changed attributes for fuzzy matching.
+
+    Previous diff blocks may inject data-sac-changed into _current_code,
+    causing subsequent SEARCH blocks (which reference the original code
+    without those attrs) to fail. Stripping them for matching purposes
+    resolves this.
+    """
+    return _HIGHLIGHT_ATTR_RE.sub("", text)
+
+
 def apply_diff(current_code: str, block: SearchReplaceBlock) -> str:
     """Apply a single search/replace block. Returns updated code.
 
@@ -81,41 +95,56 @@ def apply_diff(current_code: str, block: SearchReplaceBlock) -> str:
     if search in current_code:
         return current_code.replace(search, replace, 1)
 
-    # Fuzzy: normalize trailing whitespace per line
+    # Fuzzy 1: normalize trailing whitespace per line
     norm_code = _normalize_whitespace(current_code)
     norm_search = _normalize_whitespace(search)
     if norm_search in norm_code:
-        # Find the position in normalized space, then apply to original
-        idx = norm_code.index(norm_search)
-        # Map normalized index back to original: count characters in original
-        # lines up to the same line/col position.
-        norm_lines_before = norm_code[:idx].count("\n")
-        orig_lines = current_code.split("\n")
+        return _apply_at_normalized_pos(current_code, norm_code, norm_search, replace)
 
-        # Find start of the matching region in original
-        orig_start = sum(len(orig_lines[i]) + 1 for i in range(norm_lines_before))
-        # Adjust for position within the line
-        norm_line_start = norm_code.rfind("\n", 0, idx) + 1
-        col = idx - norm_line_start
-        orig_line_start = current_code.rfind("\n", 0, orig_start) + 1 if norm_lines_before > 0 else 0
-        orig_start = orig_line_start + col
+    # Fuzzy 2: strip data-sac-changed attrs (previous blocks may have injected them)
+    clean_code = _strip_highlight_attrs(current_code)
+    if search in clean_code:
+        # Apply to the clean version, then re-apply highlight attrs from replace
+        return clean_code.replace(search, replace, 1)
 
-        # Find end: count lines in the search text
-        search_line_count = norm_search.count("\n")
-        end_line = norm_lines_before + search_line_count
-        if end_line < len(orig_lines):
-            orig_end = sum(len(orig_lines[i]) + 1 for i in range(end_line))
-            last_line_len = len(norm_search.split("\n")[-1])
-            orig_end = orig_end + last_line_len
-        else:
-            orig_end = len(current_code)
-
-        return current_code[:orig_start] + replace + current_code[orig_end:]
+    # Fuzzy 3: combine both — strip attrs AND normalize whitespace
+    clean_norm_code = _normalize_whitespace(clean_code)
+    if norm_search in clean_norm_code:
+        return _apply_at_normalized_pos(clean_code, clean_norm_code, norm_search, replace)
 
     raise DiffApplyError(
         f"Search text not found in current code (first 80 chars): {search[:80]!r}",
         search=search,
     )
+
+
+def _apply_at_normalized_pos(
+    original_code: str, norm_code: str, norm_search: str, replace: str,
+) -> str:
+    """Apply replacement at the position found in normalized code space."""
+    idx = norm_code.index(norm_search)
+    norm_lines_before = norm_code[:idx].count("\n")
+    orig_lines = original_code.split("\n")
+
+    # Find start of the matching region in original
+    orig_start = sum(len(orig_lines[i]) + 1 for i in range(norm_lines_before))
+    # Adjust for position within the line
+    norm_line_start = norm_code.rfind("\n", 0, idx) + 1
+    col = idx - norm_line_start
+    orig_line_start = original_code.rfind("\n", 0, orig_start) + 1 if norm_lines_before > 0 else 0
+    orig_start = orig_line_start + col
+
+    # Find end: count lines in the search text
+    search_line_count = norm_search.count("\n")
+    end_line = norm_lines_before + search_line_count
+    if end_line < len(orig_lines):
+        orig_end = sum(len(orig_lines[i]) + 1 for i in range(end_line))
+        last_line_len = len(norm_search.split("\n")[-1])
+        orig_end = orig_end + last_line_len
+    else:
+        orig_end = len(original_code)
+
+    return original_code[:orig_start] + replace + original_code[orig_end:]
 
 
 def apply_diffs(current_code: str, blocks: list[SearchReplaceBlock]) -> str:

@@ -200,10 +200,8 @@ async def stream_evolve_pipeline_diff(
             "Progressive evolve failed (%s), falling back to full-code evolve",
             diff_filter.error,
         )
-        yield PipelineStageEvent(name="generate", status=StageStatus.ERROR)
-        yield PipelineStageEvent(name="fallback", status=StageStatus.RUNNING)
-
-        # Delegate to full-code evolve pipeline
+        # Don't emit ERROR stage — fallback is a seamless internal mechanism,
+        # not a user-facing failure. Just continue with full-code evolve.
         async for event in stream_evolve_pipeline(
             new_intent=new_intent,
             current_code=current_code,
@@ -215,7 +213,8 @@ async def stream_evolve_pipeline_diff(
             parent_version=parent_version,
             content=content,
         ):
-            # Skip the duplicate "generate RUNNING" stage from the fallback
+            # Skip the duplicate "generate RUNNING" stage from the fallback —
+            # we already emitted one at the start of this function
             if isinstance(event, PipelineStageEvent) and event.name == "generate" and event.status == StageStatus.RUNNING:
                 continue
             yield event
@@ -225,9 +224,15 @@ async def stream_evolve_pipeline_diff(
     decision = _parse_growth_decision(diff_filter.raw_response)
     final_code = diff_filter.result_code
 
+    # Debug: check if LLM actually added data-sac-changed markers
+    raw_has_marker = "data-sac-changed" in diff_filter.raw_response
+    current_has_marker = "data-sac-changed" in diff_filter._current_code
     logger.info(
-        "Progressive evolve succeeded: %d blocks applied",
+        "Progressive evolve succeeded: %d blocks applied, "
+        "raw_has_highlight=%s, code_has_highlight=%s",
         diff_filter.blocks_applied,
+        raw_has_marker,
+        current_has_marker,
     )
 
     yield PipelineStageEvent(name="generate", status=StageStatus.COMPLETED)

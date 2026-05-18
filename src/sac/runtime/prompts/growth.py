@@ -147,4 +147,5 @@ Rules for search/replace blocks:
 - Keep ALL existing functionality intact
 - Integrate the new data naturally
 - Maintain consistent styling
-- Add a small "NEW" badge (e.g. <Badge>NEW</Badge>) next to newly added tabs, sections, or major content blocks"""
+- Add a small "NEW" badge (e.g. <Badge>NEW</Badge>) next to newly added tabs, sections, or major content blocks
+- IMPORTANT: In each REPLACE section, add the attribute data-sac-changed to the outermost JSX element(s) that are newly added or meaningfully modified. This enables visual change-highlighting in the preview. Only add it to elements that actually changed, NOT to unchanged context lines. Example: `<Card data-sac-changed className="...">` or `<div data-sac-changed>`. Do NOT add data-sac-changed to the SEARCH section."""
