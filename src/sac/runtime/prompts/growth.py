@@ -75,7 +75,8 @@ IMPORTANT:
 - Integrate the new data naturally
 - Maintain consistent styling
 - Output BOTH the JSON decision AND the complete code
-- Add a small "NEW" badge (e.g. <Badge>NEW</Badge>) next to newly added tabs, sections, or major content blocks so the user can instantly spot what's new. Remove any such badges from previously existing content."""
+- Add a small "NEW" badge (e.g. <Badge>NEW</Badge>) next to newly added tabs, sections, or major content blocks so the user can instantly spot what's new. Remove any such badges from previously existing content.
+- CRITICAL: Add the attribute data-sac-changed to the outermost JSX element(s) that are newly added or meaningfully modified. This enables visual change-highlighting. Only add it to elements that actually changed. Example: `<Card data-sac-changed className="...">`. Do NOT add it to unchanged elements."""
 
 
 def build_growth_prompt_diff(
@@ -148,4 +149,4 @@ Rules for search/replace blocks:
 - Integrate the new data naturally
 - Maintain consistent styling
 - Add a small "NEW" badge (e.g. <Badge>NEW</Badge>) next to newly added tabs, sections, or major content blocks
-- IMPORTANT: In each REPLACE section, add the attribute data-sac-changed to the outermost JSX element(s) that are newly added or meaningfully modified. This enables visual change-highlighting in the preview. Only add it to elements that actually changed, NOT to unchanged context lines. Example: `<Card data-sac-changed className="...">` or `<div data-sac-changed>`. Do NOT add data-sac-changed to the SEARCH section."""
+- CRITICAL — CHANGE MARKERS (you MUST do this for every REPLACE block): Add the attribute data-sac-changed to the outermost JSX element(s) that are newly added or meaningfully modified. This enables visual change-highlighting in the preview. Without it, users cannot see what changed. Only add it to elements that actually changed, NOT to unchanged context lines. Example: `<Card data-sac-changed className="...">` or `<div data-sac-changed>`. Do NOT add data-sac-changed to the SEARCH section."""
