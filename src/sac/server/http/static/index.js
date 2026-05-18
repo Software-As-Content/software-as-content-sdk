@@ -416,12 +416,22 @@ function setupEventSource(convId) {
     streamBuffer = code;
     codeDisplay.textContent = code;
 
-    // Flush to iframe immediately
+    // Flush to iframe immediately with scroll-to-change flag
     if (streamFlushTimer) {
       clearTimeout(streamFlushTimer);
       streamFlushTimer = null;
     }
-    streamFlush();
+    const processed = renderer._processCode(code);
+    if (processed && processed.trim()) {
+      renderer._ensureIframe();
+      iframe.contentWindow?.postMessage({
+        type: 'render',
+        code: processed,
+        shimUrl: renderer._designSystem,
+        silent: true,
+        scrollToChange: true,
+      }, '*');
+    }
   });
 
   es.addEventListener('error', (e) => {
@@ -545,7 +555,17 @@ function handleSSEEvent(eventType, data) {
       streamBuffer = data.code;
       codeDisplay.textContent = data.code;
       if (streamFlushTimer) { clearTimeout(streamFlushTimer); streamFlushTimer = null; }
-      streamFlush();
+      const proc = renderer._processCode(data.code);
+      if (proc && proc.trim()) {
+        renderer._ensureIframe();
+        iframe.contentWindow?.postMessage({
+          type: 'render',
+          code: proc,
+          shimUrl: renderer._designSystem,
+          silent: true,
+          scrollToChange: true,
+        }, '*');
+      }
       break;
     }
 

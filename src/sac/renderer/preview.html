@@ -499,13 +499,6 @@
 
         if (!silent) {
           window.parent.postMessage({ type: 'render-success' }, '*');
-          // Scroll to first highlighted change after React paints
-          requestAnimationFrame(function() {
-            var first = rootEl.querySelector('[data-sac-changed]');
-            if (first) {
-              first.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-          });
         }
       } catch(err) {
         if (appBlob) URL.revokeObjectURL(appBlob);
@@ -628,6 +621,15 @@
       }
 
       Promise.resolve(window.__doRender(req.code, req.shimUrl, req.silent, myGen))
+        .then(function() {
+          if (req.scrollToChange) {
+            requestAnimationFrame(function() {
+              var els = document.querySelectorAll('[data-sac-changed]');
+              var last = els.length ? els[els.length - 1] : null;
+              if (last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            });
+          }
+        })
         .catch(function() {})
         .finally(function() {
           if (_staleTimer) { clearTimeout(_staleTimer); _staleTimer = null; }
@@ -636,8 +638,8 @@
         });
     }
 
-    function _scheduleRender(code, shimUrl, silent) {
-      _queuedRender = { code: code, shimUrl: shimUrl, silent: !!silent };
+    function _scheduleRender(code, shimUrl, silent, scrollToChange) {
+      _queuedRender = { code: code, shimUrl: shimUrl, silent: !!silent, scrollToChange: !!scrollToChange };
 
       // Mute console on first silent render; restore on final (non-silent).
       if (silent) {
@@ -661,7 +663,7 @@
       if (!ev.data || !ev.data.type) return;
 
       if (ev.data.type === 'render') {
-        renderApp(ev.data.code, ev.data.shimUrl, !!ev.data.silent);
+        renderApp(ev.data.code, ev.data.shimUrl, !!ev.data.silent, !!ev.data.scrollToChange);
       } else if (ev.data.type === 'abort') {
         _restoreConsole();
         document.getElementById('root').innerHTML = '';
@@ -673,15 +675,15 @@
       }
     });
 
-    function renderApp(code, shimUrl, silent) {
+    function renderApp(code, shimUrl, silent, scrollToChange) {
       if (!_babelReady) {
-        _pendingRender = { code: code, shimUrl: shimUrl, silent: silent };
+        _pendingRender = { code: code, shimUrl: shimUrl, silent: silent, scrollToChange: scrollToChange };
         return;
       }
       if (window.__moduleReady && window.__doRender) {
-        _scheduleRender(code, shimUrl, silent);
+        _scheduleRender(code, shimUrl, silent, scrollToChange);
       } else {
-        window.__pendingModuleRender = { code: code, shimUrl: shimUrl, silent: silent };
+        window.__pendingModuleRender = { code: code, shimUrl: shimUrl, silent: silent, scrollToChange: scrollToChange };
       }
     }
   </script>
