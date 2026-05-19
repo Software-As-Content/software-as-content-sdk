@@ -149,20 +149,18 @@ function streamReset() {
   streamBuffer = '';
 }
 
-// ─── Sidebar tab switching ───────────────────────────────────
+// ─── History modal ────────────────────────────────────────────
 
-document.querySelectorAll('.sidebar .tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.sidebar .tab').forEach(t => {
-      t.classList.remove('active');
-      t.setAttribute('aria-selected', 'false');
-    });
-    document.querySelectorAll('.sidebar .tab-content').forEach(c => c.classList.add('hidden'));
-    tab.classList.add('active');
-    tab.setAttribute('aria-selected', 'true');
-    document.getElementById('tab-' + tab.dataset.tab).classList.remove('hidden');
-    if (tab.dataset.tab === 'conversations') loadConversations();
-  });
+const historyModal = document.getElementById('history-modal');
+document.getElementById('history-btn').addEventListener('click', () => {
+  historyModal.classList.remove('hidden');
+  loadConversations();
+});
+document.getElementById('history-close').addEventListener('click', () => {
+  historyModal.classList.add('hidden');
+});
+historyModal.addEventListener('click', (e) => {
+  if (e.target === historyModal) historyModal.classList.add('hidden');
 });
 
 // ─── Preview tab switching (App / Code) ─────────────────────
@@ -1505,17 +1503,7 @@ window.loadConv = async function(id) {
       applyAppVersion(fallbackVersion);
     }
 
-    // Switch to chat tab
-    document.querySelectorAll('.tab').forEach(t => {
-      t.classList.remove('active');
-      t.setAttribute('aria-selected', 'false');
-    });
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-    const chatTab = document.querySelector('[data-tab="chat"]');
-    chatTab.classList.add('active');
-    chatTab.setAttribute('aria-selected', 'true');
-    document.getElementById('tab-chat').classList.remove('hidden');
-
+    document.getElementById('history-modal').classList.add('hidden');
     chatArea.scrollTop = chatArea.scrollHeight;
   } catch (err) {
     alert('Error loading conversation: ' + err.message);
@@ -1747,9 +1735,7 @@ function scrollChatToBottom() {
     return;
   }
   const area = document.getElementById('chat-area');
-  const tab = document.getElementById('tab-chat');
   if (area) area.scrollTop = area.scrollHeight;
-  if (tab) tab.scrollTop = tab.scrollHeight;
 }
 
 // Auto-load conversation if id is present in URL: /c/{id} or /?c={id}

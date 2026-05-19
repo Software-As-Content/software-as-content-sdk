@@ -29,6 +29,11 @@
       </svg>
       Feedback
     </button>
+    <button class="header-action" id="history-btn" type="button" aria-label="History">
+      <svg class="header-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+    </button>
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Hide activity panel" aria-label="Hide activity panel" aria-expanded="true">
       <svg class="panel-toggle-icon" viewBox="0 0 16 16" aria-hidden="true">
         <rect x="2.5" y="3" width="11" height="10" rx="2" />
@@ -74,37 +79,32 @@
 <div class="main">
   <div class="sidebar-resizer" id="sidebar-resizer" aria-hidden="true"></div>
   <div class="sidebar">
-    <div class="tab-bar">
-      <button class="tab active" data-tab="chat" type="button" aria-selected="true">Activity</button>
-      <button class="tab" data-tab="conversations" type="button" aria-selected="false">History</button>
+    <div class="chat-area" id="chat-area">
+      <div class="chat-msg system">
+        <div class="chat-bubble">Send a message to generate your first app.</div>
+      </div>
     </div>
-
-    <!-- Activity tab -->
-    <div class="tab-content tab-content-active" id="tab-chat">
-      <div class="chat-area" id="chat-area">
-        <div class="chat-msg system">
-          <div class="chat-bubble">Send a message to generate your first app.</div>
-        </div>
-      </div>
-      <div class="status hidden" id="status-bar"></div>
-      <div class="suggestions hidden" id="suggestions-area">
-        <span class="suggestions-label">Next actions</span>
-        <div id="suggestions-list"></div>
-      </div>
-      <div class="input-area">
-        <div class="input-wrapper">
-          <textarea id="intent" placeholder="What's next?" rows="1"></textarea>
-          <button class="send-btn-inline" id="send-btn" type="button" title="Send">↑</button>
-        </div>
+    <div class="status hidden" id="status-bar"></div>
+    <div class="suggestions hidden" id="suggestions-area">
+      <span class="suggestions-label">Suggestions:</span>
+      <div id="suggestions-list"></div>
+    </div>
+    <div class="input-area">
+      <div class="input-wrapper">
+        <textarea id="intent" placeholder="What's next?" rows="1"></textarea>
+        <button class="send-btn-inline" id="send-btn" type="button" title="Send">↑</button>
       </div>
     </div>
 
-    <!-- History tab -->
-    <div class="tab-content hidden" id="tab-conversations">
-      <div class="api-panel">
+    <!-- History modal -->
+    <div class="history-overlay hidden" id="history-modal">
+      <div class="history-card">
+        <button class="feedback-close" id="history-close" type="button" aria-label="Close">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
         <div class="panel-heading">
           <div>
-            <h3>Conversations</h3>
+            <h3>History</h3>
             <p>Saved local runs</p>
           </div>
           <div class="panel-actions">
@@ -112,8 +112,8 @@
             <button class="btn btn-secondary btn-sm" onclick="loadConversations()">Refresh</button>
           </div>
         </div>
-        <div id="conv-list">
-          <div class="empty-list">Open History to load saved conversations.</div>
+        <div id="conv-list" class="history-list">
+          <div class="empty-list">Loading...</div>
         </div>
       </div>
     </div>
