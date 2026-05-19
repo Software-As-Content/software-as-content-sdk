@@ -172,6 +172,27 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
                     print(f"  ✓ Removed from CLI {scope} config")
                     removed = True
 
+        # 3. Remove .claude/launch.json if it's ours
+        launch_file = Path.cwd() / ".claude" / "launch.json"
+        if launch_file.exists():
+            try:
+                launch_data = json.loads(launch_file.read_text(encoding="utf-8"))
+                configs = launch_data.get("configurations", [])
+                if any(c.get("name") == "sac-viewer" for c in configs):
+                    remaining = [c for c in configs if c.get("name") != "sac-viewer"]
+                    if remaining:
+                        launch_data["configurations"] = remaining
+                        launch_file.write_text(
+                            json.dumps(launch_data, indent=2, ensure_ascii=False) + "\n",
+                            encoding="utf-8",
+                        )
+                    else:
+                        launch_file.unlink()
+                    print(f"  ✓ Removed preview config (.claude/launch.json)")
+                    removed = True
+            except Exception as exc:
+                print(f"  ⚠ Failed to clean launch.json: {exc}")
+
         if not removed:
             print("  ✗ No SaC server found in any config")
         else:
@@ -282,6 +303,42 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
     if not installed:
         print("  ✗ Failed to write any config")
         sys.exit(1)
+
+    # 3. Write .claude/launch.json for built-in preview
+    print()
+    print("Configuring preview server...")
+    launch_dir = Path.cwd() / ".claude"
+    launch_file = launch_dir / "launch.json"
+    try:
+        python_path = sys.executable
+        health_script = (
+            "import time, urllib.request, sys\n"
+            "try:\n"
+            "    urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)\n"
+            "except Exception:\n"
+            "    print('SaC server not running on port 8000', file=sys.stderr); sys.exit(1)\n"
+            "print('Connected to SaC server at http://127.0.0.1:8000')\n"
+            "while True: time.sleep(3600)"
+        )
+        launch_config = {
+            "version": "0.0.1",
+            "configurations": [
+                {
+                    "name": "sac-viewer",
+                    "runtimeExecutable": python_path,
+                    "runtimeArgs": ["-c", health_script],
+                    "port": 8000,
+                }
+            ],
+        }
+        launch_dir.mkdir(parents=True, exist_ok=True)
+        launch_file.write_text(
+            json.dumps(launch_config, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        print(f"  ✓ Preview config (.claude/launch.json)")
+    except Exception as exc:
+        print(f"  ⚠ Preview config skipped: {exc}")
 
     print()
     print("Done! Restart Claude Code to activate SaC tools:")
