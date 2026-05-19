@@ -190,7 +190,7 @@ mcp = FastMCP(
 )
 
 
-async def _post_inbox(base_url: str, payload: dict) -> dict:
+def _post_inbox(base_url: str, payload: dict) -> dict:
     """POST to the embedded HTTP server's /inbox endpoint.
 
     Routes through the HTTP server so SSE subscribers (viewer) see
@@ -295,7 +295,7 @@ async def wait_for_action(
         return {"action": None, "timed_out": True}
 
 
-async def _http_get(path: str) -> dict:
+def _http_get(path: str) -> dict:
     """GET from the embedded HTTP server."""
     import json
     import urllib.request
