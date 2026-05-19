@@ -18,10 +18,12 @@ function createRenderer() {
   r.on('error', (err) => {
     showPreviewNotice('Generated app needs a revision', `${err.type || 'render'}: ${err.message || err}`, { fixable: !!conversationId });
   });
-  r.on('action', ({ intent, context }) => {
-    if (!conversationId || !intent) return;
-    addChatMsg('user', intent);
-    routeUserIntent(intent, context);
+  r.on('action', ({ intent }) => {
+    if (!intent) return;
+    // Fill input so user can review/edit before sending
+    intentInput.value = intent;
+    resizeIntentInput();
+    intentInput.focus();
   });
   return r;
 }
@@ -561,9 +563,9 @@ function renderSuggestions(suggestions) {
   list.querySelectorAll('.suggestion-btn').forEach(b => {
     b.addEventListener('click', () => {
       if (pendingAction) return;
-      const intent = b.dataset.prompt;
-      addChatMsg('user', intent);
-      routeUserIntent(intent);
+      intentInput.value = b.dataset.prompt;
+      resizeIntentInput();
+      intentInput.focus();
     });
   });
 }

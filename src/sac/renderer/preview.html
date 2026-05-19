@@ -38,39 +38,33 @@
       50%      { box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.6),  0 0 16px rgba(249, 115, 22, 0.2); }
     }
 
-    /* ─── SaC action button indicator ────────────────────────────────
+    /* ─── SaC action button hover cue ────────────────────────────────
      * Buttons whose onClick calls window.__sac_action get a
      * data-sac-action="true" attribute set by the shim at runtime.
-     *
-     * Always-visible: a small "✨ Ask SaC" pill floats above the
-     * button so users can instantly tell which buttons trigger the
-     * agent vs. which are UI-internal toggles.
-     *
-     * On hover: orange outline ring highlights the button.
+     * On hover: orange outline + "✨ Ask Agent" pill slides up.
      * During streaming: buttons are faded + locked.                  */
     button[data-sac-action="true"] {
       position: relative;
     }
-    /* Always-visible pill indicator */
     button[data-sac-action="true"]::after {
-      content: "✨ Ask SaC";
+      content: "✨ Ask Agent";
       position: absolute;
-      bottom: calc(100% + 6px);
+      bottom: calc(100% + 8px);
       left: 50%;
-      transform: translateX(-50%);
+      transform: translateX(-50%) translateY(4px);
       background: #0F2318;
       color: #ffffff;
-      padding: 4px 10px;
+      padding: 5px 11px;
       border-radius: 999px;
       font-size: 11px;
       font-weight: 500;
       letter-spacing: -0.01em;
       white-space: nowrap;
       pointer-events: none;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 0 rgba(255, 255, 255, 0.1) inset;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.1) inset;
       z-index: 999;
-      opacity: 0.85;
-      transition: opacity 120ms ease, box-shadow 120ms ease;
+      opacity: 0;
+      transition: opacity 140ms ease, transform 140ms ease;
     }
     button[data-sac-action="true"]:hover {
       outline: 2px solid rgba(249, 115, 22, 0.55);
@@ -79,7 +73,7 @@
     }
     button[data-sac-action="true"]:hover::after {
       opacity: 1;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.1) inset;
+      transform: translateX(-50%) translateY(0);
     }
     /* ─── Streaming lock: disable sac-action buttons visually ──────── */
     body.sac-locked button[data-sac-action="true"] {
@@ -89,7 +83,7 @@
     body.sac-locked button[data-sac-action="true"]:hover {
       outline: none;
     }
-    body.sac-locked button[data-sac-action="true"]::after {
+    body.sac-locked button[data-sac-action="true"]:hover::after {
       display: none;
     }
   </style>
