@@ -68,6 +68,13 @@ class CallbackManager:
             None,
         )
 
+    def has_active_run(self, conv_id: str) -> bool:
+        """Check if there is a running/queued callback run for this conversation."""
+        for run in reversed(self._runs.get(conv_id, [])):
+            if run.get("status") in {"running", "queued"}:
+                return True
+        return False
+
     def mark_inbox_result(
         self,
         conv_id: str,

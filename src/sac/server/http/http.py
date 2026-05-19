@@ -411,7 +411,13 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         base = str(request.base_url).rstrip("/")
 
         # Classify response shape: chat (NL) vs update (Φˢ render).
-        classification = await sac._legacy_shim.classify(conv, req.content)
+        # Skip classification when an active callback run exists — the agent
+        # is responding to a user action and its content should always be
+        # rendered as UI, even if it looks text-heavy to the classifier.
+        if callback_manager.has_active_run(conv.id):
+            classification = {"type": "update"}
+        else:
+            classification = await sac._legacy_shim.classify(conv, req.content)
 
         if classification["type"] == "chat":
             # Show the agent's content directly as an assistant message in
