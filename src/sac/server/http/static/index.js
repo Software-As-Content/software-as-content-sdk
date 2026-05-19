@@ -1711,7 +1711,7 @@ function setPending(value) {
     _pendingTimer = setTimeout(() => {
       if (pendingAction) {
         removeProcessingCard();
-        showStatus('No agent picked up this action. Tell your agent to restart the SaC MCP connection.', 'error');
+        showStatus('No agent picked up this action. Tell your agent to check the SaC MCP connection.', 'error');
         setPending(false);
       }
     }, 45000);

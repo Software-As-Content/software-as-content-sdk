@@ -188,7 +188,9 @@ mcp = FastMCP(
         "open the URL in preview (best effort — always output the URL as fallback)\n"
         "3. IMMEDIATELY call `wait_for_action` — this blocks until the user "
         "clicks a button or submits input in the viewer app\n"
-        "4. Process the returned action, compose updated content, call `evolve_app`\n"
+        "4. Process the returned action, compose updated content, call `evolve_app`. "
+        "You MUST call evolve_app — the viewer is waiting. Never just respond in "
+        "chat without updating the app.\n"
         "5. Go back to step 3 — keep looping until the user ends the conversation\n\n"
         "If `wait_for_action` times out, call it again — the user may not have "
         "interacted yet.\n\n"
@@ -287,10 +289,15 @@ async def evolve_app(conversation_id: str, intent: str, user_message: str | None
     description=(
         "Block until the user performs an action in the viewer app (clicks a "
         "button, submits a form, or types in the chat panel). Returns the "
-        "action intent and optional context. Use this after generate_app or "
-        "evolve_app to receive interactive feedback. Times out after the "
-        "specified duration (default 5 minutes) — a timeout means the user "
-        "hasn't interacted yet, and you can call wait_for_action again."
+        "action intent, recent conversation messages for context, and optional "
+        "metadata. Use this after generate_app or evolve_app to receive "
+        "interactive feedback.\n\n"
+        "IMPORTANT: When an action is returned, you MUST call `evolve_app` "
+        "with updated content. The viewer is waiting for the next version — "
+        "do NOT just respond in chat without calling evolve_app. Even for "
+        "simple requests like 'retry' or 'undo', call evolve_app.\n\n"
+        "Times out after the specified duration (default 5 minutes) — a "
+        "timeout means the user hasn't interacted yet, call wait_for_action again."
     ),
 )
 async def wait_for_action(

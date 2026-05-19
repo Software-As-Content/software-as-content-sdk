@@ -783,7 +783,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 if action_queue.is_pending(cid):
                     action_queue.expire(cid)
                     pubsub.publish(cid, "action_timeout", {
-                        "message": "No agent picked up this action. Tell your agent to restart the SaC MCP connection.",
+                        "message": "No agent picked up this action. Tell your agent to check the SaC MCP connection.",
                     })
 
             asyncio.create_task(_action_ttl(conv_id))
@@ -822,7 +822,25 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         logger.info("Wait-action done: conv=%s got=%s", conv_id, action is not None)
         if action is None:
             return {"action": None, "timed_out": True}
-        return {"action": action, "timed_out": False}
+
+        # Include recent conversation context so the agent understands
+        # what "retry", "undo", etc. mean in context.
+        from sac.types import MessageEvent as _ME
+        events = await sac._store.get_events(conv_id)
+        recent_msgs = []
+        for evt in reversed(events):
+            if isinstance(evt, _ME):
+                recent_msgs.append({"role": evt.role, "content": evt.content[:200]})
+                if len(recent_msgs) >= 6:
+                    break
+        recent_msgs.reverse()
+
+        return {
+            "action": action,
+            "timed_out": False,
+            "recent_messages": recent_msgs,
+            "current_version": conv_data.event_count if conv_data else None,
+        }
 
     # ─── Conversation Management ─────────────────────────────────
 
