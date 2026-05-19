@@ -1164,10 +1164,14 @@ body.is-pending .input-wrapper {
   .header { gap: 12px; }
   .brand { flex-basis: auto; }
   .header-action { padding: 0 11px; }
-  .main { flex-direction: column; height: auto; min-height: calc(100vh - 51px); }
-  .sidebar-resizer { display: none; }
-  .preview-area { order: 1; height: 54vh; min-height: 360px; border-bottom: 1px solid var(--line); }
-  .sidebar { order: 2; flex: none; width: 100%; min-height: 440px; border-left: none; border-top: 1px solid var(--line); }
+  .main { flex-direction: column; height: calc(100vh - 51px); overflow: hidden; }
+  .sidebar-resizer {
+    order: 2; flex: 0 0 7px; cursor: row-resize;
+    margin-left: 0; margin-right: 0; margin-top: -4px; margin-bottom: -3px;
+  }
+  .sidebar-resizer::after { left: 0; right: 0; top: 3px; bottom: auto; width: auto; height: 1px; background: var(--line); }
+  .preview-area { order: 1; flex: 1 1 0; height: 0; min-height: 80px; border-bottom: none; }
+  .sidebar { order: 3; flex: 0 0 40%; width: 100%; min-height: 80px; border-left: none; border-top: none; }
   .sidebar.collapsed { display: none; }
   .empty-hero h2 { font-size: 30px; }
   .empty-hero p { font-size: 13px; }
@@ -1188,9 +1192,7 @@ body.is-pending .input-wrapper {
   .brand-mark { width: 32px; height: 32px; }
   .brand-subtitle { display: none; }
   .header h1 { font-size: 15px; }
-  .main { min-height: calc(100vh - 57px); }
-  .preview-area { height: 48vh; min-height: 300px; }
-  .sidebar { min-height: 430px; }
+  .main { height: calc(100vh - 57px); }
   .chat-area { padding: 14px 12px 16px; }
   .input-area { padding: 10px 12px 12px; }
   .chat-bubble { max-width: 92%; }

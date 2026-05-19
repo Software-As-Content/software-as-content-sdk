@@ -215,21 +215,42 @@ sidebarToggle.addEventListener('click', (event) => {
   button.title = collapsed ? 'Show activity panel' : 'Hide activity panel';
 });
 
+function isNarrowMode() {
+  return window.matchMedia('(max-width: 900px)').matches;
+}
+
+const savedSidebarHeight = Number(localStorage.getItem('sac-sidebar-height') || 0);
+if (savedSidebarHeight && isNarrowMode()) {
+  sidebarEl.style.flexBasis = `${Math.max(80, Math.min(window.innerHeight * 0.7, savedSidebarHeight))}px`;
+}
+
 sidebarResizer.addEventListener('pointerdown', (event) => {
   if (sidebarEl.classList.contains('collapsed')) return;
   event.preventDefault();
   sidebarResizer.setPointerCapture?.(event.pointerId);
   mainEl.classList.add('is-resizing');
+  const narrow = isNarrowMode();
 
   const onMove = (moveEvent) => {
-    const nextWidth = Math.max(320, Math.min(680, window.innerWidth - moveEvent.clientX));
-    sidebarEl.style.flexBasis = `${nextWidth}px`;
+    if (narrow) {
+      const mainRect = mainEl.getBoundingClientRect();
+      const nextHeight = Math.max(80, Math.min(mainRect.height * 0.7, mainRect.bottom - moveEvent.clientY));
+      sidebarEl.style.flexBasis = `${nextHeight}px`;
+    } else {
+      const nextWidth = Math.max(320, Math.min(680, window.innerWidth - moveEvent.clientX));
+      sidebarEl.style.flexBasis = `${nextWidth}px`;
+    }
   };
   const onUp = (upEvent) => {
     mainEl.classList.remove('is-resizing');
     sidebarResizer.releasePointerCapture?.(upEvent.pointerId);
-    const width = Math.round(sidebarEl.getBoundingClientRect().width);
-    localStorage.setItem('sac-sidebar-width', String(width));
+    if (narrow) {
+      const height = Math.round(sidebarEl.getBoundingClientRect().height);
+      localStorage.setItem('sac-sidebar-height', String(height));
+    } else {
+      const width = Math.round(sidebarEl.getBoundingClientRect().width);
+      localStorage.setItem('sac-sidebar-width', String(width));
+    }
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
   };
