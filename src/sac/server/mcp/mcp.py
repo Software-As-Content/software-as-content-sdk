@@ -193,7 +193,10 @@ mcp = FastMCP(
         "If `wait_for_action` times out, call it again — the user may not have "
         "interacted yet.\n\n"
         "The returned `code` field contains runnable TSX (React 19 + Tailwind + "
-        "lucide-react + recharts). Hold onto `conversation_id` across turns."
+        "lucide-react + recharts). Hold onto `conversation_id` across turns.\n\n"
+        "Always pass the user's original verbatim message as `user_message` — "
+        "this is displayed in the viewer's chat timeline. The `intent` field "
+        "can contain your expanded/enriched version for better generation."
     ),
 )
 
@@ -224,17 +227,22 @@ def _post_inbox(base_url: str, payload: dict) -> dict:
         "Generate the first version of an interactive app for a user intent. "
         "Returns a conversation_id and a viewer URL where the user can see "
         "and interact with the app. Use this when starting a new flow; if "
-        "continuing an existing conversation, prefer evolve_app."
+        "continuing an existing conversation, prefer evolve_app. "
+        "Always pass `user_message` with the user's original verbatim input "
+        "before any expansion or rewriting you do on the intent."
     ),
 )
 async def generate_app(
     intent: str,
     conversation_id: str | None = None,
+    user_message: str | None = None,
 ) -> dict:
     base_url = _ensure_http_server()
     payload: dict[str, Any] = {"content": intent, "intent": intent}
     if conversation_id:
         payload["conversation_id"] = conversation_id
+    if user_message:
+        payload["user_message"] = user_message
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, _post_inbox, base_url, payload)
     return {
@@ -250,16 +258,20 @@ async def generate_app(
     description=(
         "Evolve an existing app to a new version based on a follow-up intent. "
         "Requires a conversation_id from a prior generate_app call. The user's "
-        "viewer updates in real-time as the new version streams in."
+        "viewer updates in real-time as the new version streams in. "
+        "If the user typed a message that triggered this evolution, pass their "
+        "original text as `user_message`."
     ),
 )
-async def evolve_app(conversation_id: str, intent: str) -> dict:
+async def evolve_app(conversation_id: str, intent: str, user_message: str | None = None) -> dict:
     base_url = _ensure_http_server()
     payload: dict[str, Any] = {
         "conversation_id": conversation_id,
         "content": intent,
         "intent": intent,
     }
+    if user_message:
+        payload["user_message"] = user_message
     loop = asyncio.get_event_loop()
     result = await loop.run_in_executor(None, _post_inbox, base_url, payload)
     return {

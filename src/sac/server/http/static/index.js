@@ -585,6 +585,8 @@ function setupEventSource(convId) {
   es.addEventListener('stage', (e) => {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
+    // Agent is actively working — cancel the "no agent" timeout
+    if (_pendingTimer) { clearTimeout(_pendingTimer); _pendingTimer = null; }
     showStatus(`${data.name}: ${data.status}`, 'running');
     if ((data.status === 'complete' || data.status === 'success') && data.duration) {
       pendingStages.push({ name: data.name, duration: data.duration });
@@ -1699,9 +1701,21 @@ function beginNewAttempt() {
   removeProcessingCard();
 }
 
+let _pendingTimer = null;
 function setPending(value) {
   pendingAction = value;
   document.body.classList.toggle('is-pending', value);
+  // Frontend-side TTL: if pending stays true for 45s with no response, show error
+  if (_pendingTimer) { clearTimeout(_pendingTimer); _pendingTimer = null; }
+  if (value) {
+    _pendingTimer = setTimeout(() => {
+      if (pendingAction) {
+        removeProcessingCard();
+        showStatus('No agent picked up this action. Tell your agent to restart the SaC MCP connection.', 'error');
+        setPending(false);
+      }
+    }, 45000);
+  }
   // Swap send button between send mode and cancel mode
   if (value) {
     sendBtn.disabled = false;

@@ -210,6 +210,7 @@ class InboxRequest(BaseModel):
     intent: str | None = None
     type: str | None = None  # "ui" | "chat" | None (None = legacy classify fallback)
     conversation_id: str | None = None
+    user_message: str | None = None  # Original user input before agent expansion
     callback_url: str | None = None
     callback_format: str | None = None  # "default" | "openclaw_gateway" | "codex_exec_resume"
     callback_auth: str | None = None    # e.g. "Bearer <token>"
@@ -560,10 +561,17 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         intent = req.intent or req.content[:200]
         is_evolve = conv.current_app is not None
 
-        # Record user intent as a message event
-        await sac._store.add_event(
-            MessageEvent(conversation_id=conv.id, role="user", content=intent)
-        )
+        # Record user intent as a message event.
+        # Skip if source="inbox" + evolve: the short label was already stored
+        # by /action before the agent rewrote it into a detailed prompt.
+        conv_data = await sac._store.get_conversation(conv.id)
+        is_agent_evolve = is_evolve and conv_data and conv_data.source == "inbox"
+        if not is_agent_evolve:
+            # Prefer user_message (original user input) over intent (agent-expanded)
+            display_msg = req.user_message or intent
+            await sac._store.add_event(
+                MessageEvent(conversation_id=conv.id, role="user", content=display_msg)
+            )
 
         try:
             # Stream generation — publish each event to PubSub for
@@ -762,6 +770,11 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         # ── Pull mode: no callback_url → queue for MCP wait_for_action ──
         if not conv_data.callback_url:
             logger.info("Action push: conv=%s intent=%r listener=%s", conv_id, req.intent, action_queue.has_listener(conv_id))
+            # Store the original short label as user message before agent rewrites it
+            from sac.types import MessageEvent
+            await sac._store.add_event(
+                MessageEvent(conversation_id=conv_id, role="user", content=req.intent)
+            )
             action_queue.push(conv_id, req.intent, req.context)
 
             # TTL: if no agent consumes this action within 45s, notify frontend
@@ -770,7 +783,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 if action_queue.is_pending(cid):
                     action_queue.expire(cid)
                     pubsub.publish(cid, "action_timeout", {
-                        "message": "No agent picked up this action. Check that your MCP host is still connected.",
+                        "message": "No agent picked up this action. Tell your agent to restart the SaC MCP connection.",
                     })
 
             asyncio.create_task(_action_ttl(conv_id))
