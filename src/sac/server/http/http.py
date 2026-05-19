@@ -80,6 +80,43 @@ class _PubSub:
                 pass
 
 
+class _ActionQueue:
+    """Per-conversation action queue for MCP pull mode.
+
+    When no callback_url is registered, user actions from the viewer are
+    queued here instead of dispatched. MCP tools (wait_for_action) or the
+    /c/{id}/wait-action endpoint consume from this queue.
+    """
+
+    def __init__(self) -> None:
+        self._queues: dict[str, asyncio.Queue] = {}
+
+    def _get_queue(self, conv_id: str) -> asyncio.Queue:
+        if conv_id not in self._queues:
+            self._queues[conv_id] = asyncio.Queue(maxsize=32)
+        return self._queues[conv_id]
+
+    def push(self, conv_id: str, intent: str, context: dict[str, Any] | None = None) -> None:
+        q = self._get_queue(conv_id)
+        action = {"intent": intent, "context": context, "timestamp": datetime.now(timezone.utc).isoformat()}
+        try:
+            q.put_nowait(action)
+        except asyncio.QueueFull:
+            # Drop oldest and retry
+            try:
+                q.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            q.put_nowait(action)
+
+    async def wait(self, conv_id: str, timeout: float = 300.0) -> dict[str, Any] | None:
+        q = self._get_queue(conv_id)
+        try:
+            return await asyncio.wait_for(q.get(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
+
+
 # ─── Request/Response Models ──────────────────────────────────────
 
 
@@ -170,11 +207,11 @@ def create_app(sac: SaC | None = None) -> FastAPI:
       - SAC_SEARCH_API_KEY (optional) — Tavily API key
       - SAC_MODEL (optional) — default model
     """
+    data_dir = os.environ.get("SAC_DATA_DIR", ".sac")
     if sac is None:
         api_key = os.environ.get("SAC_API_KEY", "")
         if not api_key:
             raise ValueError("SAC_API_KEY environment variable is required")
-        data_dir = os.environ.get("SAC_DATA_DIR", ".sac")
         sac = SaC(
             api_key=api_key,
             search_api_key=os.environ.get("SAC_SEARCH_API_KEY"),
@@ -197,6 +234,10 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     # Pub/sub broker for /c/{id}/events SSE subscribers
     pubsub = _PubSub()
+
+    # Action queue for MCP pull mode (no callback_url conversations)
+    action_queue = _ActionQueue()
+    app.state.action_queue = action_queue
 
     async def _pin_codex_thread(conv_id: str, thread_id: str) -> None:
         """Pin the resolved Codex thread id onto the conversation.
@@ -623,7 +664,11 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
     @app.post("/c/{conv_id}/action")
     async def conversation_action(conv_id: str, req: ActionRequest, request: Request) -> dict[str, Any]:
-        """Forward a user action to the agent's registered callback_url.
+        """Forward a user action to the agent or queue it for MCP pull.
+
+        Two modes:
+          - callback mode (callback_url set): dispatch to external agent
+          - pull mode (no callback_url): queue for wait_for_action / MCP
 
         Pre-classifies the intent: chat-type messages (greetings, small
         talk) get a direct NL reply without invoking the external agent,
@@ -632,14 +677,6 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         conv_data = await sac._store.get_conversation(conv_id)
         if conv_data is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
-        if not conv_data.callback_url:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "No callback_url registered on this conversation. The "
-                    "agent must include callback_url in its first /inbox call."
-                ),
-            )
 
         # ── Pre-classify: intercept chat-type intents before dispatching ──
         # Only for text input from the chat panel (no context = not a button
@@ -666,6 +703,16 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 # Classify failed — fall through to agent dispatch
                 logger.debug("Pre-classify failed for conv %s, dispatching to agent", conv_id, exc_info=True)
 
+        # ── Pull mode: no callback_url → queue for MCP wait_for_action ──
+        if not conv_data.callback_url:
+            action_queue.push(conv_id, req.intent, req.context)
+            pubsub.publish(conv_id, "chat", {
+                "role": "system",
+                "content": "Action received, waiting for agent to process...",
+            })
+            return {"ok": True, "type": "queued", "intent": req.intent}
+
+        # ── Callback mode: dispatch to external agent ──
         run = await callback_manager.dispatch(
             conv_id=conv_id,
             intent=req.intent,
@@ -677,9 +724,26 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         )
         return {
             "ok": True,
+            "type": "callback",
             "callback_url": conv_data.callback_url,
             "run_id": run["id"],
         }
+
+    @app.get("/c/{conv_id}/wait-action")
+    async def wait_for_action(conv_id: str, timeout: float = 300.0) -> dict[str, Any]:
+        """Long-poll endpoint: block until a user action is available.
+
+        Used by MCP tools (wait_for_action) to pull user actions from the
+        viewer. Returns the action or null on timeout.
+        """
+        conv_data = await sac._store.get_conversation(conv_id)
+        if conv_data is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        timeout = min(max(timeout, 1.0), 600.0)
+        action = await action_queue.wait(conv_id, timeout=timeout)
+        if action is None:
+            return {"action": None, "timed_out": True}
+        return {"action": action, "timed_out": False}
 
     # ─── Conversation Management ─────────────────────────────────
 
