@@ -39,6 +39,24 @@ function resetRenderer() {
 let _changeIndex = 0;   // cycles through highlighted elements
 let _changeCount = 0;
 
+function countChangeMarkers(code) {
+  return (String(code || '').match(/\bdata-sac-changed\b/g) || []).length;
+}
+
+function setChangeCount(count) {
+  _changeCount = Math.max(0, Number(count) || 0);
+  if (_changeCount > 0) {
+    showChangesBtn.textContent = `Check Changes (${_changeCount})`;
+    showChangesBtn.disabled = false;
+    showChangesBtn.classList.remove('changes-btn-empty');
+    _changeIndex = 0;
+  } else {
+    showChangesBtn.textContent = 'Changes';
+    showChangesBtn.disabled = true;
+    showChangesBtn.classList.add('changes-btn-empty');
+  }
+}
+
 showChangesBtn.addEventListener('click', () => {
   if (_changeCount <= 0) return;
   const iframeWin = iframe.contentWindow;
@@ -50,17 +68,8 @@ showChangesBtn.addEventListener('click', () => {
 // Listen for change-count and visibility updates from iframe
 window.addEventListener('message', (ev) => {
   if (ev.data?.type === 'sac-change-count') {
-    _changeCount = ev.data.count || 0;
-    if (_changeCount > 0) {
-      showChangesBtn.textContent = `Check Changes (${_changeCount})`;
-      showChangesBtn.disabled = false;
-      showChangesBtn.classList.remove('changes-btn-empty');
-      _changeIndex = 0;
-    } else {
-      showChangesBtn.textContent = 'Changes';
-      showChangesBtn.disabled = true;
-      showChangesBtn.classList.add('changes-btn-empty');
-    }
+    const codeCount = countChangeMarkers(codeDisplay?.textContent || '');
+    setChangeCount(Math.max(ev.data.count || 0, codeCount));
   }
   if (ev.data?.type === 'sac-highlights-visible') {
     if (!ev.data.visible && _changeCount > 0) {
@@ -242,6 +251,7 @@ document.getElementById('new-conv-btn').addEventListener('click', () => {
   hideStatus();
   codeDisplay.textContent = '';
   codeMeta.textContent = 'No app version selected';
+  setChangeCount(0);
   resizeIntentInput();
 });
 
@@ -255,9 +265,10 @@ async function handleSend() {
   resizeIntentInput();
   addChatMsg('user', message);
 
-  // External-agent mode: forward to /c/{id}/action; agent posts result back
-  // to /inbox; SSE delivers it. No local streamGenerate path.
-  // pendingAction stays true — cleared when SSE delivers version/chat event.
+  // Agent mode (callback or MCP pull): forward to /c/{id}/action.
+  // callbackUrl is set for callback mode; for MCP pull mode the server
+  // queues the action (returns type:"queued") without a callback_url.
+  // Both paths: SSE delivers the result when the agent responds via /inbox.
   if (callbackUrl && conversationId) {
     showStatus('Thinking...', 'running');
     try {
@@ -274,7 +285,7 @@ async function handleSend() {
       } else {
         const data = await res.json().catch(() => ({}));
         if (data.type === 'chat') {
-          // Pre-classified as chat — NL reply delivered via SSE, nothing more to wait for
+          // Pre-classified as chat — NL reply delivered via SSE
           return;
         }
         showStatus('Sent to agent, waiting...', 'running');
@@ -319,14 +330,16 @@ async function handleSend() {
 }
 
 // Routes any user-originated intent (button click in App, suggestion click,
-// etc.) to either the external agent (via /c/{id}/action) or the local
-// stream pipeline.
+// etc.) to the agent (via /c/{id}/action) or the local stream pipeline.
+// Always tries /c/{id}/action first — works for callback mode, MCP pull
+// mode, and pre-classify chat intercept. Falls back to local stream only
+// if the server can't handle it.
 async function routeUserIntent(intent, context = null) {
   if (pendingAction) return;  // debounce — wait for current action to finish
   setPending(true);
   beginNewAttempt();
 
-  if (callbackUrl) {
+  if (conversationId) {
     showStatus('Sent to agent, waiting...', 'running');
     try {
       const res = await fetch(`/c/${conversationId}/action`, {
@@ -334,22 +347,21 @@ async function routeUserIntent(intent, context = null) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intent, context }),
       });
-      if (!res.ok) {
-        const detail = await res.text().catch(() => '');
-        addChatMsg('system', `Forwarding failed (HTTP ${res.status}): ${detail}`);
-        hideStatus();
-        setPending(false);
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.type === 'chat') return;  // NL reply via SSE
+        // callback / queued: wait for SSE version event
+        return;
       }
-      // On success: callback_run/version SSE events clear pending.
-    } catch (err) {
-      addChatMsg('system', 'Error: ' + err.message);
-      hideStatus();
-      setPending(false);
+      // Non-OK: fall through to local stream
+    } catch {
+      // Network error: fall through to local stream
     }
-  } else {
-    await streamGenerate({ intent, conversation_id: conversationId });
-    // streamGenerate clears pending on complete/error
   }
+
+  // Standalone fallback: no agent, evolve locally
+  await streamGenerate({ intent, conversation_id: conversationId });
+  // streamGenerate clears pending on complete/error
 }
 
 // ─── SSE: subscribe to /c/{id}/events ────────────────────────
@@ -396,6 +408,7 @@ function setupEventSource(convId) {
         } else {
           // conv info removed from header
           codeDisplay.textContent = conversation.latest_code;
+          setChangeCount(countChangeMarkers(conversation.latest_code));
           codeMeta.textContent = `Updated to v${currentVersion} · ${formatCodeSize(conversation.latest_code)}`;
           placeholder.classList.add('hidden');
           iframe.classList.remove('hidden');
@@ -418,6 +431,11 @@ function setupEventSource(convId) {
   es.addEventListener('chat', (e) => {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
+    if (/^Codex callback failed/i.test(data.content || '')) {
+      showStatus(humanizeCallbackError(data.content), 'error');
+      setPending(false);
+      return;
+    }
     addChatMsg(data.role || 'assistant', data.content || '');
     hideStatus();
     setPending(false);
@@ -508,6 +526,7 @@ function setupEventSource(convId) {
     // REPLACE buffer (not append) — snapshot is the full updated code
     streamBuffer = code;
     codeDisplay.textContent = code;
+    setChangeCount(countChangeMarkers(code));
 
     // Flush to iframe immediately with scroll-to-change flag
     if (streamFlushTimer) {
@@ -579,6 +598,7 @@ async function streamGenerate(body) {
   codeDisplay.textContent = '';
   codeDisplay.style.color = '';
   codeMeta.textContent = 'Streaming generated code...';
+  setChangeCount(0);
 
   placeholder.classList.add('hidden');
   iframe.classList.remove('hidden');
@@ -650,6 +670,7 @@ function handleSSEEvent(eventType, data) {
       // Progressive evolve: full code snapshot replaces buffer
       streamBuffer = data.code;
       codeDisplay.textContent = data.code;
+      setChangeCount(countChangeMarkers(data.code));
       if (streamFlushTimer) { clearTimeout(streamFlushTimer); streamFlushTimer = null; }
       const proc = renderer._processCode(data.code);
       if (proc && proc.trim()) {
@@ -780,6 +801,7 @@ function applyAppVersion(version, opts = {}) {
   viewedVersion = version.version;
   codeDisplay.textContent = version.code;
   codeMeta.textContent = `v${version.version} · ${formatCodeSize(version.code)}`;
+  setChangeCount(countChangeMarkers(version.code));
   // Ensure App tab is active in preview
   previewCodePanel.classList.add('hidden');
   placeholder.classList.add('hidden');
@@ -793,7 +815,6 @@ function applyAppVersion(version, opts = {}) {
   renderer.render(version.code);
   markActiveVersionCard(version.version);
   if (opts.announce) {
-    flashStatus(`App updated to v${version.version}`, 'success');
     flashVersionCard(version.version);
   }
 }
@@ -1040,7 +1061,7 @@ function renderCallbackRun(run) {
 
   // Add error events
   if (run.error) {
-    addCallbackEvent(card, 'sac', `Error: ${compactText(run.error, 200)}`);
+    addCallbackEvent(card, 'sac', `Error: ${humanizeCallbackError(run.error)}`);
   }
 
   // Clean up transient states on terminal
@@ -1114,7 +1135,7 @@ function renderCallbackLog(log) {
       card.published = true;
       break;
     case 'warning':
-      addCallbackEvent(card, 'sac', `Warning: ${detail}`);
+      addCallbackEvent(card, 'sac', `Warning: ${humanizeCallbackError(detail || label)}`);
       if (log.line) appendCallbackRaw(card, label, log.line);
       break;
     default:
@@ -1438,6 +1459,9 @@ window.deleteConv = async function(id) {
         '<div class="chat-msg system"><div class="chat-bubble">Conversation deleted.</div></div>';
       placeholder.classList.remove('hidden');
       iframe.classList.add('hidden');
+      codeDisplay.textContent = '';
+      codeMeta.textContent = 'No app version selected';
+      setChangeCount(0);
     }
     loadConversations();
   } catch (err) {
@@ -1533,6 +1557,48 @@ function escClass(s) {
 function compactText(s, max = 500) {
   const text = String(s || '').replace(/\s+/g, ' ').trim();
   return text.length > max ? text.slice(0, max - 1) + '...' : text;
+}
+
+function humanizeCallbackError(value) {
+  const raw = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return 'Callback failed.';
+
+  const messages = [];
+  const messageRe = /"message"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+  let match;
+  while ((match = messageRe.exec(raw))) {
+    try {
+      messages.push(JSON.parse(`"${match[1]}"`));
+    } catch {
+      messages.push(match[1]);
+    }
+  }
+
+  let text = messages.find(Boolean) || raw;
+  text = text
+    .replace(/^Codex callback failed\s*[:(]\s*/i, '')
+    .replace(/[).]*$/g, '')
+    .trim();
+
+  if (/usage limit/i.test(text)) {
+    const retry = text.match(/try again at ([^.]+?)(?:\.|$)/i)?.[1]?.trim();
+    return retry
+      ? `Codex usage limit reached. Try again at ${retry}.`
+      : 'Codex usage limit reached. Try again later.';
+  }
+
+  if (/finished without updating the app/i.test(text) || /no \/inbox response/i.test(text)) {
+    return 'Codex finished without updating the app. The app is unchanged.';
+  }
+
+  if (/codex cli not found/i.test(text)) {
+    return 'Codex CLI not found. Set SAC_CODEX_BIN to the Codex executable path.';
+  }
+
+  if (text.startsWith('{') || text.includes('{"type":')) {
+    return 'Codex callback failed. Raw details are available in the card.';
+  }
+  return compactText(text, 180);
 }
 
 function formatTime(value) {
