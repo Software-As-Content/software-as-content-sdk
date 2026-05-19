@@ -1493,6 +1493,7 @@ function showStatus(text, kind = 'info') {
   bar.classList.remove('status-running', 'status-success', 'status-error');
   if (kind !== 'info') bar.classList.add(`status-${kind}`);
   bar.textContent = text;
+  scrollChatToBottom({ defer: true });
 }
 
 function hideStatus() {
@@ -1658,8 +1659,15 @@ function runStatusLabel(status) {
 }
 
 function scrollChatToBottom() {
+  const opts = typeof arguments[0] === 'object' ? arguments[0] : {};
+  if (opts.defer) {
+    requestAnimationFrame(() => requestAnimationFrame(() => scrollChatToBottom()));
+    return;
+  }
   const area = document.getElementById('chat-area');
-  area.scrollTop = area.scrollHeight;
+  const tab = document.getElementById('tab-chat');
+  if (area) area.scrollTop = area.scrollHeight;
+  if (tab) tab.scrollTop = tab.scrollHeight;
 }
 
 // Auto-load conversation if id is present in URL: /c/{id} or /?c={id}

@@ -175,8 +175,9 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
   background: rgba(255,255,255,0.92);
   box-shadow: var(--button-shadow);
 }
-.tab-content { flex: 1; min-width: 0; overflow: auto; display: flex; flex-direction: column; }
+.tab-content { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .tab-content-active { display: flex; flex-direction: column; }
+#tab-chat.tab-content-active { overflow: hidden; }
 .hidden { display: none !important; }
 
 .tab-content::-webkit-scrollbar,
@@ -205,6 +206,7 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
 /* ─── Chat / Activity area ─────────────────────────────── */
 .chat-area {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 26px 24px 24px;
   position: relative;
@@ -590,6 +592,7 @@ body.is-pending .input-wrapper {
 
 /* ─── Status bar ───────────────────────────────────────── */
 .status {
+  flex: 0 0 auto;
   margin: 10px 24px 0;
   padding: 8px 12px;
   border: 1px solid rgba(59,130,246,0.12);
