@@ -138,7 +138,7 @@ def _start_http_server(sac: SaC, port: int) -> str:
     import uvicorn
     config = uvicorn.Config(
         app, host="127.0.0.1", port=port,
-        log_level="warning",
+        log_level="info",
     )
     server = uvicorn.Server(config)
 
@@ -178,14 +178,20 @@ mcp = FastMCP(
     instructions=(
         "Software as Content (SaC) — generate and evolve interactive applications "
         "in response to user intent.\n\n"
-        "Workflow:\n"
+        "IMPORTANT: After generating or evolving an app, you MUST call "
+        "`wait_for_action` to enter the interaction loop. Do NOT stop after "
+        "showing the URL — the user interacts with the app by clicking buttons "
+        "in the viewer, and those clicks are delivered to you via `wait_for_action`.\n\n"
+        "Workflow (mandatory loop):\n"
         "1. Call `generate_app` with a user intent → get a viewer URL + TSX code\n"
         "2. Show the URL to the user. If the built-in preview is available, also "
-        "open the URL in preview so the user can see the app inline (best effort — "
-        "always output the URL as fallback)\n"
-        "3. Call `wait_for_action` to block until the user clicks a button in the app\n"
+        "open the URL in preview (best effort — always output the URL as fallback)\n"
+        "3. IMMEDIATELY call `wait_for_action` — this blocks until the user "
+        "clicks a button or submits input in the viewer app\n"
         "4. Process the returned action, compose updated content, call `evolve_app`\n"
-        "5. Repeat from step 3\n\n"
+        "5. Go back to step 3 — keep looping until the user ends the conversation\n\n"
+        "If `wait_for_action` times out, call it again — the user may not have "
+        "interacted yet.\n\n"
         "The returned `code` field contains runnable TSX (React 19 + Tailwind + "
         "lucide-react + recharts). Hold onto `conversation_id` across turns."
     ),
@@ -282,18 +288,20 @@ async def wait_for_action(
     base_url = _ensure_http_server()
     timeout = min(max(timeout, 1.0), 600.0)
 
-    # Long-poll the HTTP server's /wait-action endpoint.
-    # This works whether the HTTP server is embedded or external.
     import json
     import urllib.request
     url = f"{base_url}/c/{conversation_id}/wait-action?timeout={timeout}"
+    logger.info("MCP wait_for_action: polling %s", url)
     loop = asyncio.get_event_loop()
     try:
         def _poll():
             with urllib.request.urlopen(url, timeout=timeout + 10) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                result = json.loads(resp.read().decode("utf-8"))
+                logger.info("MCP wait_for_action result: %s", result)
+                return result
         return await loop.run_in_executor(None, _poll)
-    except Exception:
+    except Exception as exc:
+        logger.warning("MCP wait_for_action error: %s", exc)
         return {"action": None, "timed_out": True}
 
 

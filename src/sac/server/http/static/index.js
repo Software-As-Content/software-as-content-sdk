@@ -509,6 +509,7 @@ function setupEventSource(convId) {
           const pendingRuns = finalizePendingCards(data.version);
           ensureVersionCard(latest, pendingRuns);
           applyAppVersion(latest, { announce: true });
+          flashStatus(`App updated to v${latest.version}`, 'success');
         } else {
           // conv info removed from header
           codeDisplay.textContent = conversation.latest_code;
@@ -541,12 +542,8 @@ function setupEventSource(convId) {
       return;
     }
     addChatMsg(data.role || 'assistant', data.content || '');
-    // pending: true means the action is queued but agent hasn't started yet
-    // (MCP pull mode) — keep the status bar and pending state alive
-    if (!data.pending) {
-      hideStatus();
-      setPending(false);
-    }
+    hideStatus();
+    setPending(false);
   });
 
   es.addEventListener('callback_run', (e) => {

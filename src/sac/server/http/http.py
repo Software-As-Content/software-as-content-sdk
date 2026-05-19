@@ -91,6 +91,7 @@ class _ActionQueue:
     def __init__(self) -> None:
         self._queues: dict[str, asyncio.Queue] = {}
         self._listeners: set[str] = set()  # conv_ids with active wait()
+        self._pending: dict[str, dict[str, Any]] = {}  # conv_id -> last pushed action
 
     def _get_queue(self, conv_id: str) -> asyncio.Queue:
         if conv_id not in self._queues:
@@ -113,16 +114,37 @@ class _ActionQueue:
             except asyncio.QueueEmpty:
                 pass
             q.put_nowait(action)
+        # Track pending action for TTL
+        self._pending[conv_id] = action
 
     async def wait(self, conv_id: str, timeout: float = 300.0) -> dict[str, Any] | None:
         q = self._get_queue(conv_id)
         self._listeners.add(conv_id)
         try:
-            return await asyncio.wait_for(q.get(), timeout=timeout)
+            result = await asyncio.wait_for(q.get(), timeout=timeout)
+            # Action consumed — clear pending
+            self._pending.pop(conv_id, None)
+            return result
         except asyncio.TimeoutError:
             return None
         finally:
             self._listeners.discard(conv_id)
+
+    def is_pending(self, conv_id: str) -> bool:
+        """True if an action was pushed but not yet consumed by wait()."""
+        return conv_id in self._pending
+
+    def expire(self, conv_id: str) -> dict[str, Any] | None:
+        """Remove and return a pending action (TTL expired). Drains the queue entry too."""
+        action = self._pending.pop(conv_id, None)
+        if action:
+            q = self._queues.get(conv_id)
+            if q:
+                try:
+                    q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+        return action
 
 
 # ─── Request/Response Models ──────────────────────────────────────
@@ -739,11 +761,19 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
         # ── Pull mode: no callback_url → queue for MCP wait_for_action ──
         if not conv_data.callback_url:
+            logger.info("Action push: conv=%s intent=%r listener=%s", conv_id, req.intent, action_queue.has_listener(conv_id))
             action_queue.push(conv_id, req.intent, req.context)
-            pubsub.publish(conv_id, "chat", {
-                "role": "system",
-                "content": "Action received, waiting for agent to process...",
-            })
+
+            # TTL: if no agent consumes this action within 45s, notify frontend
+            async def _action_ttl(cid: str, ttl: float = 45.0) -> None:
+                await asyncio.sleep(ttl)
+                if action_queue.is_pending(cid):
+                    action_queue.expire(cid)
+                    pubsub.publish(cid, "action_timeout", {
+                        "message": "Agent did not respond within 45s. You can retry or continue using the app.",
+                    })
+
+            asyncio.create_task(_action_ttl(conv_id))
             return {"ok": True, "type": "queued", "intent": req.intent}
 
         # ── Callback mode: dispatch to external agent ──
@@ -774,7 +804,9 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         if conv_data is None:
             raise HTTPException(status_code=404, detail="Conversation not found")
         timeout = min(max(timeout, 1.0), 600.0)
+        logger.info("Wait-action start: conv=%s timeout=%.0f", conv_id, timeout)
         action = await action_queue.wait(conv_id, timeout=timeout)
+        logger.info("Wait-action done: conv=%s got=%s", conv_id, action is not None)
         if action is None:
             return {"action": None, "timed_out": True}
         return {"action": action, "timed_out": False}
