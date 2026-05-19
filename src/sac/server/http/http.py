@@ -72,12 +72,15 @@ class _PubSub:
 
     def publish(self, conv_id: str, event_type: str, data: dict[str, Any]) -> None:
         payload = {"event": event_type, "data": json.dumps(data)}
-        for q in list(self._subs.get(conv_id, [])):
+        subs = list(self._subs.get(conv_id, []))
+        if event_type == "chat":
+            logger.info("PubSub chat publish: conv=%s subscribers=%d", conv_id, len(subs))
+        for q in subs:
             try:
                 q.put_nowait(payload)
             except asyncio.QueueFull:
                 # Slow consumer — drop silently rather than block agent flow.
-                pass
+                logger.warning("PubSub queue full: conv=%s event=%s", conv_id, event_type)
 
 
 class _ActionQueue:
@@ -513,6 +516,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             # the NL channel. We ignore classify's generated `reply` field —
             # that was meant for the legacy "assistant replies to user
             # message" flow; here the agent IS the message.
+            logger.info("Inbox chat path: conv=%s content_len=%d", conv.id, len(req.content))
             await sac._store.add_event(
                 MessageEvent(
                     conversation_id=conv.id,
@@ -704,8 +708,6 @@ def create_app(sac: SaC | None = None) -> FastAPI:
         async def event_generator():
             try:
                 while True:
-                    if await request.is_disconnected():
-                        break
                     try:
                         event = await asyncio.wait_for(q.get(), timeout=15.0)
                         yield event
@@ -783,7 +785,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 if action_queue.is_pending(cid):
                     action_queue.expire(cid)
                     pubsub.publish(cid, "action_timeout", {
-                        "message": "No agent picked up this action. Tell your agent to check the SaC MCP connection.",
+                        "message": "Agent did not respond. Tell your agent to \"restart sac mcp with wait_for_action\".",
                     })
 
             asyncio.create_task(_action_ttl(conv_id))

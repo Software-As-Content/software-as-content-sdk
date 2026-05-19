@@ -367,6 +367,7 @@ async function handleSend() {
   intentInput.value = '';
   resizeIntentInput();
   addChatMsg('user', message);
+  _knownMsgCount++;
 
   // Agent mode (callback or MCP pull): forward to /c/{id}/action.
   // callbackUrl is set for callback mode; for MCP pull mode the server
@@ -536,12 +537,14 @@ function setupEventSource(convId) {
   es.addEventListener('chat', (e) => {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
+    console.log('[SSE] chat event received:', data);
     if (/^Codex callback failed/i.test(data.content || '')) {
       showStatus(humanizeCallbackError(data.content), 'error');
       setPending(false);
       return;
     }
     addChatMsg(data.role || 'assistant', data.content || '');
+    _knownMsgCount++;
     hideStatus();
     setPending(false);
   });
@@ -576,7 +579,7 @@ function setupEventSource(convId) {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
     removeProcessingCard();
-    showStatus(data.message || 'No agent picked up this action. Check your MCP connection.', 'error');
+    showStatus(data.message || 'Agent did not respond. Tell your agent to "restart sac mcp with wait_for_action".', 'error');
     setPending(false);
   });
 
@@ -683,10 +686,44 @@ function setupEventSource(convId) {
     // keepalive — ignore
   });
 
-  es.onerror = (err) => {
-    // EventSource auto-reconnects; just log.
-    console.warn('SSE connection issue, will retry', err);
-  };
+  es.onerror = () => {};  // EventSource auto-reconnects; silence console noise
+}
+
+/** Poll for agent response when SSE is unreliable (MCP pull mode). */
+async function _pollPendingResult() {
+  if (!conversationId || !pendingAction) return;
+  try {
+    const res = await fetch('/conversations/' + conversationId);
+    if (!res.ok) return;
+    const { events = [] } = await res.json();
+    const msgs = events.filter(e => e.type === 'message');
+    // New chat messages? (e.g. send_chat response)
+    if (msgs.length > _knownMsgCount) {
+      const newMsgs = msgs.slice(_knownMsgCount);
+      for (const m of newMsgs) addChatMsg(m.role, m.content);
+      _knownMsgCount = msgs.length;
+      if (newMsgs.some(m => m.role === 'assistant')) {
+        hideStatus();
+        setPending(false);
+        return;
+      }
+    }
+    // New app version? (e.g. evolve_app response)
+    const versions = extractAppVersions(events);
+    if (versions.length > appVersions.length) {
+      const latest = versions[versions.length - 1];
+      appVersions = versions;
+      currentVersion = latest?.version || currentVersion;
+      if (latest && latest.version > viewedVersion) {
+        ensureVersionCard(latest, []);
+        applyAppVersion(latest);
+        viewedVersion = latest.version;
+        flashStatus(`v${latest.version} ready`, 'info');
+        removeProcessingCard();
+        setPending(false);
+      }
+    }
+  } catch { /* server down — ignore */ }
 }
 
 function renderSuggestions(suggestions) {
@@ -1550,6 +1587,7 @@ window.loadConv = async function(id) {
     callbackCards.clear();
 
     let lastSuggestions = [];
+    _knownMsgCount = events.filter(e => e.type === 'message').length;
     for (const evt of events) {
       if (evt.type === 'message') {
         addChatMsg(evt.role, evt.content);
@@ -1702,6 +1740,8 @@ function beginNewAttempt() {
 }
 
 let _pendingTimer = null;
+let _pendingPoll = null;   // polling interval while waiting for agent response
+let _knownMsgCount = 0;    // message events known to the frontend
 function setPending(value) {
   pendingAction = value;
   document.body.classList.toggle('is-pending', value);
@@ -1711,10 +1751,15 @@ function setPending(value) {
     _pendingTimer = setTimeout(() => {
       if (pendingAction) {
         removeProcessingCard();
-        showStatus('No agent picked up this action. Tell your agent to check the SaC MCP connection.', 'error');
+        showStatus('Agent did not respond. Tell your agent to use SaC MCP to restart server and wait for action.', 'error');
         setPending(false);
       }
     }, 45000);
+  }
+  // MCP pull mode: poll for missed events while pending (SSE may be unreliable)
+  if (_pendingPoll) { clearInterval(_pendingPoll); _pendingPoll = null; }
+  if (value && callbackUrl === '__mcp_pull__' && conversationId) {
+    _pendingPoll = setInterval(() => _pollPendingResult(), 4000);
   }
   // Swap send button between send mode and cancel mode
   if (value) {
