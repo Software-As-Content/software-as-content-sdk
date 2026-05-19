@@ -146,6 +146,7 @@ class ConversationData(BaseModel):
     callback_url: str | None = None
     callback_format: str | None = None  # "default" | "openclaw_gateway" | "codex_exec_resume" | ...
     callback_auth: str | None = None    # e.g. "Bearer <token>"
+    source: str | None = None           # "inbox" | "send" | None — how the conversation was created
 
 
 # ─── Conversation Events (discriminated union) ─────────────────────

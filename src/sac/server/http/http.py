@@ -90,11 +90,16 @@ class _ActionQueue:
 
     def __init__(self) -> None:
         self._queues: dict[str, asyncio.Queue] = {}
+        self._listeners: set[str] = set()  # conv_ids with active wait()
 
     def _get_queue(self, conv_id: str) -> asyncio.Queue:
         if conv_id not in self._queues:
             self._queues[conv_id] = asyncio.Queue(maxsize=32)
         return self._queues[conv_id]
+
+    def has_listener(self, conv_id: str) -> bool:
+        """True if an MCP host is actively waiting for actions on this conv."""
+        return conv_id in self._listeners
 
     def push(self, conv_id: str, intent: str, context: dict[str, Any] | None = None) -> None:
         q = self._get_queue(conv_id)
@@ -111,10 +116,13 @@ class _ActionQueue:
 
     async def wait(self, conv_id: str, timeout: float = 300.0) -> dict[str, Any] | None:
         q = self._get_queue(conv_id)
+        self._listeners.add(conv_id)
         try:
             return await asyncio.wait_for(q.get(), timeout=timeout)
         except asyncio.TimeoutError:
             return None
+        finally:
+            self._listeners.discard(conv_id)
 
 
 # ─── Request/Response Models ──────────────────────────────────────
@@ -163,6 +171,9 @@ class InboxRequest(BaseModel):
 
     - `content`: the actual data the agent wants rendered (any string form).
     - `intent`: optional human-readable label/hint for the rendering brain.
+    - `type`: agent's channel decision — "ui" (render app) or "chat" (store
+      as chat message). If omitted, SaC falls back to its built-in classifier
+      for backward compatibility with the product frontend.
     - `conversation_id`: omit for first call; include to evolve an existing
       conversation. SaC decides generate vs evolve based on conversation state.
     - `callback_url`: where SaC should POST user actions (button clicks,
@@ -175,6 +186,7 @@ class InboxRequest(BaseModel):
 
     content: str
     intent: str | None = None
+    type: str | None = None  # "ui" | "chat" | None (None = legacy classify fallback)
     conversation_id: str | None = None
     callback_url: str | None = None
     callback_format: str | None = None  # "default" | "openclaw_gateway" | "codex_exec_resume"
@@ -437,6 +449,12 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
         conv = await _get_or_create_conv(req.conversation_id, user_id=_get_user_id(request))
 
+        # Mark source so /action knows this conversation is agent-driven
+        # (MCP pull or callback), not product-driven (/send).
+        if not req.conversation_id:
+            # First call — mark as inbox-created
+            await sac._store.update_conversation(conv.id, source="inbox")
+
         # Persist callback settings on the conversation so future user actions
         # know where and how to POST. First call sets them; later calls may update.
         callback_updates: dict[str, Any] = {}
@@ -451,13 +469,20 @@ def create_app(sac: SaC | None = None) -> FastAPI:
 
         base = str(request.base_url).rstrip("/")
 
-        # Classify response shape: chat (NL) vs update (Φˢ render).
-        # Skip classification when an active callback run exists — the agent
-        # is responding to a user action and its content should always be
-        # rendered as UI, even if it looks text-heavy to the classifier.
-        if callback_manager.has_active_run(conv.id):
+        # Determine channel: ui (render app) vs chat (store message).
+        #
+        # Priority:
+        #   1. Agent explicitly sets req.type → trust the agent's decision
+        #   2. Active callback run → always "update" (agent is responding
+        #      to a user action, content should be rendered as UI)
+        #   3. Fallback → legacy classifier (for product frontend that
+        #      doesn't pass type yet)
+        if req.type == "chat":
+            classification = {"type": "chat"}
+        elif req.type == "ui" or callback_manager.has_active_run(conv.id):
             classification = {"type": "update"}
         else:
+            # Legacy fallback: no explicit type → classify via LLM
             classification = await sac._legacy_shim.classify(conv, req.content)
 
         if classification["type"] == "chat":
@@ -679,9 +704,18 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         # ── Pre-classify: intercept chat-type intents before dispatching ──
-        # Only for text input from the chat panel (no context = not a button
-        # click in the app). Button clicks always go to the agent.
-        if req.context is None:
+        # Only applies in "product mode" — conversations created via /send
+        # (product frontend) with no external agent connected.
+        #
+        # When an external agent owns this conversation (source="inbox",
+        # callback_url set, or MCP pull), the agent decides chat-vs-ui.
+        # We pass everything through without classifying.
+        is_agent_owned = (
+            conv_data.source == "inbox"       # created via /inbox (MCP or agent)
+            or bool(conv_data.callback_url)   # has callback (Codex/OpenClaw)
+        )
+
+        if not is_agent_owned and req.context is None:
             conv = await _get_or_create_conv(conv_id, user_id=_get_user_id(request))
             try:
                 classification = await conv.classify(req.intent)

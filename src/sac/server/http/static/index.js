@@ -1433,7 +1433,9 @@ window.loadConv = async function(id) {
 
     conversationId = id;
     currentVersion = conv.event_count;
-    callbackUrl = conv.callback_url || null;  // determines routing mode
+    // Agent-owned conversations route through /c/{id}/action (callback or MCP pull).
+    // Product-mode conversations (no agent) use /send → StandaloneAgent.
+    callbackUrl = conv.callback_url || (conv.source === 'inbox' ? '__mcp_pull__' : null);
     setupEventSource(id);                      // subscribe to live updates
     // conv info display removed from header
     appVersions = extractAppVersions(events);
