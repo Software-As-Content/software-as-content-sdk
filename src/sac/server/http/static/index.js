@@ -46,7 +46,7 @@ function countChangeMarkers(code) {
 function setChangeCount(count) {
   _changeCount = Math.max(0, Number(count) || 0);
   if (_changeCount > 0) {
-    showChangesBtn.textContent = `Check Changes (${_changeCount})`;
+    showChangesBtn.textContent = `Changes ${_changeCount}`;
     showChangesBtn.disabled = false;
     showChangesBtn.classList.remove('changes-btn-empty');
     _changeIndex = 0;
@@ -196,8 +196,46 @@ document.querySelectorAll('.preview-tab').forEach(tab => {
 
 // ─── Sidebar toggle ─────────────────────────────────────────
 
-document.getElementById('sidebar-toggle').addEventListener('click', () => {
-  document.querySelector('.sidebar').classList.toggle('collapsed');
+const mainEl = document.querySelector('.main');
+const sidebarEl = document.querySelector('.sidebar');
+const sidebarResizer = document.getElementById('sidebar-resizer');
+const sidebarToggle = document.getElementById('sidebar-toggle');
+const savedSidebarWidth = Number(localStorage.getItem('sac-sidebar-width') || 0);
+if (savedSidebarWidth) {
+  sidebarEl.style.flexBasis = `${Math.max(320, Math.min(680, savedSidebarWidth))}px`;
+}
+
+sidebarToggle.addEventListener('click', (event) => {
+  const collapsed = sidebarEl.classList.toggle('collapsed');
+  sidebarResizer.classList.toggle('hidden', collapsed);
+  const button = event.currentTarget;
+  button.classList.toggle('is-collapsed', collapsed);
+  button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  button.setAttribute('aria-label', collapsed ? 'Show activity panel' : 'Hide activity panel');
+  button.title = collapsed ? 'Show activity panel' : 'Hide activity panel';
+});
+
+sidebarResizer.addEventListener('pointerdown', (event) => {
+  if (sidebarEl.classList.contains('collapsed')) return;
+  event.preventDefault();
+  sidebarResizer.setPointerCapture?.(event.pointerId);
+  mainEl.classList.add('is-resizing');
+
+  const onMove = (moveEvent) => {
+    const nextWidth = Math.max(320, Math.min(680, window.innerWidth - moveEvent.clientX));
+    sidebarEl.style.flexBasis = `${nextWidth}px`;
+  };
+  const onUp = (upEvent) => {
+    mainEl.classList.remove('is-resizing');
+    sidebarResizer.releasePointerCapture?.(upEvent.pointerId);
+    const width = Math.round(sidebarEl.getBoundingClientRect().width);
+    localStorage.setItem('sac-sidebar-width', String(width));
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+  };
+
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 });
 
 // ─── Send handler (unified entry point) ──────────────────────

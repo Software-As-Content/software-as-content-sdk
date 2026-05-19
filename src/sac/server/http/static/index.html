@@ -11,17 +11,36 @@
 <div class="header">
   <div class="brand">
     <img class="brand-logo" src="/static/logo.png" alt="" aria-hidden="true">
-    <div>
-      <h1>Software as Content</h1>
-      <div class="brand-subtitle">SDK interaction layer</div>
-    </div>
+    <h1>Software as Content <span class="brand-subtitle">- Agent Interaction Layer</span></h1>
   </div>
   <div class="header-spacer"></div>
-  <button class="changes-btn changes-btn-empty" id="show-changes-btn" type="button" disabled>Changes</button>
-  <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Toggle activity">☰</button>
+  <div class="header-actions">
+    <a class="header-action" href="https://softwareascontent.com" target="_blank" rel="noreferrer">
+      <svg class="header-action-icon" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M6.5 3.5h-2a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" />
+        <path d="M9 2.5h4.5V7" />
+        <path d="m8.5 7.5 5-5" />
+      </svg>
+      Visit SaC
+    </a>
+    <a class="header-action" href="mailto:feedback@softwareascontent.com">
+      <svg class="header-action-icon" viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3.2 3.2h9.6a1.8 1.8 0 0 1 1.8 1.8v5.5a1.8 1.8 0 0 1-1.8 1.8H7.1l-3.3 2v-2A1.8 1.8 0 0 1 2 10.5V5a1.8 1.8 0 0 1 1.2-1.8Z" />
+      </svg>
+      Feedback
+    </a>
+    <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Hide activity panel" aria-label="Hide activity panel" aria-expanded="true">
+      <svg class="panel-toggle-icon" viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2.5" y="3" width="11" height="10" rx="2" />
+        <path d="M9.5 3v10" />
+        <path class="panel-chevron" d="m6.2 6 2 2-2 2" />
+      </svg>
+    </button>
+  </div>
 </div>
 
 <div class="main">
+  <div class="sidebar-resizer" id="sidebar-resizer" aria-hidden="true"></div>
   <div class="sidebar">
     <div class="tab-bar">
       <button class="tab active" data-tab="chat" type="button" aria-selected="true">Activity</button>
@@ -69,9 +88,12 @@
   </div>
 
   <div class="preview-area">
-    <div class="preview-tabs" id="preview-tabs">
-      <button class="preview-tab active" data-ptab="app" type="button" aria-selected="true">App</button>
-      <button class="preview-tab" data-ptab="code" type="button" aria-selected="false">Code</button>
+    <div class="preview-toolbar">
+      <div class="preview-tabs" id="preview-tabs">
+        <button class="preview-tab active" data-ptab="app" type="button" aria-selected="true">App</button>
+        <button class="preview-tab" data-ptab="code" type="button" aria-selected="false">Code</button>
+      </div>
+      <button class="preview-context-action changes-btn changes-btn-empty" id="show-changes-btn" type="button" disabled>Changes</button>
     </div>
     <div class="loading" id="placeholder">
       <div class="empty-hero">
