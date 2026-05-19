@@ -154,6 +154,116 @@ button:focus-visible, textarea:focus-visible, input:focus-visible {
     0 0 0 1px rgba(28,25,23,0.07),
     0 14px 30px -18px rgba(28,25,23,0.62);
 }
+
+/* ─── Feedback modal ───────────────────────────────────── */
+.feedback-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(28,25,23,0.35);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+.feedback-card {
+  position: relative;
+  width: min(440px, 100%);
+  border: none;
+  border-radius: 28px;
+  padding: 32px;
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.9) inset,
+    0 0 0 1px rgba(255,255,255,0.6) inset,
+    0 20px 60px -20px rgba(0,0,0,0.25),
+    0 8px 24px -12px rgba(0,0,0,0.12);
+}
+.feedback-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #a8a29e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.feedback-close:hover { color: #44403c; background: rgba(214,211,209,0.6); }
+.feedback-close svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.feedback-heading { margin-bottom: 24px; }
+.feedback-heading h2 {
+  color: #1c1917;
+  font-size: 22px;
+  line-height: 1.1;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.feedback-heading p {
+  margin-top: 8px;
+  color: #57534e;
+  font-size: 13.5px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+.feedback-contact-links {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.feedback-contact-links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.66);
+  border: 1px solid rgba(0,0,0,0.07);
+  color: #1c1917;
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.feedback-contact-links a:hover {
+  background: rgba(255,255,255,0.86);
+  color: #1c1917;
+  border-color: rgba(0,0,0,0.1);
+}
+.feedback-contact-links svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.feedback-contact-links a[href*="github"] svg {
+  fill: currentColor;
+  stroke: none;
+}
 .changes-btn {
   flex: 0 0 auto;
   border: none;

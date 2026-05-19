@@ -15,7 +15,7 @@
   </div>
   <div class="header-spacer"></div>
   <div class="header-actions">
-    <a class="header-action" href="https://softwareascontent.com" target="_blank" rel="noreferrer">
+    <a class="header-action" href="https://sac.dynsoft.ai" target="_blank" rel="noreferrer">
       <svg class="header-action-icon" viewBox="0 0 16 16" aria-hidden="true">
         <path d="M6.5 3.5h-2a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" />
         <path d="M9 2.5h4.5V7" />
@@ -23,12 +23,12 @@
       </svg>
       Visit SaC
     </a>
-    <a class="header-action" href="mailto:feedback@softwareascontent.com">
+    <button class="header-action" id="feedback-open" type="button" aria-label="Send feedback">
       <svg class="header-action-icon" viewBox="0 0 16 16" aria-hidden="true">
         <path d="M3.2 3.2h9.6a1.8 1.8 0 0 1 1.8 1.8v5.5a1.8 1.8 0 0 1-1.8 1.8H7.1l-3.3 2v-2A1.8 1.8 0 0 1 2 10.5V5a1.8 1.8 0 0 1 1.2-1.8Z" />
       </svg>
       Feedback
-    </a>
+    </button>
     <button class="sidebar-toggle" id="sidebar-toggle" type="button" title="Hide activity panel" aria-label="Hide activity panel" aria-expanded="true">
       <svg class="panel-toggle-icon" viewBox="0 0 16 16" aria-hidden="true">
         <rect x="2.5" y="3" width="11" height="10" rx="2" />
@@ -37,6 +37,38 @@
       </svg>
     </button>
   </div>
+</div>
+
+<div class="feedback-overlay hidden" id="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+  <form class="feedback-card" id="feedback-form">
+    <button class="feedback-close" id="feedback-close" type="button" aria-label="Close feedback">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+      </svg>
+    </button>
+    <div class="feedback-body" id="feedback-body">
+      <div class="feedback-heading">
+        <h2 id="feedback-title">Send feedback</h2>
+        <p>The SDK viewer does not submit feedback directly yet. Send a note by email or open a GitHub issue.</p>
+      </div>
+      <div class="feedback-contact-links" aria-label="Feedback channels">
+        <a href="mailto:mulong@mulongxie.me" id="feedback-email-link">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M2.5 4.2h11v7.6h-11z" />
+            <path d="m3 4.7 5 4 5-4" />
+          </svg>
+          Email mulong@mulongxie.me
+        </a>
+        <a href="https://github.com/Software-As-Content/software-as-content-sdk/issues" target="_blank" rel="noreferrer">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M8 1.8a6.2 6.2 0 0 0-2 12.08c.31.06.42-.13.42-.3v-1.08c-1.72.37-2.08-.74-2.08-.74-.28-.7-.68-.9-.68-.9-.56-.38.04-.37.04-.37.62.04.95.64.95.64.55.94 1.44.67 1.79.51.06-.4.22-.67.39-.82-1.37-.16-2.82-.69-2.82-3.06 0-.68.24-1.23.64-1.66-.06-.16-.28-.79.06-1.64 0 0 .52-.17 1.7.64A5.8 5.8 0 0 1 8 4.9c.54 0 1.08.07 1.58.22 1.18-.81 1.7-.64 1.7-.64.34.85.12 1.48.06 1.64.4.43.64.98.64 1.66 0 2.38-1.45 2.9-2.83 3.06.22.19.42.57.42 1.15v1.7c0 .17.11.36.43.3A6.2 6.2 0 0 0 8 1.8Z" />
+          </svg>
+          Open GitHub issue
+        </a>
+      </div>
+    </div>
+  </form>
 </div>
 
 <div class="main">

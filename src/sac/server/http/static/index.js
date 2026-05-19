@@ -238,6 +238,29 @@ sidebarResizer.addEventListener('pointerdown', (event) => {
   window.addEventListener('pointerup', onUp);
 });
 
+// ─── Feedback modal ──────────────────────────────────────────
+
+const feedbackModal = document.getElementById('feedback-modal');
+const feedbackOpen = document.getElementById('feedback-open');
+const feedbackClose = document.getElementById('feedback-close');
+
+function openFeedbackModal() {
+  feedbackModal.classList.remove('hidden');
+}
+
+function closeFeedbackModal() {
+  feedbackModal.classList.add('hidden');
+}
+
+feedbackOpen.addEventListener('click', openFeedbackModal);
+feedbackClose.addEventListener('click', closeFeedbackModal);
+feedbackModal.addEventListener('click', (event) => {
+  if (event.target === feedbackModal) closeFeedbackModal();
+});
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !feedbackModal.classList.contains('hidden')) closeFeedbackModal();
+});
+
 // ─── Send handler (unified entry point) ──────────────────────
 
 const sendBtn = document.getElementById('send-btn');
