@@ -770,7 +770,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
                 if action_queue.is_pending(cid):
                     action_queue.expire(cid)
                     pubsub.publish(cid, "action_timeout", {
-                        "message": "Agent did not respond within 45s. You can retry or continue using the app.",
+                        "message": "No agent picked up this action. Check that your MCP host is still connected.",
                     })
 
             asyncio.create_task(_action_ttl(conv_id))

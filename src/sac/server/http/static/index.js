@@ -576,7 +576,7 @@ function setupEventSource(convId) {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
     removeProcessingCard();
-    flashStatus(data.message || 'Agent did not respond in time.', 'error', 4000);
+    showStatus(data.message || 'No agent picked up this action. Check your MCP connection.', 'error');
     setPending(false);
   });
 
@@ -1644,7 +1644,11 @@ function showStatus(text, kind = 'info') {
   bar.classList.remove('hidden');
   bar.classList.remove('status-running', 'status-success', 'status-error');
   if (kind !== 'info') bar.classList.add(`status-${kind}`);
-  bar.textContent = text;
+  if (kind === 'error') {
+    bar.innerHTML = `<span>${escHtml(text)}</span><span class="status-close" onclick="document.getElementById('status-bar').classList.add('hidden')">×</span>`;
+  } else {
+    bar.textContent = text;
+  }
   scrollChatToBottom({ defer: true });
 }
 

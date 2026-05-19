@@ -874,6 +874,12 @@ body.is-pending .input-wrapper {
 .status-success::before { background: #22c55e; }
 .status-error { color: #991b1b; }
 .status-error::before { background: #ef4444; }
+.status-close {
+  margin-left: auto; cursor: pointer; font-size: 15px; line-height: 1;
+  opacity: 0.4; padding: 0 2px; pointer-events: auto;
+}
+.status-close:hover { opacity: 0.8; }
+.status-error { pointer-events: auto; }
 
 /* ─── Processing card (MCP pull mode) ──────────────────── */
 .processing-card .processing-stages { padding: 8px 14px 10px; }
