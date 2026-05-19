@@ -552,6 +552,8 @@ function setupEventSource(convId) {
   es.addEventListener('callback_run', (e) => {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
+    // Agent is actively working — cancel the "no agent" timeout
+    if (_pendingTimer) { clearTimeout(_pendingTimer); _pendingTimer = null; }
     renderCallbackRun(data);
     if (data.status === 'queued') {
       showStatus(`Callback queued (${adapterLabel(data.adapter)})`, 'running');

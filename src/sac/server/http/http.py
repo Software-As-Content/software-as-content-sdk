@@ -507,6 +507,10 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             classification = {"type": "chat"}
         elif req.type == "ui" or callback_manager.has_active_run(conv.id):
             classification = {"type": "update"}
+        elif req.callback_url or getattr(await sac._store.get_conversation(conv.id), "callback_url", None):
+            # Agent-owned conversation (has callback_url) but no explicit
+            # type → default to UI.  Agents POST content to render, not chat.
+            classification = {"type": "update"}
         else:
             # Legacy fallback: no explicit type → classify via LLM
             classification = await sac._legacy_shim.classify(conv, req.content)

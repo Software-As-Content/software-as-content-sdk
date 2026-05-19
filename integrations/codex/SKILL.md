@@ -172,9 +172,27 @@ curl -s --connect-timeout 5 -X POST "http://127.0.0.1:18420/inbox" \
   -d '{"conversation_id": "abc-123", "content": "UPDATED CONTENT", "intent": "what changed"}'
 ```
 
+## Chat Reply (no UI change)
+
+When the user's action is conversational — a greeting, question, clarification,
+or small talk — do **not** evolve the app. Instead, POST a chat message:
+
+```bash
+cat > /tmp/sac_chat.json << 'CHAT_EOF'
+{"conversation_id": "abc-123", "content": "YOUR_REPLY", "type": "chat"}
+CHAT_EOF
+
+curl -s --connect-timeout 5 -X POST "http://127.0.0.1:18420/inbox" \
+  -H "Content-Type: application/json" \
+  --data-binary @/tmp/sac_chat.json
+```
+
+This shows an assistant bubble in the viewer without touching the app UI.
+
 ## Handle SaC App Actions
 
-When a user clicks a button in the SaC app, SaC resumes Codex with a message that starts:
+When a user clicks a button or sends a message in the SaC app, SaC resumes
+Codex with a message that starts:
 
 ```text
 A user is viewing a SaC interactive app and requested: ...
@@ -182,10 +200,14 @@ A user is viewing a SaC interactive app and requested: ...
 
 Follow that message exactly:
 
-1. Continue the requested analysis.
-2. Do not ask clarifying questions.
-3. Use existing context first; avoid broad validation/debugging unless the action explicitly asks for it.
-4. Run the provided `curl -s -X POST ... /inbox` command with the same `conversation_id`.
+1. Decide: does the request need a **UI change** (new analysis, fix, feature)
+   or a **chat reply** (greeting, question, explanation)?
+2. For UI changes → do the analysis, then publish updated content (see
+   "Update Existing App" above) with the same `conversation_id`.
+3. For chat replies → POST a chat message (see "Chat Reply" above).
+4. Do not ask clarifying questions.
+5. Use existing context first; avoid broad validation/debugging unless the
+   action explicitly asks for it.
 
 ## Codex Demo Scenario
 
