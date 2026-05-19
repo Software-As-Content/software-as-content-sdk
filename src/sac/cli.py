@@ -43,6 +43,21 @@ def main() -> None:
     gen_parser.add_argument("--model", default=None, help="Model to use")
     gen_parser.add_argument("--no-search", action="store_true", help="Disable web search")
 
+    # sac setup
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Configure SaC for an agent platform",
+    )
+    setup_sub = setup_parser.add_subparsers(dest="platform")
+    cc_parser = setup_sub.add_parser(
+        "claude-code",
+        help="Set up SaC as an MCP server for Claude Code",
+    )
+    cc_parser.add_argument(
+        "--remove", action="store_true",
+        help="Remove the SaC MCP server from Claude Code",
+    )
+
     # sac publish
     pub_parser = subparsers.add_parser(
         "publish",
@@ -88,11 +103,191 @@ def main() -> None:
     elif args.command == "generate":
         asyncio.run(_generate(args))
 
+    elif args.command == "setup":
+        if args.platform == "claude-code":
+            _setup_claude_code(args)
+        else:
+            setup_parser.print_help()
+
     elif args.command == "publish":
         _publish(args)
 
     else:
         parser.print_help()
+
+
+def _get_desktop_config_path() -> Path | None:
+    """Return the Claude Desktop config file path for this platform."""
+    import platform
+    system = platform.system()
+    if system == "Darwin":
+        return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    elif system == "Windows":
+        appdata = os.environ.get("APPDATA", "")
+        if appdata:
+            return Path(appdata) / "Claude" / "claude_desktop_config.json"
+    elif system == "Linux":
+        return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+    return None
+
+
+def _setup_claude_code(args: argparse.Namespace) -> None:
+    """Set up or remove SaC as an MCP server for Claude Code."""
+    import json
+    import shutil
+    import subprocess
+
+    # ── Remove ──────────────────────────────────────────────────
+    if args.remove:
+        print("Removing SaC MCP server from Claude Code...")
+        removed = False
+
+        # 1. Desktop config
+        desktop_config = _get_desktop_config_path()
+        if desktop_config and desktop_config.exists():
+            try:
+                config = json.loads(desktop_config.read_text(encoding="utf-8"))
+                if "sac" in config.get("mcpServers", {}):
+                    config["mcpServers"].pop("sac")
+                    if not config["mcpServers"]:
+                        config.pop("mcpServers")
+                    desktop_config.write_text(
+                        json.dumps(config, indent=2, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                    print(f"  ✓ Removed from Desktop config")
+                    removed = True
+            except Exception as exc:
+                print(f"  ✗ Failed to update Desktop config: {exc}")
+
+        # 2. CLI config (project scope)
+        claude_path = shutil.which("claude")
+        if claude_path:
+            for scope in ("project", "user", "local"):
+                result = subprocess.run(
+                    ["claude", "mcp", "remove", "-s", scope, "sac"],
+                    capture_output=True, text=True,
+                )
+                if result.returncode == 0:
+                    print(f"  ✓ Removed from CLI {scope} config")
+                    removed = True
+
+        if not removed:
+            print("  ✗ No SaC server found in any config")
+        else:
+            print()
+            print("Restart Claude Code to apply changes.")
+        return
+
+    # ── Setup ───────────────────────────────────────────────────
+    print()
+    print("SaC MCP Setup for Claude Code")
+    print("─" * 30)
+    print()
+
+    # Check prerequisites
+    print("Checking prerequisites...")
+
+    sac_path = shutil.which("sac")
+    if not sac_path:
+        print("  ✗ sac CLI not found on PATH")
+        print("    Install with: pip install sac-sdk")
+        sys.exit(1)
+    print(f"  ✓ sac CLI: {sac_path}")
+
+    # Collect API keys
+    print()
+    print("API Keys")
+    print()
+
+    api_key = os.environ.get("SAC_API_KEY", "")
+    if api_key:
+        masked = api_key[:8] + "..." + api_key[-4:]
+        use_env = input(f"  SAC_API_KEY found in env: {masked}. Use it? [Y/n] ").strip().lower()
+        if use_env in ("n", "no"):
+            api_key = ""
+
+    if not api_key:
+        api_key = input("  SAC_API_KEY (OpenRouter): ").strip()
+        if not api_key:
+            print("  ✗ SAC_API_KEY is required")
+            sys.exit(1)
+
+    search_key = os.environ.get("SAC_SEARCH_API_KEY", "")
+    if search_key:
+        masked = search_key[:8] + "..." + search_key[-4:]
+        use_env = input(f"  SAC_SEARCH_API_KEY found in env: {masked}. Use it? [Y/n] ").strip().lower()
+        if use_env in ("n", "no"):
+            search_key = ""
+
+    if not search_key:
+        search_key = input("  SAC_SEARCH_API_KEY (Tavily, Enter to skip): ").strip()
+
+    data_dir = os.environ.get("SAC_DATA_DIR", "")
+    if not data_dir:
+        default_dir = str(Path.home() / ".sac")
+        data_dir = input(f"  SAC_DATA_DIR [{default_dir}]: ").strip() or default_dir
+
+    # Build server entry
+    server_entry = {
+        "command": sac_path,
+        "args": ["serve", "--transport", "stdio"],
+        "env": {"SAC_API_KEY": api_key, "SAC_DATA_DIR": data_dir},
+    }
+    if search_key:
+        server_entry["env"]["SAC_SEARCH_API_KEY"] = search_key
+
+    print()
+    print("Configuring MCP server...")
+    installed = False
+
+    # 1. Desktop config
+    desktop_config = _get_desktop_config_path()
+    if desktop_config:
+        try:
+            if desktop_config.exists():
+                config = json.loads(desktop_config.read_text(encoding="utf-8"))
+            else:
+                desktop_config.parent.mkdir(parents=True, exist_ok=True)
+                config = {}
+            config.setdefault("mcpServers", {})["sac"] = server_entry
+            desktop_config.write_text(
+                json.dumps(config, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            print(f"  ✓ Desktop config")
+            installed = True
+        except Exception as exc:
+            print(f"  ✗ Desktop config failed: {exc}")
+
+    # 2. CLI config (project scope)
+    claude_path = shutil.which("claude")
+    if claude_path:
+        env_args = ["-e", f"SAC_API_KEY={api_key}"]
+        if search_key:
+            env_args += ["-e", f"SAC_SEARCH_API_KEY={search_key}"]
+        env_args += ["-e", f"SAC_DATA_DIR={data_dir}"]
+
+        result = subprocess.run(
+            ["claude", "mcp", "add", "-s", "project"] + env_args
+            + ["--", "sac", sac_path, "serve", "--transport", "stdio"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            print(f"  ✓ CLI project config")
+            installed = True
+        else:
+            print(f"  ⚠ CLI config skipped: {(result.stderr or result.stdout).strip()}")
+
+    if not installed:
+        print("  ✗ Failed to write any config")
+        sys.exit(1)
+
+    print()
+    print("Done! Restart Claude Code to activate SaC tools:")
+    print("  generate_app, evolve_app, wait_for_action,")
+    print("  list_conversations, get_conversation")
+    print()
 
 
 async def _generate(args: argparse.Namespace) -> None:

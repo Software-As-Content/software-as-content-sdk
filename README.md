@@ -51,7 +51,7 @@ say so up front.
 ## Quickstart
 
 ```bash
-pip install sac-sdk[server]
+pip install sac-sdk
 export SAC_API_KEY="sk-or-..."        # OpenRouter key
 ```
 
@@ -87,7 +87,7 @@ Local playground with chat, render, conversation history, and an API explorer.
 The fastest way to feel SaC.
 
 ```bash
-pip install sac-sdk[server]
+pip install sac-sdk
 sac serve
 ```
 
@@ -113,7 +113,7 @@ agent gets four tools: `generate_app`, `evolve_app`, `list_conversations`,
 `get_conversation`. No code changes needed in the host.
 
 ```bash
-pip install sac-sdk[mcp]
+pip install sac-sdk
 sac serve --transport stdio
 ```
 
