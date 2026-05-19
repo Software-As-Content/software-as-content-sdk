@@ -104,6 +104,7 @@ let streamFlushTimer = null;
 const STREAM_FLUSH_MS = 150;
 let pendingSearchSources = [];   // search results accumulated during a generation cycle
 let pendingStages = [];          // stage events accumulated during a generation cycle
+let processingCardEl = null;     // live processing card for MCP pull mode
 
 function streamPush(chunk) {
   if (!streamBuffer) {
@@ -288,7 +289,17 @@ const codeDisplay = document.getElementById('code-display');
 const codeMeta = document.getElementById('code-meta');
 const copyCodeBtn = document.getElementById('copy-code-btn');
 let intentInputComposing = false;
-sendBtn.addEventListener('click', () => handleSend());
+sendBtn.addEventListener('click', () => {
+  if (pendingAction) {
+    // Cancel mode
+    hideStatus();
+    setPending(false);
+    removeProcessingCard();
+    addChatMsg('system', 'Cancelled.');
+    return;
+  }
+  handleSend();
+});
 intentInput.addEventListener('compositionstart', () => {
   intentInputComposing = true;
 });
@@ -474,6 +485,7 @@ function setupEventSource(convId) {
 
     // Finalize any in-progress stream before applying the version.
     streamReset();
+    removeProcessingCard();
 
     // New App version pushed by an agent — fetch latest code and re-render.
     try {
@@ -529,8 +541,12 @@ function setupEventSource(convId) {
       return;
     }
     addChatMsg(data.role || 'assistant', data.content || '');
-    hideStatus();
-    setPending(false);
+    // pending: true means the action is queued but agent hasn't started yet
+    // (MCP pull mode) — keep the status bar and pending state alive
+    if (!data.pending) {
+      hideStatus();
+      setPending(false);
+    }
   });
 
   es.addEventListener('callback_run', (e) => {
@@ -559,6 +575,14 @@ function setupEventSource(convId) {
     renderCallbackLog(data);
   });
 
+  es.addEventListener('action_timeout', (e) => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    removeProcessingCard();
+    flashStatus(data.message || 'Agent did not respond in time.', 'error', 4000);
+    setPending(false);
+  });
+
   // ─── Streaming events (from /inbox generation) ──────────────
 
   es.addEventListener('stage', (e) => {
@@ -567,6 +591,10 @@ function setupEventSource(convId) {
     showStatus(`${data.name}: ${data.status}`, 'running');
     if ((data.status === 'complete' || data.status === 'success') && data.duration) {
       pendingStages.push({ name: data.name, duration: data.duration });
+    }
+    // Show processing card in MCP pull mode (no callback cards active)
+    if (callbackCards.size === 0) {
+      updateProcessingStage(data.name, data.status);
     }
   });
 
@@ -580,6 +608,9 @@ function setupEventSource(convId) {
     }
     if (data.results?.length > 0) {
       showStatus(`Searched: ${data.results.map(r => r.query).join(', ')}`, 'running');
+      if (callbackCards.size === 0) {
+        updateProcessingStage(`search: ${data.results.length} result${data.results.length > 1 ? 's' : ''}`, 'success');
+      }
     }
   });
 
@@ -643,6 +674,7 @@ function setupEventSource(convId) {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
     streamReset();
+    removeProcessingCard();
     showStatus('Error: ' + (data.error || 'unknown'), 'error');
     addChatMsg('system', 'Error: ' + (data.error || 'unknown'));
     setPending(false);
@@ -790,6 +822,7 @@ function handleSSEEvent(eventType, data) {
     case 'complete': {
       // Final render with the authoritative code from the complete event
       streamReset();
+      removeProcessingCard();
       const app = data.app;
       renderer.render(app.code);
 
@@ -845,6 +878,56 @@ function addChatMsg(role, content) {
   msg.innerHTML = `<div class="chat-bubble">${escHtml(content)}</div>`;
   area.appendChild(msg);
   scrollChatToBottom();
+}
+
+// ─── Processing card (MCP pull mode) ─────────────────────
+// Shows pipeline stages in the chat timeline when no callback card exists.
+
+function ensureProcessingCard() {
+  if (processingCardEl) return processingCardEl;
+  const area = document.getElementById('chat-area');
+  const el = document.createElement('div');
+  el.className = 'version-card pending processing-card';
+  el.id = 'mcp-processing-card';
+  const title = lastUserIntent || 'Processing...';
+  el.innerHTML = `
+    <div class="vc-header">
+      <span class="vc-dot vc-dot-pending"></span>
+      <span class="version-card-title" title="${escHtml(title)}">${escHtml(compactText(title, 140))}</span>
+      <span class="version-card-kind">SaC · generating</span>
+    </div>
+    <div class="processing-stages"></div>`;
+  area.appendChild(el);
+  processingCardEl = el;
+  scrollChatToBottom();
+  return el;
+}
+
+function updateProcessingStage(name, status) {
+  const card = ensureProcessingCard();
+  const stagesEl = card.querySelector('.processing-stages');
+  let stageEl = stagesEl.querySelector(`[data-stage="${CSS.escape(name)}"]`);
+  if (!stageEl) {
+    stageEl = document.createElement('div');
+    stageEl.className = 'processing-stage-item';
+    stageEl.dataset.stage = name;
+    stagesEl.appendChild(stageEl);
+  }
+  const icon = status === 'running' ? '●' : (status === 'completed' || status === 'complete' || status === 'success') ? '✓' : status === 'error' ? '✗' : '○';
+  const cls = status === 'running' ? 'stage-running' : (status === 'completed' || status === 'complete' || status === 'success') ? 'stage-done' : status === 'error' ? 'stage-error' : '';
+  stageEl.className = `processing-stage-item ${cls}`;
+  stageEl.textContent = `${icon} ${name}`;
+  // Update card header kind
+  const kindEl = card.querySelector('.version-card-kind');
+  if (kindEl) kindEl.textContent = `SaC · ${name}`;
+  scrollChatToBottom();
+}
+
+function removeProcessingCard() {
+  if (processingCardEl) {
+    processingCardEl.remove();
+    processingCardEl = null;
+  }
 }
 
 function extractAppVersions(events) {
@@ -1612,12 +1695,24 @@ function hideSuggestions() {
 
 function beginNewAttempt() {
   hidePreviewNotice();
+  removeProcessingCard();
 }
 
 function setPending(value) {
   pendingAction = value;
   document.body.classList.toggle('is-pending', value);
-  sendBtn.disabled = value;
+  // Swap send button between send mode and cancel mode
+  if (value) {
+    sendBtn.disabled = false;
+    sendBtn.classList.add('cancel-mode');
+    sendBtn.textContent = '×';
+    sendBtn.title = 'Cancel';
+  } else {
+    sendBtn.classList.remove('cancel-mode');
+    sendBtn.textContent = '↑';
+    sendBtn.title = 'Send';
+    sendBtn.disabled = false;
+  }
   // Disable/enable suggestion buttons
   document.querySelectorAll('.suggestion-btn').forEach(b => {
     b.disabled = value;
