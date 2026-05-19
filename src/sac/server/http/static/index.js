@@ -207,9 +207,21 @@ const intentInput = document.getElementById('intent');
 const codeDisplay = document.getElementById('code-display');
 const codeMeta = document.getElementById('code-meta');
 const copyCodeBtn = document.getElementById('copy-code-btn');
+let intentInputComposing = false;
 sendBtn.addEventListener('click', () => handleSend());
+intentInput.addEventListener('compositionstart', () => {
+  intentInputComposing = true;
+});
+intentInput.addEventListener('compositionend', () => {
+  intentInputComposing = false;
+  resizeIntentInput();
+});
 intentInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  const composing = intentInputComposing || e.isComposing || e.keyCode === 229;
+  if (e.key === 'Enter' && !e.shiftKey && !composing) {
+    e.preventDefault();
+    handleSend();
+  }
 });
 intentInput.addEventListener('input', resizeIntentInput);
 document.querySelectorAll('#example-prompts button').forEach((button) => {
@@ -1542,8 +1554,11 @@ function setPending(value) {
 }
 
 function resizeIntentInput() {
+  const maxHeight = 118;
   intentInput.style.height = 'auto';
-  intentInput.style.height = `${Math.max(20, Math.min(intentInput.scrollHeight, 96))}px`;
+  const nextHeight = Math.max(22, Math.min(intentInput.scrollHeight, maxHeight));
+  intentInput.style.height = `${nextHeight}px`;
+  intentInput.style.overflowY = intentInput.scrollHeight > maxHeight ? 'auto' : 'hidden';
 }
 
 function escHtml(s) {
