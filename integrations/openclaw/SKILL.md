@@ -40,7 +40,7 @@ Read ~/.openclaw/openclaw.json
 
 Extract `gateway.auth.token` and `gateway.port` (default 18789). You will need these for the `callback_url` and `callback_auth` fields below.
 
-The SaC server runs at `http://localhost:8000` by default. If it is running elsewhere, the user will tell you.
+The SaC server runs at `http://localhost:18420` by default. If it is running elsewhere, the user will tell you.
 
 ## How to Execute
 
@@ -55,7 +55,7 @@ Compose rich, substantive content for the app. Include real data, structured sec
 Use `exec` to run this curl command. Replace CONTENT and INTENT with your actual values:
 
 ```
-exec: curl -s -X POST "http://localhost:8000/inbox" -H "Content-Type: application/json" -d '{"content": "CONTENT", "intent": "INTENT", "callback_url": "ws://127.0.0.1:GATEWAY_PORT?session=agent:main:main", "callback_format": "openclaw_gateway", "callback_auth": "Bearer GATEWAY_TOKEN"}'
+exec: curl -s -X POST "http://localhost:18420/inbox" -H "Content-Type: application/json" -d '{"content": "CONTENT", "intent": "INTENT", "callback_url": "ws://127.0.0.1:GATEWAY_PORT?session=agent:main:main", "callback_format": "openclaw_gateway", "callback_auth": "Bearer GATEWAY_TOKEN"}'
 ```
 
 Where:
@@ -66,7 +66,7 @@ Where:
 
 The response is JSON:
 ```json
-{"conversation_id": "abc-123", "url": "http://localhost:8000/c/abc-123", "version": 1, "type": "ui"}
+{"conversation_id": "abc-123", "url": "http://localhost:18420/c/abc-123", "version": 1, "type": "ui"}
 ```
 
 **Always show the user the `url` from the response so they can open it in their browser.**
@@ -78,7 +78,7 @@ Save the `conversation_id` — you need it for updates.
 When the user asks for changes, or when you receive a callback message from a rendered app, include the `conversation_id`:
 
 ```
-exec: curl -s -X POST "http://localhost:8000/inbox" -H "Content-Type: application/json" -d '{"conversation_id": "THE_SAVED_ID", "content": "UPDATED CONTENT", "intent": "what changed"}'
+exec: curl -s -X POST "http://localhost:18420/inbox" -H "Content-Type: application/json" -d '{"conversation_id": "THE_SAVED_ID", "content": "UPDATED CONTENT", "intent": "what changed"}'
 ```
 
 Note: callback fields are only needed on the first call. Updates only need `conversation_id`, `content`, and `intent`.
@@ -89,7 +89,7 @@ When a user interacts with a rendered SaC app (clicks buttons, submits forms), y
 
 > A user is viewing a SaC interactive app and requested: [action]
 > ...
-> exec: curl -s -X POST "http://localhost:8000/inbox" ...
+> exec: curl -s -X POST "http://localhost:18420/inbox" ...
 
 **Follow the instructions in the message.** Compose the requested content and run the curl command. Do NOT ask clarifying questions — just compose the best content you can and execute.
 
@@ -109,7 +109,7 @@ User: "Create a travel guide for Tokyo"
 3. Run:
 
 ```
-exec: curl -s -X POST "http://localhost:8000/inbox" -H "Content-Type: application/json" -d '{"content": "# Tokyo Travel Guide\n\n## Top Attractions\n1. **Senso-ji Temple** - Tokyo oldest temple in Asakusa...\n2. **Shibuya Crossing** - The world famous scramble crossing...\n\n## Local Food\n- **Ramen** - Try Fuunji in Shinjuku for tsukemen...\n- **Sushi** - Tsukiji Outer Market for fresh morning sushi...\n\n## Getting Around\n- Get a Suica/Pasmo IC card for trains and buses\n- Tokyo Metro and JR Yamanote line cover most tourist areas", "intent": "Tokyo travel guide", "callback_url": "ws://127.0.0.1:18789?session=agent:main:main", "callback_format": "openclaw_gateway", "callback_auth": "Bearer YOUR_TOKEN_HERE"}'
+exec: curl -s -X POST "http://localhost:18420/inbox" -H "Content-Type: application/json" -d '{"content": "# Tokyo Travel Guide\n\n## Top Attractions\n1. **Senso-ji Temple** - Tokyo oldest temple in Asakusa...\n2. **Shibuya Crossing** - The world famous scramble crossing...\n\n## Local Food\n- **Ramen** - Try Fuunji in Shinjuku for tsukemen...\n- **Sushi** - Tsukiji Outer Market for fresh morning sushi...\n\n## Getting Around\n- Get a Suica/Pasmo IC card for trains and buses\n- Tokyo Metro and JR Yamanote line cover most tourist areas", "intent": "Tokyo travel guide", "callback_url": "ws://127.0.0.1:18789?session=agent:main:main", "callback_format": "openclaw_gateway", "callback_auth": "Bearer YOUR_TOKEN_HERE"}'
 ```
 
 4. Show the user the URL from the response.

@@ -34,7 +34,7 @@ def main() -> None:
     # sac serve
     serve_parser = subparsers.add_parser("serve", help="Start the SaC HTTP/SSE server")
     serve_parser.add_argument("--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)")
-    serve_parser.add_argument("--port", type=int, default=8000, help="Port to listen on (default: 8000)")
+    serve_parser.add_argument("--port", type=int, default=18420, help="Port to listen on (default: 18420)")
     serve_parser.add_argument("--transport", choices=["http", "stdio"], default="http", help="Transport mode")
 
     # sac generate
@@ -75,7 +75,7 @@ def main() -> None:
     pub_parser.add_argument("--conversation-id", default=None, help="Update an existing conversation")
     pub_parser.add_argument(
         "--server", default=None,
-        help="SaC server URL (default: http://127.0.0.1:8000)",
+        help="SaC server URL (default: http://127.0.0.1:18420)",
     )
     pub_parser.add_argument(
         "--callback-url", default=None,
@@ -311,13 +311,20 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
     launch_file = launch_dir / "launch.json"
     try:
         python_path = sys.executable
+        # Health check probes 18420 first, then 18421 (matches MCP server fallback)
         health_script = (
-            "import time, urllib.request, sys\n"
-            "try:\n"
-            "    urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)\n"
-            "except Exception:\n"
-            "    print('SaC server not running on port 8000', file=sys.stderr); sys.exit(1)\n"
-            "print('Connected to SaC server at http://127.0.0.1:8000')\n"
+            "import time, urllib.request, json, sys\n"
+            "port = None\n"
+            "for p in (18420, 18421):\n"
+            "    try:\n"
+            "        r = urllib.request.urlopen(f'http://127.0.0.1:{p}/health', timeout=2)\n"
+            "        d = json.loads(r.read())\n"
+            "        if d.get('status') == 'ok':\n"
+            "            port = p; break\n"
+            "    except Exception: pass\n"
+            "if not port:\n"
+            "    print('SaC server not found on 18420/18421', file=sys.stderr); sys.exit(1)\n"
+            "print(f'Connected to SaC server at http://127.0.0.1:{port}')\n"
             "while True: time.sleep(3600)"
         )
         launch_config = {
@@ -327,7 +334,7 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
                     "name": "sac-viewer",
                     "runtimeExecutable": python_path,
                     "runtimeArgs": ["-c", health_script],
-                    "port": 8000,
+                    "port": 18420,
                 }
             ],
         }
@@ -392,7 +399,7 @@ def _publish(args: argparse.Namespace) -> None:
         print("Error: content is empty", file=sys.stderr)
         sys.exit(1)
 
-    server = (args.server or os.environ.get("SAC_SERVER", "") or "http://127.0.0.1:8000").rstrip("/")
+    server = (args.server or os.environ.get("SAC_SERVER", "") or "http://127.0.0.1:18420").rstrip("/")
 
     payload: dict[str, str] = {"content": content}
     if args.intent:

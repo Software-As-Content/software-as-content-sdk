@@ -38,7 +38,7 @@ Required env:
   - SAC_SEARCH_API_KEY     (optional) Tavily key — enables web search
   - SAC_DATA_DIR           (optional) where to persist conversations (default: .sac)
   - SAC_MODEL              (optional) default model id
-  - SAC_PORT               (optional) HTTP server port (default: 8000)
+  - SAC_PORT               (optional) HTTP server port (default: 18420)
 """
 
 from __future__ import annotations
@@ -165,7 +165,7 @@ def _ensure_http_server() -> str:
     global _HTTP_BASE_URL
     if _HTTP_BASE_URL is not None:
         return _HTTP_BASE_URL
-    port = int(os.environ.get("SAC_PORT", "8000"))
+    port = int(os.environ.get("SAC_PORT", "18420"))
     _HTTP_BASE_URL = _start_http_server(_get_sac(), port)
     return _HTTP_BASE_URL
 

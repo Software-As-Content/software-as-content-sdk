@@ -968,7 +968,7 @@ def _warn_if_not_repo_root() -> None:
         )
 
 
-def run(host: str = "0.0.0.0", port: int = 8000) -> None:
+def run(host: str = "0.0.0.0", port: int = 18420) -> None:
     """Run the server with uvicorn.
 
     `sac serve` is idempotent: if a healthy SaC server is already serving

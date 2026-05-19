@@ -28,7 +28,7 @@ for user interaction, and evolves the app based on what the user clicked.
 
 ```
 1. generate_app("travel planner for Tokyo")
-   → { conversation_id: "abc", url: "http://127.0.0.1:8000/c/abc", version: 1 }
+   → { conversation_id: "abc", url: "http://127.0.0.1:18420/c/abc", version: 1 }
 
 2. Show url to user — they open it in a browser and see the live app
 
@@ -51,7 +51,7 @@ blocking `wait_for_action` as a tool call that takes time to return.
 
 When launched via `sac serve --transport stdio`, the MCP server:
 
-1. Starts an **HTTP server in the background** (default port 8000) for the
+1. Starts an **HTTP server in the background** (default port 18420) for the
    viewer UI and API endpoints
 2. Serves **MCP tools over stdio** for the host (Claude Code, etc.)
 3. Routes `generate_app`/`evolve_app` through the HTTP server's `/inbox`
@@ -70,7 +70,7 @@ new one. This means Codex and Claude Code can coexist on the same SaC instance.
 export SAC_API_KEY="sk-or-..."           # OpenRouter key (required)
 export SAC_SEARCH_API_KEY="tvly-..."     # Tavily key (optional, enables web search)
 export SAC_DATA_DIR=".sac"               # where to persist conversations (optional)
-export SAC_PORT="8000"                   # HTTP server port (optional)
+export SAC_PORT="18420"                  # HTTP server port (optional)
 
 sac serve --transport stdio
 ```
@@ -156,4 +156,4 @@ The MCP host owns the conversation lifecycle:
 | `SAC_SEARCH_API_KEY` | No | — | Tavily API key (enables web search in generate) |
 | `SAC_DATA_DIR` | No | `.sac` | Directory for conversation persistence |
 | `SAC_MODEL` | No | (built-in default) | Default LLM model ID |
-| `SAC_PORT` | No | `8000` | HTTP server port for the viewer |
+| `SAC_PORT` | No | `18420` | HTTP server port for the viewer |

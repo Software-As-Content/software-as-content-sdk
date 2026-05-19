@@ -33,7 +33,7 @@ sequence:
 **Step 1 — Connectivity check.** Run a lightweight health probe first:
 
 ```bash
-curl -sS --connect-timeout 5 http://127.0.0.1:8000/health
+curl -sS --connect-timeout 5 http://127.0.0.1:18420/health
 ```
 
 If this returns `{"status":"ok"}`, the server IS running and `curl` GET
@@ -72,7 +72,7 @@ python3 -c "
 import urllib.request, sys
 with open('/tmp/sac_payload.json', 'rb') as f:
     data = f.read()
-req = urllib.request.Request('http://127.0.0.1:8000/inbox',
+req = urllib.request.Request('http://127.0.0.1:18420/inbox',
     data=data, headers={'Content-Type': 'application/json'})
 resp = urllib.request.urlopen(req, timeout=300)
 print(resp.read().decode())
@@ -89,7 +89,7 @@ If **both** curl and Python fallback fail, tell the user exactly:
 
 ## Server
 
-SaC runs locally at `http://127.0.0.1:8000`. Use that URL. Start it from
+SaC runs locally at `http://127.0.0.1:18420`. Use that URL. Start it from
 the **SDK repo root** (not a subdirectory, not `~`): Codex callbacks
 resolve `cwd=server` to the server's working directory, so a wrong launch
 dir silently breaks the loop.
@@ -148,7 +148,7 @@ Keep the `conversation_id` (printed to stderr) for updates.
 **Fallback:** if `sac publish` is not on `PATH`, use curl:
 
 ```bash
-curl -s --connect-timeout 5 -X POST "http://127.0.0.1:8000/inbox" \
+curl -s --connect-timeout 5 -X POST "http://127.0.0.1:18420/inbox" \
   -H "Content-Type: application/json" \
   -d '{"content": "CONTENT", "intent": "INTENT", "callback_url": "codex://resume?thread=last&cwd=server", "callback_format": "codex_exec_resume"}'
 ```
@@ -167,7 +167,7 @@ sac publish --file /tmp/sac_updated.md \
 Or with curl:
 
 ```bash
-curl -s --connect-timeout 5 -X POST "http://127.0.0.1:8000/inbox" \
+curl -s --connect-timeout 5 -X POST "http://127.0.0.1:18420/inbox" \
   -H "Content-Type: application/json" \
   -d '{"conversation_id": "abc-123", "content": "UPDATED CONTENT", "intent": "what changed"}'
 ```

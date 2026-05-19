@@ -72,7 +72,7 @@ asyncio.run(main())
 To see what you generated:
 
 ```bash
-sac serve     # opens a playground at http://localhost:8000
+sac serve     # opens a playground at http://localhost:18420
 ```
 
 Pick your conversation from the sidebar.
