@@ -171,13 +171,6 @@ Issues and PRs welcome. Highest-leverage contributions right now:
 
 For local dev: `pip install -e .`
 
-## Security
-
-Found a vulnerability? Email **mulong@mulongxie.me** — please don't open a
-public issue. SaC executes LLM-generated code in a sandboxed iframe, so
-issues around iframe escape, prompt injection, or sandbox bypass
-are especially in scope.
-
 ## Citation
 
 ```bibtex
