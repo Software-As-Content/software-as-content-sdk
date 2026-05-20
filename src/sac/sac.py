@@ -13,11 +13,23 @@ from sac.runtime.producer import CodeProducer, DefaultCodeProducer
 from sac.runtime.prompts.app import DEFAULT_MODEL
 from sac.runtime.providers.base import LLMProvider, SearchProvider
 from sac.runtime.providers.openrouter import OpenRouterProvider
+from sac.runtime.providers.anthropic import AnthropicProvider
 from sac.runtime.providers.tavily import TavilyProvider
 from sac.runtime.store.base import ConversationStore
 from sac.runtime.store.file import FileStore
 from sac.runtime.store.memory import MemoryStore
 from sac.types import App, ConversationData, ConversationSettings
+
+
+def _make_llm(api_key: str, *, api_base: str | None = None) -> LLMProvider:
+    """Pick the right LLM provider based on api_base or key prefix."""
+    if api_base and "anthropic" in api_base:
+        return AnthropicProvider(api_key)
+    if api_base:
+        return OpenRouterProvider(api_key, base_url=api_base)
+    if api_key.startswith("sk-ant-"):
+        return AnthropicProvider(api_key)
+    return OpenRouterProvider(api_key)
 
 
 class SaC:
@@ -38,6 +50,7 @@ class SaC:
         self,
         api_key: str | None = None,
         *,
+        api_base: str | None = None,
         search_api_key: str | None = None,
         llm: LLMProvider | None = None,
         search: SearchProvider | None = None,
@@ -46,11 +59,11 @@ class SaC:
         model: str = DEFAULT_MODEL,
         settings: ConversationSettings | None = None,
     ) -> None:
-        # LLM provider: explicit or default OpenRouter
+        # LLM provider: explicit, or auto-detect from api_key + api_base
         if llm is not None:
             self._llm = llm
         elif api_key:
-            self._llm = OpenRouterProvider(api_key)
+            self._llm = _make_llm(api_key, api_base=api_base)
         else:
             raise ValueError("Either 'api_key' or 'llm' provider must be provided.")
 

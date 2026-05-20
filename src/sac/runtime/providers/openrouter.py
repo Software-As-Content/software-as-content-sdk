@@ -1,8 +1,10 @@
 """
-OpenRouter LLM Provider
+OpenAI-compatible LLM Provider
 
-Default LLM provider using the OpenRouter API, which supports
-multiple model providers (Google, Anthropic, OpenAI, etc.) through a single endpoint.
+Works with OpenRouter (default), OpenAI, Google, DeepSeek, xAI, ollama, vLLM —
+any endpoint that speaks the OpenAI chat completions format.
+
+Set SAC_API_BASE to override the endpoint URL.
 """
 
 from __future__ import annotations
@@ -18,16 +20,18 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 class OpenRouterProvider:
-    """LLM provider backed by the OpenRouter API."""
+    """LLM provider for any OpenAI-compatible chat completions endpoint."""
 
     def __init__(
         self,
         api_key: str,
         *,
+        base_url: str | None = None,
         referer: str = "https://fellou.ai",
         title: str = "Software as Content",
     ) -> None:
         self._api_key = api_key
+        self._base_url = base_url or OPENROUTER_URL
         self._referer = referer
         self._title = title
         self._client = httpx.AsyncClient(timeout=120.0)
@@ -35,7 +39,7 @@ class OpenRouterProvider:
     async def complete(self, model: str, messages: list[Message], **kwargs: object) -> str:
         """Send messages to the LLM and return the complete response."""
         response = await self._client.post(
-            OPENROUTER_URL,
+            self._base_url,
             headers=self._headers(),
             json={
                 "model": model,
@@ -51,7 +55,7 @@ class OpenRouterProvider:
         """Send messages to the LLM and stream the response token by token."""
         async with self._client.stream(
             "POST",
-            OPENROUTER_URL,
+            self._base_url,
             headers=self._headers(),
             json={
                 "model": model,

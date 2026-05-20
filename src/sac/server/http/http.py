@@ -241,7 +241,8 @@ def create_app(sac: SaC | None = None) -> FastAPI:
     Create a FastAPI app wired to a SaC instance.
 
     If no SaC instance is provided, one is created from environment variables:
-      - SAC_API_KEY (required) — OpenRouter API key
+      - SAC_API_KEY (required) — API key (OpenRouter, Anthropic, OpenAI, etc.)
+      - SAC_API_BASE (optional) — custom endpoint URL (auto-detects Anthropic keys)
       - SAC_SEARCH_API_KEY (optional) — Tavily API key
       - SAC_MODEL (optional) — default model
     """
@@ -252,6 +253,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             raise ValueError("SAC_API_KEY environment variable is required")
         sac = SaC(
             api_key=api_key,
+            api_base=os.environ.get("SAC_API_BASE"),
             search_api_key=os.environ.get("SAC_SEARCH_API_KEY"),
             model=os.environ.get("SAC_MODEL", DEFAULT_MODEL),
             store=FileStore(data_dir),

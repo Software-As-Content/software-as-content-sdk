@@ -34,7 +34,8 @@ The generate → wait_for_action → evolve loop:
   5. Repeat from step 2
 
 Required env:
-  - SAC_API_KEY            OpenRouter API key
+  - SAC_API_KEY            API key (OpenRouter, Anthropic, OpenAI, etc.)
+  - SAC_API_BASE           (optional) custom endpoint URL (auto-detects Anthropic keys)
   - SAC_SEARCH_API_KEY     (optional) Tavily key — enables web search
   - SAC_DATA_DIR           (optional) where to persist conversations (default: .sac)
   - SAC_MODEL              (optional) default model id
@@ -81,6 +82,7 @@ def _get_sac() -> SaC:
             )
         _SAC = SaC(
             api_key=api_key,
+            api_base=os.environ.get("SAC_API_BASE"),
             search_api_key=os.environ.get("SAC_SEARCH_API_KEY"),
             model=os.environ.get("SAC_MODEL", DEFAULT_MODEL),
             store=FileStore(os.environ.get("SAC_DATA_DIR", ".sac")),
