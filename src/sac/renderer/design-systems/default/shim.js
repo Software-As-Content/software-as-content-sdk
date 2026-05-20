@@ -160,6 +160,7 @@ export const TabsTrigger = React.forwardRef(
         role: "tab",
         "aria-selected": isActive,
         "data-state": isActive ? "active" : "inactive",
+        "data-tab-value": value,
         className: cn(base, stateCls, className),
         onClick: () => ctx.setValue(value),
         ...p,
@@ -172,14 +173,16 @@ export const TabsTrigger = React.forwardRef(
 export const TabsContent = React.forwardRef(
   ({ className, value, children, ...p }, ref) => {
     const ctx = React.useContext(TabsContext);
-    if (ctx.value !== value) return null;
+    const isActive = ctx.value === value;
     return e(
       "div",
       {
         ref,
         role: "tabpanel",
-        "data-state": "active",
+        "data-state": isActive ? "active" : "inactive",
+        "data-tab-value": value,
         className: cn("mt-2", className),
+        style: isActive ? undefined : { display: "none" },
         ...p,
       },
       children

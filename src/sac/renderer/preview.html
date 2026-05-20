@@ -657,8 +657,7 @@
           if (req.scrollToChange) {
             requestAnimationFrame(function() {
               var els = document.querySelectorAll('[data-sac-changed]');
-              var last = els.length ? els[els.length - 1] : null;
-              if (last) last.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              if (els.length) _activateTabAndScroll(els[els.length - 1]);
             });
           }
         })
@@ -687,6 +686,30 @@
       _drainRenderQueue();
     }
 
+    var _TOOLBAR_HEIGHT = 50;
+
+    function _activateTabAndScroll(el) {
+      var node = el;
+      while (node) {
+        if (node.getAttribute && node.getAttribute('data-tab-value') &&
+            node.getAttribute('data-state') === 'inactive') {
+          var tabValue = node.getAttribute('data-tab-value');
+          var container = node.parentElement;
+          if (container) {
+            var trigger = container.querySelector('[role="tab"][data-tab-value="' + tabValue + '"]');
+            if (trigger) trigger.click();
+          }
+          break;
+        }
+        node = node.parentElement;
+      }
+      requestAnimationFrame(function() {
+        var rect = el.getBoundingClientRect();
+        var target = window.scrollY + rect.top - _TOOLBAR_HEIGHT - (window.innerHeight - _TOOLBAR_HEIGHT) / 2;
+        window.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+      });
+    }
+
     window.__scheduleSilentRender = function(code, shimUrl) {
       _scheduleRender(code, shimUrl, true);
     };
@@ -711,7 +734,7 @@
         var els = document.querySelectorAll('[data-sac-changed]');
         if (els.length > 0) {
           var idx = (ev.data.index || 0) % els.length;
-          els[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+          _activateTabAndScroll(els[idx]);
         }
       }
     });
