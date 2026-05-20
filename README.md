@@ -4,21 +4,21 @@
 
 ### Your agent can talk. Now it can show.
 
-[![PyPI version](https://img.shields.io/pypi/v/sac-sdk.svg)](https://pypi.org/project/sac-sdk/)
-[![Python](https://img.shields.io/pypi/pyversions/sac-sdk.svg)](https://pypi.org/project/sac-sdk/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 
-[Live demo](https://sac.dynsoft.ai) · [Paper](https://arxiv.org/abs/2603.21334) · [Architecture](./docs/architecture.md)
+[Live demo](https://sac.dynsoft.ai) · [Paper](https://arxiv.org/abs/2603.21334)
 
 </div>
 
 ---
 
-SaC (Software as Content) gives your AI agent the ability to **generate and evolve interactive apps** as a way to communicate with users. Instead of replying with text, your agent builds a live React app — a dashboard, a planner, a comparison tool — and the user clicks, types, and explores. The agent then **evolves the same app** in response, preserving context across turns.
+SaC (Software as Content) is an **interaction layer** that gives your AI agent the ability to **generate and evolve interactive apps** as part of the conversation. Instead of replying with text or markdown, your agent builds a live React app — a dashboard, a planner, a comparison tool — and the user clicks, types, and explores. The agent then **evolves the same app** in response, preserving all context across turns.
+
+This isn't one-shot UI generation. SaC apps are **stateful, conversational, and evolving** — the agent understands what the user is looking at, what they clicked, and grows the app from there. No existing agent can do this natively.
 
 > **function calling** → agent *does things* &nbsp;·&nbsp;
 > **MCP** → agent *talks to systems* &nbsp;·&nbsp;
-> **SaC** → agent *shows and interacts*
+> **SaC** → agent *shows, interacts, and evolves*
 
 <!-- TODO: add demo GIF here -->
 
@@ -56,7 +56,7 @@ Open **http://localhost:18420**, type *"3-day Tokyo trip planner with budget"*, 
 
 ## Connect to your agent
 
-SaC is designed to plug into the agent you already use. Pick your platform:
+SaC plugs into the agent you already use — through [MCP](#claude-code-mcp), [Skill](#codex-skill), or [code](#python-build-your-own-agent).
 
 ### Claude Code (MCP)
 
@@ -73,7 +73,7 @@ Claude Code will generate the app, show you the URL, and enter the interaction l
 
 [Setup details →](./integrations/claude-code/)
 
-### Codex
+### Codex (Skill)
 
 ```bash
 pip install sac-sdk
@@ -84,7 +84,7 @@ cp integrations/codex/SKILL.md ~/.codex/skills/sac-interaction/
 
 [Setup details →](./integrations/codex/)
 
-### OpenClaw
+### OpenClaw (Skill)
 
 ```bash
 pip install sac-sdk
