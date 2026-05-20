@@ -83,11 +83,13 @@ async def stream_generate_pipeline(
     content: str | None = None,
 ) -> AsyncIterator[PipelineEvent]:
     """Streaming variant of generate_pipeline."""
+    emitter = PipelineEmitter()
     system_prompt = build_final_system_prompt(
         custom_instructions=settings.custom_instructions,
         include_design_system=settings.use_design_system,
     )
 
+    emitter.start("generate")
     yield PipelineStageEvent(name="generate", status=StageStatus.RUNNING)
 
     if content is not None:
@@ -102,16 +104,19 @@ async def stream_generate_pipeline(
             full_content += token
             yield PipelineChunkEvent(data=token)
     except Exception as exc:
+        emitter.error("generate")
         yield PipelineStageEvent(name="generate", status=StageStatus.ERROR)
         yield PipelineErrorEvent(error=str(exc))
         return
 
+    emitter.complete("generate")
     yield PipelineStageEvent(name="generate", status=StageStatus.COMPLETED)
     yield PipelineCompleteEvent(app=App(
         code=_extract_code(full_content),
         version=version,
         intent=intent,
         model=model,
+        stages=emitter.stages,
     ))
 
 

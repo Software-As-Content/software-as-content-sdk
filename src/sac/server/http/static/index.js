@@ -416,6 +416,7 @@ async function handleSend() {
     if (data.conversation_id && data.conversation_id !== conversationId) {
       conversationId = data.conversation_id;
       setupEventSource(conversationId);
+      history.replaceState(null, '', `/c/${conversationId}`);
     }
 
     if (data.type === 'chat') {

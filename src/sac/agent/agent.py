@@ -200,9 +200,12 @@ class StandaloneAgent:
         self, conv: "Conversation", intent: str, **opts: Any
     ) -> AsyncIterator[PipelineEvent]:
         """Streaming variant. Yields stage/chunk/complete events."""
+        from sac.runtime.pipeline.events import PipelineEmitter
+
         model = str(opts.get("model", conv.model))
         is_evolve = conv.current_app is not None
         web_search_opt = opts.get("web_search", conv.settings.enable_web_search)
+        agent_emitter = PipelineEmitter()
 
         await conv._store.add_event(
             MessageEvent(conversation_id=conv.id, role="user", content=intent)
@@ -218,16 +221,20 @@ class StandaloneAgent:
 
         if run_search:
             if not is_evolve:
+                agent_emitter.start("analyze")
                 yield PipelineStageEvent(name="analyze", status=StageStatus.RUNNING)
                 try:
                     search_queries = await _extract_search_queries(intent, model, self._llm)
+                    agent_emitter.complete("analyze")
                     yield PipelineStageEvent(name="analyze", status=StageStatus.COMPLETED)
                 except Exception as exc:
+                    agent_emitter.error("analyze")
                     yield PipelineStageEvent(name="analyze", status=StageStatus.ERROR)
                     yield PipelineErrorEvent(error=str(exc))
                     await self._record_error_event(conv, is_evolve, intent, model, str(exc))
                     return
             else:
+                agent_emitter.start("search")
                 yield PipelineStageEvent(name="search", status=StageStatus.RUNNING)
                 try:
                     search_queries = await _extract_search_queries(intent, model, self._llm)
@@ -236,20 +243,24 @@ class StandaloneAgent:
 
             if search_queries:
                 if not is_evolve:
+                    agent_emitter.start("search")
                     yield PipelineStageEvent(name="search", status=StageStatus.RUNNING)
                 try:
                     qs = [q.query for q in search_queries]
                     search_results = await self._search.search(qs)  # type: ignore[union-attr]
+                    agent_emitter.complete("search")
                     yield PipelineStageEvent(name="search", status=StageStatus.COMPLETED)
                     if search_results:
                         yield PipelineSearchEvent(queries=search_queries, results=search_results)
                 except Exception as exc:
+                    agent_emitter.error("search")
                     yield PipelineStageEvent(name="search", status=StageStatus.ERROR)
                     if not is_evolve:
                         yield PipelineErrorEvent(error=str(exc))
                         await self._record_error_event(conv, is_evolve, intent, model, str(exc))
                         return
             elif is_evolve:
+                agent_emitter.complete("search")
                 yield PipelineStageEvent(name="search", status=StageStatus.COMPLETED)
 
             if search_results:
@@ -268,6 +279,9 @@ class StandaloneAgent:
                     event.app.search_queries = search_queries
                     event.app.search_results = search_results
                     event.app.suggestions = suggestions
+                    # Merge agent-level stages (analyze, search) before core stages (generate)
+                    all_stages = agent_emitter.stages + (event.app.stages or [])
+                    event.app.stages = all_stages
 
                     event_cls = GrowthEvent if is_evolve else GenerationEvent
                     await conv._store.add_event(
@@ -277,7 +291,7 @@ class StandaloneAgent:
                             model=model,
                             status=EventStatus.SUCCESS,
                             code=event.app.code,
-                            stages=event.app.stages,
+                            stages=all_stages,
                             search_queries=search_queries or None,
                             search_results=search_results or None,
                             intent_suggestions=suggestions or None,

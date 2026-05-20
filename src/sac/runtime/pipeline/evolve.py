@@ -101,11 +101,13 @@ async def stream_evolve_pipeline(
     content: str | None = None,
 ) -> AsyncIterator[PipelineEvent]:
     """Streaming variant of evolve_pipeline."""
+    emitter = PipelineEmitter()
     system_prompt = build_final_system_prompt(
         custom_instructions=settings.custom_instructions,
         include_design_system=settings.use_design_system,
     )
 
+    emitter.start("generate")
     yield PipelineStageEvent(name="generate", status=StageStatus.RUNNING)
 
     growth_prompt = build_growth_prompt(
@@ -130,12 +132,14 @@ async def stream_evolve_pipeline(
         for chunk in tsx_filter.finalize():
             yield PipelineChunkEvent(data=chunk)
     except Exception as exc:
+        emitter.error("generate")
         yield PipelineStageEvent(name="generate", status=StageStatus.ERROR)
         yield PipelineErrorEvent(error=str(exc))
         return
 
     decision, code = _parse_growth_response(full_content)
 
+    emitter.complete("generate")
     yield PipelineStageEvent(name="generate", status=StageStatus.COMPLETED)
     yield PipelineCompleteEvent(app=App(
         code=code,
@@ -144,6 +148,7 @@ async def stream_evolve_pipeline(
         parent_version=parent_version,
         model=model,
         growth_decision=decision,
+        stages=emitter.stages,
     ))
 
 
@@ -172,6 +177,8 @@ async def stream_evolve_pipeline_diff(
         include_design_system=settings.use_design_system,
     )
 
+    emitter = PipelineEmitter()
+    emitter.start("generate")
     yield PipelineStageEvent(name="generate", status=StageStatus.RUNNING)
 
     # Strip old highlight markers so LLM sees clean code and new markers
@@ -195,6 +202,7 @@ async def stream_evolve_pipeline_diff(
         for snapshot in diff_filter.finalize():
             yield PipelineSnapshotEvent(code=snapshot)
     except Exception as exc:
+        emitter.error("generate")
         yield PipelineStageEvent(name="generate", status=StageStatus.ERROR)
         yield PipelineErrorEvent(error=str(exc))
         return
@@ -240,6 +248,7 @@ async def stream_evolve_pipeline_diff(
         current_has_marker,
     )
 
+    emitter.complete("generate")
     yield PipelineStageEvent(name="generate", status=StageStatus.COMPLETED)
     yield PipelineCompleteEvent(app=App(
         code=final_code,
@@ -248,6 +257,7 @@ async def stream_evolve_pipeline_diff(
         parent_version=parent_version,
         model=model,
         growth_decision=decision,
+        stages=emitter.stages,
     ))
 
 
