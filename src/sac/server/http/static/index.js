@@ -1605,14 +1605,11 @@ window.loadConv = async function(id) {
 
     let lastSuggestions = [];
     _knownMsgCount = events.filter(e => e.type === 'message').length;
-    for (let _ei = 0; _ei < events.length; _ei++) {
-      const evt = events[_ei];
+    for (const evt of events) {
       if (evt.type === 'message') {
-        console.log(`[loadConv] ${_ei}: MSG role=${evt.role} "${(evt.content||'').slice(0,60)}"`);
         addChatMsg(evt.role, evt.content);
       } else if ((evt.type === 'generation' || evt.type === 'growth') && evt.status === 'success') {
         const version = appVersions.find(v => v.code === evt.code);
-        console.log(`[loadConv] ${_ei}: ${evt.type} matched=v${version?.version || 'NONE'} code_len=${(evt.code||'').length}`);
         if (version) {
           // Pass associated callback runs into the version card (merged view)
           const runs = runsByVersion.get(version.version) || [];
