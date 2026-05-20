@@ -1569,6 +1569,7 @@ window.loadConv = async function(id) {
     const events = data.events || [];
 
     conversationId = id;
+    history.replaceState(null, '', `/c/${id}`);
     currentVersion = conv.event_count;
     // Agent-owned conversations route through /c/{id}/action (callback or MCP pull).
     // Product-mode conversations (no agent) use /send → StandaloneAgent.
