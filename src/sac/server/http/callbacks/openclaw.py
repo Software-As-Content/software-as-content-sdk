@@ -37,7 +37,7 @@ async def openclaw_gateway_send(
             "method": "connect",
             "params": {
                 "minProtocol": 3,
-                "maxProtocol": 3,
+                "maxProtocol": 4,
                 "client": {
                     "id": "gateway-client",
                     "version": "0.1.0",

@@ -95,9 +95,14 @@ class CallbackManager:
         initial publish (v1) has no in-flight callback run, so this is a
         no-op there — exactly what we want.
         """
+        if conv_id not in self._runs and self._runs_dir is not None:
+            self._load_runs(conv_id)
         runs = self._runs.get(conv_id, [])
         for run in reversed(runs):
-            if run.get("status") in {"running", "queued"}:
+            status = run.get("status")
+            if status in {"running", "queued"} or (
+                status == "succeeded" and not run.get("loop_closed")
+            ):
                 run["loop_closed"] = True
                 run["result_kind"] = kind
                 run["result_version"] = version

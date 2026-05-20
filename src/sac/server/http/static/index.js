@@ -443,6 +443,8 @@ async function routeUserIntent(intent, context = null) {
   if (pendingAction) return;  // debounce — wait for current action to finish
   setPending(true);
   beginNewAttempt();
+  addChatMsg('user', intent);
+  _knownMsgCount++;
 
   if (conversationId) {
     showStatus('Sent to agent, waiting...', 'running');
@@ -1110,6 +1112,12 @@ function ensureVersionCard(version, callbackRuns) {
         const isSub = role === 'agent-sub';
         agentEvents.push(`<div class="cb-step cb-step-${escClass(role)}"><span class="cb-step-role">${roleLabel}</span><span class="cb-step-text${isSub ? ' cb-step-sub' : ''}" title="${escHtml(detail || text)}">${escHtml(text)}</span></div>`);
       }
+      // Fire-and-forget adapters (OpenClaw, HTTP) have no streaming logs.
+      // Synthesize the same steps shown during live rendering.
+      if (run.status === 'succeeded' && run.loop_closed && (run.logs || []).length === 0) {
+        agentEvents.push(`<div class="cb-step cb-step-agent-sub"><span class="cb-step-role"></span><span class="cb-step-text cb-step-sub" title="Dispatched to agent">Dispatched to agent</span></div>`);
+        agentEvents.push(`<div class="cb-step cb-step-agent-sub"><span class="cb-step-role"></span><span class="cb-step-text cb-step-sub" title="Message delivered, agent is working...">Message delivered, agent is working...</span></div>`);
+      }
       // Ensure "App updated" appears as the final step (it's added client-side
       // by finalizePendingCards but not persisted to the backend).
       if (run.status === 'succeeded' && run.loop_closed) {
@@ -1263,6 +1271,7 @@ function renderCallbackRun(run) {
     // was delivered — agent is now working. Keep card pending until /inbox POST arrives.
     if (!hasStreamingLogs && !run.loop_closed) {
       card.el.className = 'version-card pending';
+      if (dotEl) { dotEl.className = 'vc-dot vc-dot-pending'; }
       if (kindEl) kindEl.textContent = `${adapterLabel(run.adapter)} · running`;
       addCallbackEvent(card, 'sac', 'Message delivered, agent is working...');
     } else {
@@ -1564,7 +1573,6 @@ window.loadConv = async function(id) {
     // Agent-owned conversations route through /c/{id}/action (callback or MCP pull).
     // Product-mode conversations (no agent) use /send → StandaloneAgent.
     callbackUrl = conv.callback_url || (conv.source === 'inbox' ? '__mcp_pull__' : null);
-    setupEventSource(id);                      // subscribe to live updates
     // conv info display removed from header
     appVersions = extractAppVersions(events);
     viewedVersion = appVersions[appVersions.length - 1]?.version || 0;
@@ -1597,11 +1605,14 @@ window.loadConv = async function(id) {
 
     let lastSuggestions = [];
     _knownMsgCount = events.filter(e => e.type === 'message').length;
-    for (const evt of events) {
+    for (let _ei = 0; _ei < events.length; _ei++) {
+      const evt = events[_ei];
       if (evt.type === 'message') {
+        console.log(`[loadConv] ${_ei}: MSG role=${evt.role} "${(evt.content||'').slice(0,60)}"`);
         addChatMsg(evt.role, evt.content);
       } else if ((evt.type === 'generation' || evt.type === 'growth') && evt.status === 'success') {
         const version = appVersions.find(v => v.code === evt.code);
+        console.log(`[loadConv] ${_ei}: ${evt.type} matched=v${version?.version || 'NONE'} code_len=${(evt.code||'').length}`);
         if (version) {
           // Pass associated callback runs into the version card (merged view)
           const runs = runsByVersion.get(version.version) || [];
@@ -1611,10 +1622,12 @@ window.loadConv = async function(id) {
       }
     }
 
-    // Render orphan runs (no result_version — e.g. still running) as pending cards
-    for (const run of orphanRuns.slice(-3)) {
-      lastUserIntent = run.intent || lastUserIntent || 'Processing...';
-      renderCallbackRun(run);
+    // Render orphan runs — only the most recent one that's still genuinely active.
+    // Stale orphans (agent got the message but never replied) just clutter the UI.
+    const activeOrphan = orphanRuns.length > 0 ? orphanRuns[orphanRuns.length - 1] : null;
+    if (activeOrphan && activeOrphan.status !== 'failed' && activeOrphan.status !== 'no_update') {
+      lastUserIntent = activeOrphan.intent || lastUserIntent || 'Processing...';
+      renderCallbackRun(activeOrphan);
     }
 
     // Show suggestions from the last generation/growth event
@@ -1633,6 +1646,9 @@ window.loadConv = async function(id) {
       };
       applyAppVersion(fallbackVersion);
     }
+
+    // Subscribe to live updates AFTER rebuild is complete to avoid SSE race
+    setupEventSource(id);
 
     document.getElementById('history-modal').classList.add('hidden');
     chatArea.scrollTop = chatArea.scrollHeight;
