@@ -1738,13 +1738,37 @@ function showPreviewNotice(title, detail, { fixable = false } = {}) {
   previewNotice.innerHTML = `<strong>${escHtml(title)}</strong><span title="${escHtml(detail)}">${escHtml(detail)}</span>${fixBtn}`;
 }
 
-// Called by the fix button in the preview notice
-window.__sacFixRenderError = function() {
+// Called by the fix button in the preview notice.
+// Posts directly to /inbox so the fix goes through SaC's own ingest
+// pipeline (stream_ingest → evolve). This works for all connection
+// modes (standalone, MCP, callback) because /inbox is the universal
+// entry point — no StandaloneAgent dependency, no agent round-trip.
+window.__sacFixRenderError = async function() {
   const detail = previewNotice.querySelector('span')?.textContent || '';
   const truncated = detail.slice(0, 300);
   hidePreviewNotice();
-  addChatMsg('system', 'Asking SaC to fix the render error...');
-  routeUserIntent(`Fix the rendering error in the current code: ${truncated}`);
+  addChatMsg('system', 'Fixing render error...');
+  setPending(true);
+  try {
+    const res = await fetch('/inbox', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        intent: `Fix the rendering error in the current code: ${truncated}`,
+        content: `Fix the rendering error: ${truncated}`,
+        type: 'ui',
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => 'unknown error');
+      addChatMsg('system', 'Fix failed: ' + err);
+    }
+  } catch (err) {
+    addChatMsg('system', 'Fix failed: ' + err.message);
+  } finally {
+    setPending(false);
+  }
 };
 
 function hidePreviewNotice() {
