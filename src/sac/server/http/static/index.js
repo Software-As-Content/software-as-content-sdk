@@ -813,6 +813,9 @@ function handleSSEEvent(eventType, data) {
       if (data.status === 'complete' || data.status === 'success') {
         pendingStages.push({ name: data.name, duration: data.duration });
       }
+      if (callbackCards.size === 0) {
+        updateProcessingStage(data.name, data.status);
+      }
       break;
 
     case 'search': {
@@ -824,6 +827,9 @@ function handleSSEEvent(eventType, data) {
       }
       if (results.length > 0) {
         showStatus(`Searched: ${results.map(r => r.query).join(', ')}`, 'running');
+        if (callbackCards.size === 0) {
+          updateProcessingStage(`search: ${results.length} result${results.length > 1 ? 's' : ''}`, 'success');
+        }
       }
       break;
     }
