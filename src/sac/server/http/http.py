@@ -784,18 +784,24 @@ def create_app(sac: SaC | None = None) -> FastAPI:
             action_queue.push(conv_id, req.intent, req.context)
 
             # TTL: if no agent consumes this action within 45s, notify frontend
+            # but do NOT expire/remove the action — the agent may still pick
+            # it up when it reconnects (e.g. between wait_for_action calls).
             async def _action_ttl(cid: str, ttl: float = 45.0) -> None:
                 await asyncio.sleep(ttl)
                 if action_queue.is_pending(cid):
-                    action_queue.expire(cid)
                     pubsub.publish(cid, "action_timeout", {
-                        "message": "Agent did not respond. Tell your agent to \"restart sac mcp with wait_for_action\".",
+                        "message": "Agent did not respond. Tell your agent to use SaC MCP to restart server and wait for action.",
                     })
 
             asyncio.create_task(_action_ttl(conv_id))
             return {"ok": True, "type": "queued", "intent": req.intent}
 
         # ── Callback mode: dispatch to external agent ──
+        # Store user message so it survives page refresh
+        from sac.types import MessageEvent
+        await sac._store.add_event(
+            MessageEvent(conversation_id=conv_id, role="user", content=req.intent)
+        )
         run = await callback_manager.dispatch(
             conv_id=conv_id,
             intent=req.intent,
