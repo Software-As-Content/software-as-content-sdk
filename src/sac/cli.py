@@ -12,6 +12,8 @@ import os
 import sys
 from pathlib import Path
 
+from sac import __version__
+
 
 def _load_dotenv() -> None:
     """Load .env file from current working directory if it exists."""
@@ -29,6 +31,7 @@ def _load_dotenv() -> None:
 def main() -> None:
     _load_dotenv()
     parser = argparse.ArgumentParser(prog="sac", description="Software as Content SDK")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command")
 
     # sac serve
@@ -216,7 +219,30 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
         sys.exit(1)
     print(f"  ✓ sac CLI: {sac_path}")
 
-    # Collect API keys
+    # Provider selection
+    print()
+    print("LLM Provider (used by SaC to generate/update apps, not your agent)")
+    print()
+    print("  1) OpenRouter (default) — one key, all models")
+    print("  2) Anthropic — Claude models directly")
+    print("  3) OpenAI — GPT models directly")
+    print("  4) Custom — any OpenAI-compatible endpoint")
+    provider_choice = input("  Choose [1]: ").strip() or "1"
+
+    api_base = ""
+    key_label = "OpenRouter"
+    if provider_choice == "2":
+        key_label = "Anthropic"
+    elif provider_choice == "3":
+        api_base = "https://api.openai.com/v1/chat/completions"
+        key_label = "OpenAI"
+    elif provider_choice == "4":
+        api_base = input("  Endpoint URL: ").strip()
+        if not api_base:
+            print("  ✗ Endpoint URL is required for custom provider")
+            sys.exit(1)
+        key_label = "Custom"
+
     print()
     print("API Keys")
     print()
@@ -229,7 +255,7 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
             api_key = ""
 
     if not api_key:
-        api_key = input("  SAC_API_KEY (OpenRouter): ").strip()
+        api_key = input(f"  SAC_API_KEY ({key_label}): ").strip()
         if not api_key:
             print("  ✗ SAC_API_KEY is required")
             sys.exit(1)
@@ -249,11 +275,36 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
         default_dir = str(Path.home() / ".sac")
         data_dir = input(f"  SAC_DATA_DIR [{default_dir}]: ").strip() or default_dir
 
+    from sac.runtime.prompts.app import AVAILABLE_MODELS, DEFAULT_MODEL
+
+    if provider_choice == "2":
+        anthropic_models = [m for m in AVAILABLE_MODELS if m.provider == "anthropic"]
+        default_model = anthropic_models[0].id if anthropic_models else DEFAULT_MODEL
+        print()
+        print("Model Selection")
+        print(f"  Available: {', '.join(m.id for m in anthropic_models)}")
+    elif provider_choice == "3":
+        openai_models = [m for m in AVAILABLE_MODELS if m.provider == "openai"]
+        default_model = openai_models[0].id if openai_models else DEFAULT_MODEL
+        print()
+        print("Model Selection")
+        print(f"  Available: {', '.join(m.id for m in openai_models)}")
+    else:
+        default_model = DEFAULT_MODEL
+        print()
+        print("Model Selection")
+        print(f"  Available: {', '.join(m.id for m in AVAILABLE_MODELS)}")
+
+    model = input(f"  SAC_MODEL [{default_model}]: ").strip() or default_model
+
     # Build server entry
+    env = {"SAC_API_KEY": api_key, "SAC_DATA_DIR": data_dir, "SAC_MODEL": model}
+    if api_base:
+        env["SAC_API_BASE"] = api_base
     server_entry = {
         "command": sac_path,
         "args": ["serve", "--transport", "stdio"],
-        "env": {"SAC_API_KEY": api_key, "SAC_DATA_DIR": data_dir},
+        "env": env,
     }
     if search_key:
         server_entry["env"]["SAC_SEARCH_API_KEY"] = search_key
@@ -285,9 +336,12 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
     claude_path = shutil.which("claude")
     if claude_path:
         env_args = ["-e", f"SAC_API_KEY={api_key}"]
+        if api_base:
+            env_args += ["-e", f"SAC_API_BASE={api_base}"]
         if search_key:
             env_args += ["-e", f"SAC_SEARCH_API_KEY={search_key}"]
         env_args += ["-e", f"SAC_DATA_DIR={data_dir}"]
+        env_args += ["-e", f"SAC_MODEL={model}"]
 
         result = subprocess.run(
             ["claude", "mcp", "add", "-s", "project"] + env_args
