@@ -30,6 +30,23 @@ Render interactive apps via the SaC (Software as Content) interaction layer. SaC
 - The user just wants a text answer or chat reply
 - The user wants to run a shell command or code locally
 
+## Infrastructure boundary (read first)
+
+SaC server lifecycle is **not your responsibility**. You are a publish
+client, not an operator. Do **not**:
+
+- restart, stop, or kill servers/processes
+- change ports or migrate to a different port
+- run test suites or debug unrelated infrastructure
+
+If `/inbox` is unreachable (connection refused), tell the user:
+**"SaC server unavailable — start it with `sac serve`."** Then stop.
+
+## Server
+
+SaC runs locally at **`http://127.0.0.1:18420`**. Always use this exact
+URL and port. Do not use any other port.
+
 ## Setup (automatic, first time only)
 
 Before your first SaC call, read the OpenClaw config to get the gateway token:
@@ -40,65 +57,96 @@ Read ~/.openclaw/openclaw.json
 
 Extract `gateway.auth.token` and `gateway.port` (default 18789). You will need these for the `callback_url` and `callback_auth` fields below.
 
-The SaC server runs at `http://localhost:18420` by default. If it is running elsewhere, the user will tell you.
+## New App
 
-## How to Execute
+Compose substantive markdown content first. Prefer structured sections, tables, data, and actionable items.
 
-**IMPORTANT: Use `exec` to run `curl` commands. Do NOT try to call any tool named `sac_interaction` or `sac_inbox` — they do not exist.**
+**Publish in exactly one POST.** Do not send a probe / draft POST to
+"test the endpoint" — the first POST becomes app v1.
 
-### Step 1: Prepare your content
+Write content to a temp file to avoid shell-escaping issues:
 
-Compose rich, substantive content for the app. Include real data, structured sections, markdown formatting. The more detailed and structured, the better the rendered app.
+```bash
+cat > /tmp/sac_content.md << 'CONTENT_EOF'
+YOUR MARKDOWN CONTENT HERE
+CONTENT_EOF
 
-### Step 2: Send to SaC (first time — new app)
+cat > /tmp/sac_payload.json << PAYLOAD_EOF
+{"content": "$(cat /tmp/sac_content.md | python3 -c "import sys,json; print(json.dumps(sys.stdin.read())[1:-1])")", "intent": "INTENT", "callback_url": "ws://127.0.0.1:GATEWAY_PORT?session=agent:main:main", "callback_format": "openclaw_gateway", "callback_auth": "Bearer GATEWAY_TOKEN"}
+PAYLOAD_EOF
 
-Use `exec` to run this curl command. Replace CONTENT and INTENT with your actual values:
-
-```
-exec: curl -s -X POST "http://localhost:18420/inbox" -H "Content-Type: application/json" -d '{"content": "CONTENT", "intent": "INTENT", "callback_url": "ws://127.0.0.1:GATEWAY_PORT?session=agent:main:main", "callback_format": "openclaw_gateway", "callback_auth": "Bearer GATEWAY_TOKEN"}'
+curl -s -X POST "http://127.0.0.1:18420/inbox" \
+  -H "Content-Type: application/json" \
+  --data-binary @/tmp/sac_payload.json
 ```
 
 Where:
-- **CONTENT**: Your composed content (markdown). Escape quotes and newlines for JSON.
 - **INTENT**: Short description of what you are creating.
 - **GATEWAY_PORT**: From `gateway.port` in openclaw.json (default: 18789).
 - **GATEWAY_TOKEN**: From `gateway.auth.token` in openclaw.json.
 
 The response is JSON:
 ```json
-{"conversation_id": "abc-123", "url": "http://localhost:18420/c/abc-123", "version": 1, "type": "ui"}
+{"conversation_id": "abc-123", "url": "http://127.0.0.1:18420/c/abc-123", "version": 1, "type": "ui"}
 ```
 
 **Always show the user the `url` from the response so they can open it in their browser.**
 
 Save the `conversation_id` — you need it for updates.
 
-### Step 3: Update an existing app
+## Update Existing App
 
-When the user asks for changes, or when you receive a callback message from a rendered app, include the `conversation_id`:
+For follow-up changes, publish updated content with the existing `conversation_id`:
 
+```bash
+cat > /tmp/sac_content.md << 'CONTENT_EOF'
+UPDATED CONTENT
+CONTENT_EOF
+
+cat > /tmp/sac_payload.json << PAYLOAD_EOF
+{"conversation_id": "THE_SAVED_ID", "content": "$(cat /tmp/sac_content.md | python3 -c "import sys,json; print(json.dumps(sys.stdin.read())[1:-1])")", "intent": "what changed"}
+PAYLOAD_EOF
+
+curl -s -X POST "http://127.0.0.1:18420/inbox" \
+  -H "Content-Type: application/json" \
+  --data-binary @/tmp/sac_payload.json
 ```
-exec: curl -s -X POST "http://localhost:18420/inbox" -H "Content-Type: application/json" -d '{"conversation_id": "THE_SAVED_ID", "content": "UPDATED CONTENT", "intent": "what changed"}'
+
+Callback fields are only needed on the first call. Updates only need `conversation_id`, `content`, and `intent`.
+
+## Chat Reply (no UI change)
+
+When the user's action is conversational — a greeting, question, or
+clarification — do **not** evolve the app. Instead, POST a chat message:
+
+```bash
+cat > /tmp/sac_chat.json << 'CHAT_EOF'
+{"conversation_id": "abc-123", "content": "YOUR_REPLY", "type": "chat"}
+CHAT_EOF
+
+curl -s -X POST "http://127.0.0.1:18420/inbox" \
+  -H "Content-Type: application/json" \
+  --data-binary @/tmp/sac_chat.json
 ```
 
-Note: callback fields are only needed on the first call. Updates only need `conversation_id`, `content`, and `intent`.
+This shows an assistant bubble in the viewer without touching the app UI.
 
-### Step 4: Handle user actions from the app
+## Handle SaC App Actions
 
-When a user interacts with a rendered SaC app (clicks buttons, submits forms), you will receive a message like:
+When a user clicks a button or sends a message in the SaC app, you will receive a message like:
 
-> A user is viewing a SaC interactive app and requested: [action]
-> ...
-> exec: curl -s -X POST "http://localhost:18420/inbox" ...
+```text
+A user is viewing a SaC interactive app and requested: [action]
+```
 
-**Follow the instructions in the message.** Compose the requested content and run the curl command. Do NOT ask clarifying questions — just compose the best content you can and execute.
+Follow that message:
 
-## Content Guidelines
-
-- **Be substantive**: Provide real data, detailed text, structured information — not placeholder content.
-- **Structure helps**: Use markdown headings, lists, tables, and sections.
-- **Escape JSON properly**: The content field is a JSON string. Escape quotes and newlines.
-- **Always use exec**: Every curl command must be run via the `exec` tool.
+1. Decide: does the request need a **UI change** (new analysis, fix, feature)
+   or a **chat reply** (greeting, question, explanation)?
+2. For UI changes → compose the requested content and publish an update
+   (see "Update Existing App" above) with the same `conversation_id`.
+3. For chat replies → POST a chat message (see "Chat Reply" above).
+4. Do NOT ask clarifying questions — compose the best content you can and execute.
 
 ## Example
 
@@ -106,10 +154,5 @@ User: "Create a travel guide for Tokyo"
 
 1. Read `~/.openclaw/openclaw.json` to get gateway token and port
 2. Compose rich content about Tokyo (attractions, food, transport, tips)
-3. Run:
-
-```
-exec: curl -s -X POST "http://localhost:18420/inbox" -H "Content-Type: application/json" -d '{"content": "# Tokyo Travel Guide\n\n## Top Attractions\n1. **Senso-ji Temple** - Tokyo oldest temple in Asakusa...\n2. **Shibuya Crossing** - The world famous scramble crossing...\n\n## Local Food\n- **Ramen** - Try Fuunji in Shinjuku for tsukemen...\n- **Sushi** - Tsukiji Outer Market for fresh morning sushi...\n\n## Getting Around\n- Get a Suica/Pasmo IC card for trains and buses\n- Tokyo Metro and JR Yamanote line cover most tourist areas", "intent": "Tokyo travel guide", "callback_url": "ws://127.0.0.1:18789?session=agent:main:main", "callback_format": "openclaw_gateway", "callback_auth": "Bearer YOUR_TOKEN_HERE"}'
-```
-
-4. Show the user the URL from the response.
+3. Write content to temp file and POST to `http://127.0.0.1:18420/inbox`
+4. Show the user the URL from the response
