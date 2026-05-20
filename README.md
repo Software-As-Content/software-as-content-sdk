@@ -2,7 +2,7 @@
 
 # SaC SDK
 
-**The interaction layer between humans and agents.**
+### Your agent can talk. Now it can show.
 
 [![PyPI version](https://img.shields.io/pypi/v/sac-sdk.svg)](https://pypi.org/project/sac-sdk/)
 [![Python](https://img.shields.io/pypi/pyversions/sac-sdk.svg)](https://pypi.org/project/sac-sdk/)
@@ -14,149 +14,123 @@
 
 ---
 
-SaC is an open-source interaction layer that lets **any agent system**
-communicate with the user through evolving interactive apps instead of plain
-text. The agent doesn't reply with a chat message — it produces a runnable
-app the user can click, type into, and reshape by talking back.
+SaC (Software as Content) gives your AI agent the ability to **generate and evolve interactive apps** as a way to communicate with users. Instead of replying with text, your agent builds a live React app — a dashboard, a planner, a comparison tool — and the user clicks, types, and explores. The agent then **evolves the same app** in response, preserving context across turns.
 
-```
-   ┌──────────────────────┐         skill / MCP / HTTP        ┌────────────────────┐
-   │  Any Agent System    │ ───────────────────────────────►  │      SaC SDK       │
-   │  Claude Code · Codex │                                   │  Interaction Layer │
-   │  OpenClaw · custom   │ ◄───── user actions / events ──── │  (renders + routes)│
-   └──────────────────────┘                                   └────────┬───────────┘
-                                                                       │ HTTP + SSE
-                                                                       ▼
-                                                              ┌────────────────────┐
-                                                              │ Browser (the user) │
-                                                              │ clicks + types     │
-                                                              │ in app + chat      │
-                                                              └────────────────────┘
-```
+> **function calling** → agent *does things* &nbsp;·&nbsp;
+> **MCP** → agent *talks to systems* &nbsp;·&nbsp;
+> **SaC** → agent *shows and interacts*
 
-When your agent decides an interactive app is the right shape for a task, it
-calls SaC and gets a URL. That URL stays live for the whole conversation —
-the agent's later responses update the app in place (new versions, chat
-bubbles), and the user's clicks/typing flow back to the agent through the
-same surface. One URL = one ongoing conversation.
+<!-- TODO: add demo GIF here -->
 
-Where SaC sits in the stack:
+## Quickstart
 
-- **Function calling** lets the agent *do things*
-- **MCP** lets the agent *connect to external systems*
-- **SaC** lets the agent *present an interactive surface to the user*
-
-## Quick try
+### 1. Install
 
 ```bash
 pip install sac-sdk
+```
+
+### 2. Configure your LLM
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and add your API key. SaC uses an LLM to generate the apps — any OpenAI-compatible provider works:
+
+```bash
+# OpenRouter (default), Anthropic, OpenAI, Ollama, etc.
+SAC_API_KEY=sk-or-v1-your-key-here
+
+# Optional: custom endpoint for OpenAI direct, Ollama, vLLM, etc.
+# SAC_API_BASE=https://api.openai.com/v1/chat/completions
+```
+
+### 3. Run
+
+```bash
 sac serve
 ```
 
-Then open **http://0.0.0.0:18420** in your browser. The built-in playground
-lets you generate apps from prompts and feel the loop without writing any code.
+Open **http://localhost:18420**, type *"3-day Tokyo trip planner with budget"*, and watch a live React app stream in. Click buttons. Ask it to evolve. This is SaC running a built-in agent loop — no external agent needed.
 
-## Connect SaC to your agent
+## Connect to your agent
 
-Three ways to plug SaC into an agent, depending on what your agent host supports.
+SaC is designed to plug into the agent you already use. Pick your platform:
 
-### 1. MCP — for MCP-aware hosts (Claude Code)
-
-The agent gets tools (`generate_app`, `evolve_app`, `wait_for_action`,
-`send_chat`) and drives the loop natively. No separate server to manage —
-the MCP host launches SaC on demand.
+### Claude Code (MCP)
 
 ```bash
-sac setup claude-code     # one-line install
+pip install sac-sdk
+sac setup claude-code        # registers SaC as an MCP server
 ```
 
-→ [integrations/claude-code/](./integrations/claude-code/)
+Restart Claude Code. Then try:
 
-### 2. Skill — for skill-based agents (Codex, OpenClaw)
+> *"Create an interactive release-readiness dashboard for this repo using SaC."*
 
-Install a skill file that teaches the agent how to POST to SaC's `/inbox`
-and handle callbacks. The user starts `sac serve` manually; the agent
-connects to it over HTTP.
+Claude Code will generate the app, show you the URL, and enter the interaction loop automatically.
+
+[Setup details →](./integrations/claude-code/)
+
+### Codex
 
 ```bash
-sac serve                                                          # terminal 1
-cp integrations/codex/SKILL.md ~/.codex/skills/sac-interaction/    # codex
-cp integrations/openclaw/SKILL.md ~/.openclaw/workspace/skills/sac-interaction/  # openclaw
+pip install sac-sdk
+sac serve                    # keep running in a terminal
+mkdir -p ~/.codex/skills/sac-interaction
+cp integrations/codex/SKILL.md ~/.codex/skills/sac-interaction/
 ```
 
-→ [integrations/codex/](./integrations/codex/) · [integrations/openclaw/](./integrations/openclaw/)
+[Setup details →](./integrations/codex/)
 
-### 3. Library — embed in your Python agent loop
+### OpenClaw
 
-Use SaC as a Python library inside your own code. Most direct, lowest-level
-integration. Currently best for prototyping — the ergonomics for full
-production loops aren't polished yet.
+```bash
+pip install sac-sdk
+sac serve                    # keep running in a terminal
+mkdir -p ~/.openclaw/workspace/skills/sac-interaction
+cp integrations/openclaw/SKILL.md ~/.openclaw/workspace/skills/sac-interaction/
+```
+
+[Setup details →](./integrations/openclaw/)
+
+### Python (build your own agent)
 
 ```python
 from sac import SaC
+
 sac = SaC()
-app = await sac.conversation().generate("3-day Tokyo itinerary")
-# app.code is runnable TSX — render it however you want
+conv = sac.conversation()
+app = await conv.generate("3-day Tokyo itinerary")
+print(app.url)   # user opens this
+# app.code contains the generated TSX
 ```
 
-The same loop, regardless of mode:
+## How it works
 
-1. Agent opens a SaC conversation → gets a viewer URL (one per conversation)
-2. User opens the URL, interacts with the rendered app
-3. Click/type → SaC delivers the action back to the agent
-4. Agent updates the same conversation → app evolves in place (new version
-   in the iframe) or shows a chat bubble — no new URL
+```
+Your agent ──▶ SaC ──▶ User sees a live app at a URL
+                   ◀── User clicks a button / types a message
+Your agent ──▶ SaC ──▶ Same URL, app evolves in place
+                   ◀── ...
+```
+
+One URL, one conversation. The agent doesn't generate a new page every turn — it evolves the existing app. Users keep their context; the agent keeps its state.
+
+**Two channels, one loop:** every response is either a UI update (the app evolves) or a chat reply (a text bubble). Users can click buttons in the app OR type in the chat — both go back to the agent through the same callback.
 
 ## When to use SaC
 
-SaC shines when the value is in **how the user explores**, not in the final
-deliverable. It's not the right answer for everything.
+SaC is for tasks where **exploration and interaction** matter more than a final answer.
 
-**✅ Good fit**
+**Good fit:** trip planning, data analysis dashboards, comparison shopping, project planning, research, financial reviews, decision aids, internal tools
 
-- **Exploration tasks** — trip planning, comparison shopping, research,
-  project planning, financial reviews
-- **Rich, varied agent outputs** that don't fit a fixed template — data
-  analysis, multi-faceted plans, decision aids, internal-tool views
-
-**❌ Skip SaC for**
-
-- Simple Q&A or short conversational replies
-- Strictly end-to-end task automation ("set an alarm for 7am")
-- Socio-emotional conversations
-- Open-ended *conceptual* exploration
-
-If 95% of your agent's output is short text, you don't need SaC.
-
-## Core ideas
-
-### Conversation is your handle on an App's evolution
-
-What persists, evolves, and gets shared is the **App** — a versioned artifact
-with code, state, and affordances. **Conversation** is how that App evolves
-through user actions and agent responses.
-
-### Evolve ≠ Regenerate
-
-When the user asks for a change, SaC inspects the current App, makes a
-structured **growth decision** (extend the existing view vs add a new
-section), then generates the change progressively. State and context are
-preserved by design. This is what distinguishes SaC from one-shot UI
-generators.
-
-### Dual-channel UI
-
-Every response has two channels: **Φˢ** (structured App version, rendered in
-an iframe) and **Φⁿˡ** (natural-language chat reply, shown as a bubble). The
-agent picks `type: "ui"` or `type: "chat"` for each response. Users can click
-buttons OR type in the chat — both go back to the agent through the same
-callback.
-
-See the [paper](https://arxiv.org/abs/2603.21334) for the framing.
+**Not the right tool for:** simple Q&A, one-shot automations ("set an alarm"), conversations that are purely text
 
 ## Customize
 
-Every layer is pluggable via Protocol classes:
+Every layer is pluggable:
 
 ```python
 from sac import SaC, FileStore
@@ -170,50 +144,38 @@ sac = SaC(
 
 Prompts live in [`src/sac/runtime/prompts/`](./src/sac/runtime/prompts/) and
 the default design system is in [`src/sac/renderer/design-systems/default/`](./src/sac/renderer/design-systems/default/).
-Both are open-source — community contributions here are the highest-leverage
-change you can make.
 
-## Architecture (at a glance)
+## Architecture
 
 ```
 src/sac/
 ├── sac.py / conversation.py    Entry + Conversation primitive
-├── runtime/                    Generate + Evolve pipeline, prompts, providers, store
+├── runtime/                    Generate + Evolve pipeline, prompts, providers
 ├── server/
-│   ├── http/                   FastAPI + /inbox + /action + SSE + viewer
-│   └── mcp/                    MCP stdio server (embeds HTTP)
+│   ├── http/                   FastAPI + SSE streaming + viewer
+│   └── mcp/                    MCP stdio server (Claude Code integration)
 └── renderer/                   iframe sandbox + design system
 ```
 
-Deeper notes: [`docs/architecture.md`](./docs/architecture.md).
-
-## What SaC is NOT
-
-- **Not a UI library** — no fixed components; the LLM generates structure
-- **Not vibe coding** — SaC is for end-user agents, not developer IDE flows
-- **Not GenUI** — GenUI picks from a component library; SaC generates the
-  structure itself
-- **Not a chat replacement** — SaC is a *parallel bandwidth* alongside chat
+[Full architecture →](./docs/architecture.md)
 
 ## Project status
 
-`v0.15` — alpha. Core protocol is settling but may shift before `v1.0`. The
-hosted product at [sac.dynsoft.ai](https://sac.dynsoft.ai) runs on the same
-codebase, so production paths are battle-tested; the SDK boundary is what's
-being polished.
+Alpha. The core protocol (generate → evolve → callback loop) is stable and runs in production at [sac.dynsoft.ai](https://sac.dynsoft.ai). The SDK surface is being polished toward v1.0.
 
 ## Contributing
 
-Issues and PRs welcome. The highest-leverage changes right now are **prompt
-improvements** in [`src/sac/runtime/prompts/`](./src/sac/runtime/prompts/) and
-**design system contributions** in [`src/sac/renderer/design-systems/`](./src/sac/renderer/design-systems/).
-For local dev: `pip install -e .`.
+Issues and PRs welcome. Highest-leverage contributions right now:
+- **Prompt improvements** in [`src/sac/runtime/prompts/`](./src/sac/runtime/prompts/)
+- **Design system contributions** in [`src/sac/renderer/design-systems/`](./src/sac/renderer/design-systems/)
+
+For local dev: `pip install -e .`
 
 ## Security
 
 Found a vulnerability? Email **mulong@mulongxie.me** — please don't open a
 public issue. SaC executes LLM-generated code in a sandboxed iframe, so
-issues around iframe escape, prompt-injected exfiltration, or sandbox bypass
+issues around iframe escape, prompt injection, or sandbox bypass
 are especially in scope.
 
 ## Citation
