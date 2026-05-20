@@ -2,7 +2,7 @@
 
 # SaC SDK
 
-### Your agent can talk. Now it can show.
+### Interaction layer between you and your agents.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 
