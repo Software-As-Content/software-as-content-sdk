@@ -174,17 +174,24 @@ export class SaCRenderer {
 
     processed = this._rewriteLucideImports(processed);
 
-    // Rewrite @/components/ui/* and @/lib/utils imports
+    // Rewrite @/components/ui/* and @/lib/utils imports → shim
     processed = processed
       .replace(/from\s+["']@\/components\/ui\/[^"']+["']/g, 'from "__ui_shim__"')
       .replace(/from\s+["']@\/lib\/utils["']/g, 'from "__ui_shim__"');
 
-    // Auto-import missing shim components (skip during streaming).
-    // LLMs frequently use a shadcn component in JSX but forget the import.
-    // During streaming, partial code may be missing its own imports that
-    // haven't arrived yet — patching would cause duplicate-identifier errors.
+    // Rewrite @radix-ui/* → shim (LLMs import Radix directly instead of shadcn wrappers)
+    processed = processed
+      .replace(/from\s+["']@radix-ui\/[^"']+["']/g, 'from "__ui_shim__"');
+
+    // Normalize CDN package sub-path imports to main package
+    processed = processed
+      .replace(/from\s+["']pigeon-maps\/[^"']+["']/g, 'from "pigeon-maps"')
+      .replace(/from\s+["']recharts\/[^"']+["']/g, 'from "recharts"');
+
+    // Auto-import missing components (skip during streaming).
+    // Covers shim components, CDN packages, and unknown component placeholders.
     if (!skipAutoImport) {
-      processed = _autoImportMissingShimComponents(processed);
+      processed = _autoImportMissingComponents(processed);
     }
 
     return processed;
@@ -263,7 +270,7 @@ export class SaCRenderer {
 // lookup fails with "X is not defined".
 //
 // This whitelist is the set of component names that shim.js exports.
-// `_autoImportMissingShimComponents` scans the code for capital-letter JSX
+// `_autoImportMissingComponents` scans the code for capital-letter JSX
 // tags that aren't already in scope, and if any match the whitelist, prepends
 // a consolidated import line. Only runs on final (non-streaming) code.
 
@@ -312,7 +319,41 @@ const _SHIM_COMPONENTS = new Set([
   "Tooltip", "TooltipContent", "TooltipProvider", "TooltipTrigger",
 ]);
 
-function _autoImportMissingShimComponents(code) {
+// JS/TS built-in globals that the JSX tag regex might match (e.g. useState<Date>)
+const _BUILTIN_GLOBALS = new Set([
+  "Date", "Map", "Set", "Array", "Object", "String", "Number", "Boolean",
+  "Promise", "Error", "RegExp", "Symbol", "WeakMap", "WeakSet", "Proxy",
+  "Int8Array", "Uint8Array", "Float32Array", "Float64Array", "BigInt",
+  "JSON", "Math", "Intl", "URL", "URLSearchParams", "FormData",
+  "Headers", "Request", "Response", "Blob", "File", "FileReader",
+  "AbortController", "Event", "CustomEvent", "Element", "HTMLElement",
+  "Node", "Document", "Window", "Navigator", "Storage", "Console",
+  "React", "Fragment", "Component", "PureComponent",
+  "Record", "Partial", "Required", "Readonly", "Pick", "Omit", "Exclude",
+  "Extract", "NonNullable", "ReturnType", "InstanceType", "Parameters",
+]);
+
+// CDN packages available via import map — { componentName → package }
+const _CDN_COMPONENTS = {
+  "Map": "pigeon-maps", "Marker": "pigeon-maps", "Overlay": "pigeon-maps",
+  "ZoomControl": "pigeon-maps", "Draggable": "pigeon-maps",
+  "GeoJson": "pigeon-maps", "GeoJsonFeature": "pigeon-maps",
+  "AreaChart": "recharts", "BarChart": "recharts", "LineChart": "recharts",
+  "PieChart": "recharts", "RadarChart": "recharts", "RadialBarChart": "recharts",
+  "ComposedChart": "recharts", "ScatterChart": "recharts", "FunnelChart": "recharts",
+  "Treemap": "recharts", "SunburstChart": "recharts",
+  "Area": "recharts", "Bar": "recharts", "Line": "recharts", "Pie": "recharts",
+  "Radar": "recharts", "RadialBar": "recharts", "Scatter": "recharts",
+  "Funnel": "recharts", "Cell": "recharts",
+  "XAxis": "recharts", "YAxis": "recharts", "ZAxis": "recharts",
+  "CartesianGrid": "recharts", "CartesianAxis": "recharts",
+  "PolarGrid": "recharts", "PolarAngleAxis": "recharts", "PolarRadiusAxis": "recharts",
+  "LabelList": "recharts", "Brush": "recharts", "Legend": "recharts",
+  "ReferenceArea": "recharts", "ReferenceDot": "recharts", "ReferenceLine": "recharts",
+  "ResponsiveContainer": "recharts", "ErrorBar": "recharts",
+};
+
+function _autoImportMissingComponents(code) {
   // 1. Collect capital-letter JSX tag names used in the code.
   const usedTags = new Set();
   const jsxRegex = /<\s*([A-Z][A-Za-z0-9_]*)/g;
@@ -326,7 +367,6 @@ function _autoImportMissingShimComponents(code) {
   //    imports, and top-level const/let/var/function/class declarations.
   const inScope = new Set();
 
-  // Named imports: `import { A, B as Alias } from "..."`
   const namedImportRegex = /import\s+\{([^}]+)\}\s*from\s*["'][^"']+["']/g;
   while ((m = namedImportRegex.exec(code)) !== null) {
     for (const raw of m[1].split(",")) {
@@ -338,30 +378,62 @@ function _autoImportMissingShimComponents(code) {
     }
   }
 
-  // Default / namespace imports
   const defaultImportRegex = /import\s+(?:\*\s+as\s+)?([A-Z][A-Za-z0-9_]*)\s*(?:,|from)/g;
   while ((m = defaultImportRegex.exec(code)) !== null) {
     inScope.add(m[1]);
   }
 
-  // Local top-level declarations
   const localDeclRegex = /\b(?:const|let|var|function|class)\s+([A-Z][A-Za-z0-9_]*)/g;
   while ((m = localDeclRegex.exec(code)) !== null) {
     inScope.add(m[1]);
   }
 
-  // 3. Diff: usedTags - inScope, filtered by shim whitelist
-  const missing = [];
+  // 3. Categorize missing components: shim, CDN package, or unknown
+  const missingShim = [];
+  const missingCdn = {};  // package → [names]
+  const missingUnknown = [];
+
   for (const name of usedTags) {
     if (inScope.has(name)) continue;
-    if (_SHIM_COMPONENTS.has(name)) missing.push(name);
+    if (_SHIM_COMPONENTS.has(name)) {
+      missingShim.push(name);
+    } else if (_CDN_COMPONENTS[name]) {
+      const pkg = _CDN_COMPONENTS[name];
+      (missingCdn[pkg] = missingCdn[pkg] || []).push(name);
+    } else if (!_BUILTIN_GLOBALS.has(name)) {
+      missingUnknown.push(name);
+    }
   }
-  if (missing.length === 0) return code;
 
-  // 4. Inject a consolidated import at the top
-  const importLine = `import { ${missing.join(", ")} } from "__ui_shim__";\n`;
-  console.debug("[SaCRenderer] auto-imported missing shim components:", missing);
-  return importLine + code;
+  if (missingShim.length === 0 && Object.keys(missingCdn).length === 0 && missingUnknown.length === 0) {
+    return code;
+  }
+
+  let prefix = '';
+
+  // 4a. Shim components
+  if (missingShim.length > 0) {
+    prefix += `import { ${missingShim.join(", ")} } from "__ui_shim__";\n`;
+    console.debug("[SaCRenderer] auto-imported shim:", missingShim);
+  }
+
+  // 4b. CDN package components
+  for (const [pkg, names] of Object.entries(missingCdn)) {
+    prefix += `import { ${names.join(", ")} } from "${pkg}";\n`;
+    console.debug("[SaCRenderer] auto-imported from " + pkg + ":", names);
+  }
+
+  // 4c. Unknown components — inject placeholder that renders children in a div.
+  // Use a unique namespace import to avoid colliding with the app's own React import.
+  if (missingUnknown.length > 0) {
+    prefix += `import * as __SaCReact from "react";\n`;
+    for (const name of missingUnknown) {
+      prefix += `const ${name} = ({ children, ...p }) => __SaCReact.createElement("div", { "data-sac-placeholder": "${name}", ...p }, children);\n`;
+    }
+    console.debug("[SaCRenderer] injected placeholders for unknown components:", missingUnknown);
+  }
+
+  return prefix + code;
 }
 
 
