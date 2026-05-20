@@ -1,7 +1,5 @@
 # SaC SDK Architecture
 
-> **Status note (2026-05-05):** this document describes the **target architecture** after the dual-channel pivot. Code is partway there — see "Implementation status" at the bottom.
-
 ## TL;DR
 
 SaC is a **protocol** for the agent ↔ user interaction layer, with a Python reference implementation. Sister to MCP: where MCP solves "agent → tool" inbound, SaC solves "agent → user → agent" round-trip with **dual-channel** (Φˢ structured affordance + Φⁿˡ natural language) input AND output.
@@ -65,12 +63,12 @@ Concretely:
 |---|---|---|
 | text → React code | SaC core | rendering decision |
 | extend_current vs new_page | SaC core | visual decision |
-| chat-bubble vs ui-update | SaC core | content shape decision; fused into the same LLM call |
+| chat-bubble vs ui-update | agent decides via `type` field; SaC has fallback classifier |
 | default intent suggestions | SaC core | content-grounded; agent can override |
 | visual styling, layout, spacing | SaC core | rendering |
 | search / web lookup | agent | fetches new info |
 | analyze / extract search queries | agent | subtask of search |
-| classify "is this chat or update" | agent (dissolved) | now expressed as "agent fills `response` and SaC reads its shape" |
+| classify "is this chat or update" | agent sets `type: "ui"` or `type: "chat"` explicitly |
 | accept user's raw NL message → decide reply | agent | agent's job |
 | run background tasks, schedule cron | agent | agent's job |
 | know what skills/tools exist | agent | agent's job |
@@ -82,12 +80,12 @@ Concretely:
 ```json
 {
   "conversation_id": "abc" | null,
-  "callback_url": "http://...:9000/sac" | null,
-  "response": "<agent's plain-text output>",
+  "callback_url": "codex://..." | "ws://..." | "http://..." | null,
+  "callback_format": "codex_exec_resume" | "openclaw_gateway" | null,
+  "content": "<agent's content — markdown, plain text, or structured>",
   "intent": "..." | null,
-  "suggestions": [{"label": "...", "intent": "..."}] | null,
-  "render_hint": "chat" | "ui" | "auto",
-  "context": {...} | null
+  "user_message": "..." | null,
+  "type": "ui" | "chat" | null
 }
 ```
 
@@ -96,39 +94,45 @@ Response:
 ```json
 {
   "conversation_id": "abc",
-  "url": "http://sac/c/abc",
-  "version": 3 | null
+  "url": "http://127.0.0.1:18420/c/abc",
+  "version": 3 | null,
+  "type": "ui" | "chat"
 }
 ```
 
 Behavior:
-- SaC's fused LLM call inspects `response` and picks one of two output schemas: **chat** (just text → renders to NL panel) or **ui** (React code + growth_decision → new App version)
-- `callback_url` if provided is persisted on the conversation; subsequent calls may omit
-- `suggestions` if provided override the default ones SaC would generate
-- `render_hint` is an escape hatch for agents that need explicit control
-- `version` is `null` when SaC chose chat-only (no new App version)
+- `type: "ui"` → render `content` as a new App version
+- `type: "chat"` → store `content` as an assistant chat bubble (no new version)
+- `type` omitted → SaC decides: agent-owned conversations (has `callback_url`) default to UI; otherwise the legacy classifier picks
+- `callback_url` is persisted on the conversation; subsequent calls may omit
+- `user_message` lets the agent display the user's original verbatim input in the viewer (separate from agent-expanded `intent`)
+- `version` is `null` when `type: "chat"`
 
-### `POST {callback_url}` — SaC sends user action back to agent
+### `POST /c/{id}/action` — user action enters SaC
+
+The viewer calls this when the user clicks a button or types a message:
 
 ```json
 {
-  "conversation_id": "abc",
-  "intent": "<what the user did or said>",
+  "intent": "<button label or typed text>",
   "context": {...} | null
 }
 ```
 
-User clicks a button → `intent` is the button label.
-User types in chat box → `intent` is the typed text.
-Both go through the same callback. Agent receives, processes, and POSTs result back to /inbox.
+SaC then either:
+- **Callback mode** (conversation has `callback_url`) → dispatches to the registered agent (HTTP POST, WebSocket RPC, or `codex exec resume`)
+- **Pull mode** (no `callback_url`) → queues the action; the agent picks it up via `GET /c/{id}/wait-action` (long-poll)
+
+Either way, the agent eventually POSTs back to `/inbox` to evolve the app or reply via chat.
 
 ### Symmetry
 
 ```
-agent ──response──▶ /inbox       ──renders──▶ user (Φˢ App + Φⁿˡ chat)
+agent ──content──▶ /inbox        ──renders──▶ user (Φˢ App + Φⁿˡ chat)
                                                     │ click / type
-                  callback ◀──intent──── SaC ◀──────┘
-agent ◀──── runs follow-up, POSTs new response back ──┘
+              callback ◀──intent──── /action ◀──────┘
+                        OR pull (wait-action)
+agent ◀──── runs follow-up, POSTs new content back ──┘
 ```
 
 Both directions support both channels. Agent integration cost ≈ 30 lines (post + receive).
@@ -153,7 +157,8 @@ SaC                          Conversation                    App
 ## Pluggable seams
 
 ```
-LLMProvider          OpenRouterProvider (default)         — used by core LLM call
+LLMProvider          OpenRouterProvider (default)         — any OpenAI-compatible endpoint
+                     AnthropicProvider                    — Anthropic Messages API
 ConversationStore    MemoryStore | FileStore (default)    — used by core
 CodeProducer         DefaultCodeProducer (default)        — pure rendering seam
 
@@ -161,13 +166,15 @@ SearchProvider       TavilyProvider (default)             — used by bundled de
                                                             (NOT by SaC core)
 ```
 
+Provider is auto-detected: `sk-ant-*` keys → Anthropic, otherwise OpenRouter. Override with `SAC_API_BASE` for any OpenAI-compatible endpoint (OpenAI, ollama, vLLM, etc.).
+
 `CodeProducer` is the only seam strictly required by the protocol layer. All four can be replaced via the `SaC()` constructor or the bundled agent's constructor.
 
 ## Renderer (dual-channel UI)
 
 The renderer renders both channels:
 
-- **Φˢ — App version**: iframe sandbox running the latest version's React TSX with Babel + Tailwind + design-system shim. Updates on new versions via SSE (planned step 3).
+- **Φˢ — App version**: iframe sandbox running the latest version's React TSX with Babel + Tailwind + design-system shim. Updates on new versions via SSE.
 - **Φⁿˡ — Chat panel**: scrollable panel of assistant text replies (when SaC's LLM call decided "chat"). User can also type into a NL input here, which posts via the callback channel.
 
 The user clicks structured affordances OR types NL. Both feed back to the same agent via `callback_url`.
@@ -180,7 +187,11 @@ src/sac/
 ├── types.py                 pydantic data models
 ├── sac.py                   SaC class — entry, DI, conversation factory
 ├── conversation.py          Conversation primitive — version chain + state
-├── cli.py                   CLI entrypoints (sac serve)
+├── cli.py                   CLI entrypoints (sac serve, sac setup, sac publish)
+│
+├── agent/
+│   ├── agent.py             StandaloneAgent (bundled default agent)
+│   └── legacy.py            LegacyShim for /send + /classify endpoints
 │
 ├── runtime/
 │   ├── producer.py          CodeProducer Protocol + DefaultCodeProducer (seam)
@@ -190,15 +201,19 @@ src/sac/
 │   │   └── events.py        stage tracking + timing
 │   ├── providers/
 │   │   ├── base.py          LLMProvider, SearchProvider protocols
-│   │   ├── openrouter.py
-│   │   └── tavily.py        (used only by bundled agent)
-│   ├── prompts/             prompt builders
+│   │   ├── openrouter.py    OpenAI-compatible (OpenRouter, OpenAI, ollama, etc.)
+│   │   ├── anthropic.py     Anthropic Messages API
+│   │   └── tavily.py        search (used only by bundled agent)
+│   ├── prompts/             prompt builders + model definitions
 │   └── store/               MemoryStore, FileStore
 │
 ├── server/
-│   ├── http.py              FastAPI app — /inbox + callback + legacy endpoints
-│   ├── mcp.py               MCP server (re-routes to /inbox)
-│   └── static/index.html    web preview UI
+│   ├── http/
+│   │   ├── http.py          FastAPI app — /inbox + callback + viewer
+│   │   ├── callbacks/       callback adapters (OpenClaw, Codex, HTTP)
+│   │   └── static/          viewer UI (HTML + CSS + JS)
+│   └── mcp/
+│       └── mcp.py           MCP server (re-routes to /inbox, embeds HTTP)
 │
 └── renderer/
     ├── sac-renderer.js      parent-page renderer API
@@ -208,70 +223,72 @@ src/sac/
 
 ## End-to-end flow (target shape)
 
-### Daily-brief lighthouse (OpenClaw external agent)
+### Callback mode (OpenClaw / Codex external agent)
 
 ```
-1. OpenClaw cron fires daily-brief skill
-   ├─ Skill collects Gmail / calendar / weather → composes text
-   └─ Skill POST /inbox  { response: "<brief text>",
-                           callback_url: "http://openclaw.local/sac" }
+1. Agent composes content and POSTs /inbox
+   { content: "<brief>", type: "ui",
+     callback_url: "ws://...",  callback_format: "openclaw_gateway" }
 
-2. SaC fused LLM call
-   ├─ Inspects response shape → decides "ui" (substantive content)
-   ├─ Generates React TSX + growth_decision (no prior_app → first version)
-   └─ Returns { conversation_id, url, version: 1 }
+2. SaC renders v1 → returns { conversation_id, url, version: 1 }
 
 3. User opens url, sees rendered App in Φˢ channel
    ├─ Clicks "Show last week's trend"
-   └─ SaC POST {callback_url}  { conversation_id, intent: "Show last week's trend" }
+   └─ Viewer POST /c/{id}/action  { intent: "Show last week's trend" }
 
-4. OpenClaw receiver
-   ├─ Routes intent to the appropriate skill
-   ├─ Skill runs follow-up query → composes new text
-   └─ POST /inbox  { conversation_id, response: "<new analysis>" }
+4. SaC dispatches via callback_url (WebSocket RPC, or `codex exec resume`)
+   └─ Agent receives the action
 
-5. SaC fused LLM call
-   ├─ Has prior_app → evolve path
-   ├─ Decides "ui" again, growth_decision = extend_current
-   └─ New version v2
+5. Agent runs follow-up → POST /inbox
+   { conversation_id, content: "<new analysis>", type: "ui" }
+   — or, for a conversational reply —
+   { conversation_id, content: "<reply text>", type: "chat" }
 
-6. Browser SSE picks up version change → iframe re-renders to v2
+6. SaC renders v2 (ui) or shows chat bubble (chat) → browser updates via SSE
 ```
 
-### Standalone chat (bundled default agent)
+### Pull mode (MCP-based agent: Claude Code)
 
 ```
-1. User types "make me a Hangzhou travel guide" in SaC web chat
-2. UI POSTs to bundled-agent endpoint (NOT directly to /inbox)
-3. Bundled agent: search Tavily → compose enriched response
-4. Bundled agent POST /inbox  { response: "<travel guide data>" }
-5. SaC renders to App version, returns url
-6. UI navigates browser to url
+1. Claude Code calls `generate_app(intent)` MCP tool
+   └─ Tool POSTs /inbox internally, returns viewer URL
+
+2. Claude Code calls `wait_for_action(conversation_id)` — blocks
+
+3. User opens viewer, clicks a button or types
+   └─ Viewer POST /c/{id}/action queues the action
+
+4. `wait_for_action` returns the action to Claude Code with recent context
+
+5. Claude Code calls either:
+   ├─ `evolve_app(id, intent)` → new ui version
+   └─ `send_chat(id, message)` → chat bubble, no version
+
+6. Back to step 2 (loop)
 ```
 
-The web chat box has the same shape as any agent — it just happens to live in the same Python process as SaC.
+No callback URL needed — the MCP tool call itself is the "callback".
 
-## Implementation status (2026-05-05)
+## Implementation status
 
 | Component | Status |
 |---|---|
-| Conversation primitive + version chain | ✅ done |
-| Renderer infrastructure (iframe + design system) | ✅ done |
-| CodeProducer seam | ✅ done |
-| `content` parameter through pipelines (skip search when given) | ✅ done |
-| Basic `/inbox` endpoint (single-channel, accepts `content`) | ✅ MVP |
-| `callback_url` field on ConversationData | ✅ done |
-| `/c/{id}` static viewer + auto-load JS | ✅ done |
-| Single response/content semantics (SaC decides chat vs ui) | ✅ MVP via LegacyShim classifier |
-| Fused LLM call (chat vs ui in one model call) | ❌ pending |
-| Default agent extracted to `sac.builtin` | ✅ done |
-| `/generate /send /stream` re-routed through bundled agent / legacy shim | ✅ done |
-| MCP server tools re-routed to /inbox | ❌ pending |
-| Callback routing for button click + chat input | ✅ done |
-| Renderer SSE for live updates | ✅ done |
-| OpenClaw adapter (gateway callback) | ✅ done |
-| Codex adapter (`codex_exec_resume`) | ✅ MVP |
-| End-to-end OpenClaw demo | ✅ done |
+| Conversation primitive + version chain | ✅ |
+| Renderer infrastructure (iframe + design system) | ✅ |
+| Progressive evolve (S/R diff + change highlighting) | ✅ |
+| `/inbox` endpoint (`type: ui` / `chat`, content + callback) | ✅ |
+| `/c/{id}/action` callback dispatch + pull queue | ✅ |
+| `/c/{id}/wait-action` long-poll endpoint | ✅ |
+| `/c/{id}/events` SSE viewer updates | ✅ |
+| Default agent (StandaloneAgent) | ✅ |
+| MCP server (stdio transport, embedded HTTP) | ✅ |
+| MCP tools: generate_app / evolve_app / wait_for_action / send_chat | ✅ |
+| OpenClaw adapter (gateway WebSocket callback) | ✅ |
+| Codex adapter (`codex_exec_resume` subprocess) | ✅ |
+| Multi-provider support (OpenRouter, Anthropic, OpenAI-compat) | ✅ |
+| `sac setup claude-code` CLI installer | ✅ |
+| `sac publish` CLI for external agents | ✅ |
+| Fused LLM call (chat vs ui in one model call) | pending |
 
 ## Strategic note
 
