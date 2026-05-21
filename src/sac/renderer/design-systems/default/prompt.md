@@ -18,7 +18,7 @@ Before coding, understand the context and commit to a BOLD aesthetic direction:
 
 ### Color Palette
 
-**Main page background: ALWAYS pure white (`bg-white` / `#ffffff`).** Never use `stone-50` or any tinted color for the top-level page / app container background — the app must read as a clean white surface. Stone tones are for text, borders, and secondary contrast only.
+**Main page background: ALWAYS pure white (`bg-white` / `#ffffff`).** Never use dark backgrounds (gray-800, slate-900, zinc-900, black, etc.) for the page or large sections. Never use `stone-50` or any tinted color for the top-level page / app container background — the app must read as a clean white surface.
 
 **Base (Stone)** — warm gray tones for text and subtle contrast:
 `stone-100` hover · `stone-200` border · `stone-400` placeholder · `stone-500` muted · `stone-700` body · `stone-900` heading.
@@ -27,6 +27,11 @@ Before coding, understand the context and commit to a BOLD aesthetic direction:
 `orange-500` primary · `orange-600` hover · `orange-700` active.
 
 **Semantic**: `green-500/600` success · `amber-500/600` warning · `red-500/600` error · `blue-500/600` info.
+
+**Contrast Rules**:
+- Every text/background pair should have clear visual contrast. On light backgrounds use `text-stone-700`+ for body, `text-stone-900` for headings. On dark backgrounds use `text-white` or `text-stone-100`.
+- Avoid mid-on-mid combinations (e.g. `text-stone-400` on `bg-stone-200`, or `text-gray-500` on `bg-gray-700`).
+- These stone/orange defaults apply when no specific style is requested. If the user asks for a dark theme, neon style, etc., adapt colors accordingly while maintaining readable contrast.
 
 ### Typography
 Font: Inter, system-ui, sans-serif. Headings `font-semibold text-stone-900`. Body `text-stone-700`. Muted `text-stone-500`. Captions `text-xs text-stone-500`.

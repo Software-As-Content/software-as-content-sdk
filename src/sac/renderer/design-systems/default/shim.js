@@ -50,7 +50,7 @@ export const Button = React.forwardRef(({ className, variant, size, onClick, ...
   const variants = {
     default: "bg-orange-500 text-white hover:bg-orange-600",
     destructive: "bg-red-500 text-white hover:bg-red-600",
-    outline: "border border-gray-200 bg-white hover:bg-gray-100",
+    outline: "border border-gray-200 bg-white text-gray-900 hover:bg-gray-100",
     secondary: "bg-gray-100 text-gray-900 hover:bg-gray-200",
     ghost: "hover:bg-gray-100",
     link: "text-orange-500 underline-offset-4 hover:underline",
@@ -76,7 +76,7 @@ export const Button = React.forwardRef(({ className, variant, size, onClick, ...
 export const Card = fwd("div", "rounded-2xl border border-gray-200 bg-white shadow-sm");
 export const CardHeader = fwd("div", "p-6 pb-0");
 export const CardTitle = fwd("h3", "text-lg font-semibold");
-export const CardDescription = fwd("p", "text-sm text-gray-500 mt-1");
+export const CardDescription = fwd("p", "text-sm text-gray-600 mt-1");
 export const CardContent = fwd("div", "p-6");
 export const CardFooter = fwd("div", "p-6 pt-0");
 
@@ -242,7 +242,7 @@ export const Table = fwd("table", "w-full caption-bottom text-sm");
 export const TableHeader = fwd("thead", "");
 export const TableBody = fwd("tbody", "");
 export const TableRow = fwd("tr", "border-b border-gray-200");
-export const TableHead = fwd("th", "h-12 px-4 text-left font-medium text-gray-500");
+export const TableHead = fwd("th", "h-12 px-4 text-left font-medium text-gray-600");
 export const TableCell = fwd("td", "p-4");
 
 // ─── Dialog ───────────────────────────────────────────────────────
@@ -251,7 +251,7 @@ export const Dialog = ({ children, open }) => open ? e("div", { className: "fixe
 export const DialogContent = fwd("div", "bg-white rounded-2xl p-6 shadow-lg max-w-lg w-full mx-4");
 export const DialogHeader = fwd("div", "mb-4");
 export const DialogTitle = fwd("h2", "text-lg font-semibold");
-export const DialogDescription = fwd("p", "text-sm text-gray-500");
+export const DialogDescription = fwd("p", "text-sm text-gray-600");
 export const DialogTrigger = fwd("button", "");
 export const DialogClose = fwd("button", "");
 
@@ -266,7 +266,7 @@ export const Alert = React.forwardRef(({ className, variant, ...p }, ref) => {
   return e("div", { ref, role: "alert", className: [base, variants[variant] || variants.default, className].filter(Boolean).join(" "), ...p });
 });
 export const AlertTitle = fwd("h5", "mb-1 font-medium leading-none");
-export const AlertDescription = fwd("p", "text-sm text-gray-500");
+export const AlertDescription = fwd("p", "text-sm text-gray-600");
 
 // ─── AlertDialog ──────────────────────────────────────────────────
 
@@ -323,7 +323,7 @@ export const DropdownMenuGroup = fwd("div", "");
 // ─── Breadcrumb ───────────────────────────────────────────────────
 
 export const Breadcrumb = fwd("nav", "");
-export const BreadcrumbList = fwd("ol", "flex items-center gap-1.5 text-sm text-gray-500");
+export const BreadcrumbList = fwd("ol", "flex items-center gap-1.5 text-sm text-gray-600");
 export const BreadcrumbItem = fwd("li", "inline-flex items-center gap-1.5");
 export const BreadcrumbLink = fwd("a", "hover:text-gray-900 cursor-pointer");
 export const BreadcrumbPage = fwd("span", "text-gray-900 font-medium");

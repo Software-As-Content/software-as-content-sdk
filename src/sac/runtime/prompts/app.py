@@ -124,6 +124,12 @@ const [activeTab, setActiveTab] = React.useState("overview");
 
 If your content cannot be cleanly split into separate <TabsContent> blocks this way, DO NOT use a tab bar at all — lay the content out as stacked scrolling sections.
 
+VISUAL QUALITY — MANDATORY:
+- CONTRAST: Every text element must be clearly readable against its background. Light text on dark backgrounds and dark text on light backgrounds are both fine — but never place mid-tone text on mid-tone backgrounds (e.g. gray-400 text on gray-600 bg). Aim for WCAG AA contrast (4.5:1 for body text, 3:1 for large headings).
+- DEFAULT STYLE: Unless the user's request implies a specific visual style (dark theme, colorful, neon, etc.), default to white/light backgrounds with dark text — this is the safest for readability.
+- CONSISTENCY: Pick one background strategy and apply it consistently. Don't mix dark sections with light sections randomly — it creates visual noise.
+- DATA VISUALIZATION: Ensure chart labels, axes, and legends are legible against whatever background you use.
+
 EXAMPLE FORMAT:
 ```tsx
 import * as React from "react";
@@ -141,7 +147,7 @@ export default function ComponentName() {
 }
 ```"""
 
-DEFAULT_CUSTOM_INSTRUCTIONS = "Create a modern, clean UI with good UX practices, keep the page always in full width."
+DEFAULT_CUSTOM_INSTRUCTIONS = "Create a modern, clean UI with good UX practices. Keep the page always in full width. Ensure all text is clearly readable against its background."
 
 # ─── Design System ─────────────────────────────────────────────────
 
