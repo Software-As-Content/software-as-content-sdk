@@ -48,8 +48,19 @@ class CodeProducer(Protocol):
 class DefaultCodeProducer:
     """Default producer — wraps the core (search-free) generate/evolve pipelines."""
 
+    # Intents matching these patterns trigger full-code evolve instead of diff.
+    # Diff evolve makes minimal edits, which compounds structural errors when
+    # the source code is already broken (mismatched tags, syntax errors).
+    _ERROR_FIX_KEYWORDS = ("fix", "error", "render", "transpile", "syntax", "bug")
+
     def __init__(self, llm: LLMProvider) -> None:
         self._llm = llm
+
+    @staticmethod
+    def _is_error_fix(intent: str) -> bool:
+        """Detect intents that are fixing render/transpile errors."""
+        low = intent.lower()
+        return sum(1 for kw in DefaultCodeProducer._ERROR_FIX_KEYWORDS if kw in low) >= 2
 
     async def produce(
         self,
@@ -97,6 +108,20 @@ class DefaultCodeProducer:
                 llm=self._llm,
                 settings=settings,
                 version=version,
+                content=content,
+            )
+        # Error-fix intents use full-code evolve — diff on broken code compounds
+        # structural errors (mismatched JSX tags, wrong nesting levels).
+        if self._is_error_fix(intent):
+            return stream_evolve_pipeline(
+                new_intent=intent,
+                current_code=prior_app.code,
+                original_intent=prior_app.intent,
+                model=model,
+                llm=self._llm,
+                settings=settings,
+                version=version,
+                parent_version=prior_app.version,
                 content=content,
             )
         return stream_evolve_pipeline_diff(
