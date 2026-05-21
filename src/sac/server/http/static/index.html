@@ -93,7 +93,19 @@
     </div>
     <div class="input-area">
       <div class="input-wrapper">
-        <textarea id="intent" placeholder="What's next?" rows="1"></textarea>
+        <div class="input-main">
+          <textarea id="intent" placeholder="What's next?" rows="1"></textarea>
+          <div class="input-meta">
+            <button class="model-selector" id="model-selector" type="button" title="Switch model">
+              <svg class="model-selector-icon" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M4.2 5.2h7.6M4.2 8h7.6M4.2 10.8h4.6" />
+              </svg>
+              <span id="model-selector-label">Gemini 3.5 Flash</span>
+              <svg class="model-selector-chevron" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div class="model-dropdown hidden" id="model-dropdown"></div>
+          </div>
+        </div>
         <button class="send-btn-inline" id="send-btn" type="button" title="Send">↑</button>
       </div>
     </div>

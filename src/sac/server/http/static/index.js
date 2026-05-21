@@ -93,6 +93,8 @@ let statusTimer = null;
 const callbackCards = new Map(); // run_id -> { el, eventsEl, rawEl, seen }
 const finalizedRunIds = new Set(); // run IDs already absorbed into version cards
 let lastUserIntent = '';         // tracks the most recent user intent for pending cards
+let currentModel = null;         // selected model id (null = server default)
+let availableModels = [];        // fetched from /models
 
 // ─── Streaming preview state ────────────────────────────────
 // Matches the product's approach: accumulate chunks in a buffer,
@@ -410,7 +412,7 @@ async function handleSend() {
     const res = await fetch('/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, conversation_id: conversationId }),
+      body: JSON.stringify({ message, conversation_id: conversationId, model: currentModel }),
     });
     const data = await res.json();
 
@@ -774,6 +776,8 @@ async function streamGenerate(body) {
   iframe.classList.remove('hidden');
 
   streamReset();
+
+  if (currentModel) body.model = currentModel;
 
   try {
     const response = await fetch('/stream', {
@@ -1853,9 +1857,9 @@ function setPending(value) {
 }
 
 function resizeIntentInput() {
-  const maxHeight = 118;
+  const maxHeight = 108;
   intentInput.style.height = 'auto';
-  const nextHeight = Math.max(22, Math.min(intentInput.scrollHeight, maxHeight));
+  const nextHeight = Math.max(20, Math.min(intentInput.scrollHeight, maxHeight));
   intentInput.style.height = `${nextHeight}px`;
   intentInput.style.overflowY = intentInput.scrollHeight > maxHeight ? 'auto' : 'hidden';
 }
@@ -1965,6 +1969,62 @@ function scrollChatToBottom() {
   const area = document.getElementById('chat-area');
   if (area) area.scrollTop = area.scrollHeight;
 }
+
+// ─── Model Selector ──────────────────────────────────────────
+(function initModelSelector() {
+  const btn = document.getElementById('model-selector');
+  const label = document.getElementById('model-selector-label');
+  const dropdown = document.getElementById('model-dropdown');
+  if (!btn || !dropdown) return;
+
+  function renderDropdown() {
+    dropdown.innerHTML = '';
+    const groups = {};
+    for (const m of availableModels) {
+      const g = m.provider || 'other';
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(m);
+    }
+    for (const [provider, models] of Object.entries(groups)) {
+      const groupEl = document.createElement('div');
+      groupEl.className = 'model-dropdown-group';
+      groupEl.textContent = provider;
+      dropdown.appendChild(groupEl);
+      for (const m of models) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'model-dropdown-item' + (m.id === currentModel ? ' active' : '');
+        item.innerHTML = '<span class="model-check">' + (m.id === currentModel ? '✓' : '') + '</span>' + m.name;
+        item.addEventListener('click', () => {
+          currentModel = m.id;
+          label.textContent = m.name;
+          dropdown.classList.add('hidden');
+          renderDropdown();
+        });
+        dropdown.appendChild(item);
+      }
+    }
+    const hint = document.createElement('div');
+    hint.className = 'model-dropdown-hint';
+    hint.innerHTML = 'Customize more models with <span>OpenRouter</span> in <code>src/sac/runtime/prompts/app.py</code>';
+    dropdown.appendChild(hint);
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdown.classList.toggle('hidden');
+  });
+  document.addEventListener('click', () => dropdown.classList.add('hidden'));
+  dropdown.addEventListener('click', (e) => e.stopPropagation());
+
+  fetch('/models').then(r => r.json()).then(data => {
+    availableModels = data.models || [];
+    currentModel = data.default || (availableModels[0] && availableModels[0].id);
+    const active = availableModels.find(m => m.id === currentModel);
+    if (active) label.textContent = active.name;
+    renderDropdown();
+  }).catch(() => {});
+})();
 
 // Auto-load conversation if id is present in URL: /c/{id} or /?c={id}
 (function () {
