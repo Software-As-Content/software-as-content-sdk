@@ -35,7 +35,7 @@ AVAILABLE_MODELS: list[ModelOption] = [
     ModelOption(id="deepseek/deepseek-v4-flash", name="DeepSeek V4 Flash", provider="deepseek"),
 ]
 
-DEFAULT_MODEL = "google/gemini-3.5-flash"
+DEFAULT_MODEL = "google/gemini-3-flash-preview"
 
 # ─── Base System Prompt ────────────────────────────────────────────
 
