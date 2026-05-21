@@ -314,20 +314,41 @@ async def wait_for_action(
     timeout = min(max(timeout, 1.0), 600.0)
 
     import json
+    import time
     import urllib.request
-    url = f"{base_url}/c/{conversation_id}/wait-action?timeout={timeout}"
-    logger.info("MCP wait_for_action: polling %s", url)
+
+    # Use short polling intervals (25s) to stay within MCP client timeout
+    # (~60s). Each HTTP request completes quickly; we loop until the full
+    # timeout is reached. This avoids zombie threads from MCP cancellation
+    # holding onto the action queue.
+    poll_interval = 25.0
+    deadline = time.monotonic() + timeout
     loop = asyncio.get_event_loop()
-    try:
-        def _poll():
-            with urllib.request.urlopen(url, timeout=timeout + 10) as resp:
-                result = json.loads(resp.read().decode("utf-8"))
-                logger.info("MCP wait_for_action result: %s", result)
-                return result
-        return await loop.run_in_executor(None, _poll)
-    except Exception as exc:
-        logger.warning("MCP wait_for_action error: %s", exc)
-        return {"action": None, "timed_out": True}
+
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {"action": None, "timed_out": True}
+
+        chunk_timeout = min(poll_interval, remaining)
+        url = f"{base_url}/c/{conversation_id}/wait-action?timeout={chunk_timeout}"
+        logger.info("MCP wait_for_action: polling %s (%.0fs left)", url, remaining)
+
+        try:
+            def _poll(u=url, t=chunk_timeout):
+                with urllib.request.urlopen(u, timeout=t + 5) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            result = await loop.run_in_executor(None, _poll)
+            logger.info("MCP wait_for_action result: %s", result)
+
+            if result.get("timed_out"):
+                # Server-side timeout on this chunk — loop and retry
+                continue
+            return result
+        except Exception as exc:
+            logger.warning("MCP wait_for_action poll error: %s", exc)
+            # Brief pause before retry to avoid tight loop on errors
+            await asyncio.sleep(1.0)
 
 
 @mcp.tool(
