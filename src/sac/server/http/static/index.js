@@ -966,9 +966,8 @@ function ensureProcessingCard() {
   const title = lastUserIntent || 'Processing...';
   el.innerHTML = `
     <div class="vc-header">
-      <span class="vc-dot vc-dot-pending"></span>
       <span class="version-card-title" title="${escHtml(title)}">${escHtml(compactText(title, 140))}</span>
-      <span class="version-card-kind">SaC · generating</span>
+      <span class="version-card-kind processing-kind"><span class="processing-kind-dot"></span>SaC</span>
     </div>
     <div class="processing-stages"></div>`;
   area.appendChild(el);
@@ -987,13 +986,16 @@ function updateProcessingStage(name, status) {
     stageEl.dataset.stage = name;
     stagesEl.appendChild(stageEl);
   }
-  const icon = status === 'running' ? '●' : (status === 'completed' || status === 'complete' || status === 'success') ? '✓' : status === 'error' ? '✗' : '○';
   const cls = status === 'running' ? 'stage-running' : (status === 'completed' || status === 'complete' || status === 'success') ? 'stage-done' : status === 'error' ? 'stage-error' : '';
   stageEl.className = `processing-stage-item ${cls}`;
-  stageEl.textContent = `${icon} ${name}`;
+  const iconClass = status === 'running' ? 'running' : (status === 'completed' || status === 'complete' || status === 'success') ? 'done' : status === 'error' ? 'error' : 'idle';
+  const iconLabel = iconClass === 'done' ? '✓' : iconClass === 'error' ? '!' : '';
+  stageEl.innerHTML = `<span class="processing-stage-icon ${iconClass}">${iconLabel}</span><span>${escHtml(name)}</span>`;
   // Update card header kind
   const kindEl = card.querySelector('.version-card-kind');
-  if (kindEl) kindEl.textContent = `SaC · ${name}`;
+  if (kindEl) {
+    kindEl.innerHTML = `<span class="processing-kind-dot"></span>SaC · ${escHtml(name)}`;
+  }
   scrollChatToBottom();
 }
 

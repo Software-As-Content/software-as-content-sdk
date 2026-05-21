@@ -1016,14 +1016,106 @@ body.is-pending .input-wrapper {
 .status-error { pointer-events: auto; }
 
 /* ─── Processing card (MCP pull mode) ──────────────────── */
-.processing-card .processing-stages { padding: 8px 14px 10px; }
-.processing-stage-item {
-  font-size: 12px; line-height: 1.6; color: var(--text-muted);
-  transition: color 0.2s, opacity 0.2s;
+.processing-card {
+  border-color: rgba(147, 197, 253, 0.24);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.82) inset,
+    0 0 0 1px rgba(147, 197, 253, 0.12),
+    0 14px 34px -30px rgba(59, 130, 246, 0.6);
 }
-.processing-stage-item.stage-running { color: #92400e; font-weight: 500; }
-.processing-stage-item.stage-done { color: #166534; opacity: 0.7; }
-.processing-stage-item.stage-error { color: #991b1b; }
+.processing-card .vc-header {
+  align-items: flex-start;
+  padding: 15px 15px 7px;
+  gap: 12px;
+}
+.processing-card .version-card-title {
+  font-size: 13px;
+  line-height: 1.32;
+  letter-spacing: -0.012em;
+}
+.processing-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding-top: 2px;
+  color: #a8a29e;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.processing-kind-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #93c5fd;
+  box-shadow: 0 0 0 4px rgba(147, 197, 253, 0.18);
+}
+.processing-card .processing-stages {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 4px 15px 14px;
+}
+.processing-stage-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 3px 8px 3px 5px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: #78716c;
+  letter-spacing: -0.01em;
+  transition: color 0.2s, background 0.2s, opacity 0.2s;
+}
+.processing-stage-item > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.processing-stage-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  font-size: 10px;
+  line-height: 1;
+}
+.processing-stage-icon.done {
+  color: #5f8f6a;
+  background: rgba(220, 252, 231, 0.68);
+}
+.processing-stage-icon.running {
+  width: 7px;
+  height: 7px;
+  margin: 3.5px;
+  background: #f97316;
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.12);
+  animation: vcPulse 1.2s ease-in-out infinite;
+}
+.processing-stage-icon.error {
+  color: #991b1b;
+  background: rgba(254, 226, 226, 0.78);
+}
+.processing-stage-item.stage-running {
+  color: #9a3412;
+  font-weight: 520;
+  background: rgba(255, 247, 237, 0.7);
+}
+.processing-stage-item.stage-done { color: #5f8f6a; opacity: 0.88; }
+.processing-stage-item.stage-error {
+  color: #991b1b;
+  background: rgba(254, 242, 242, 0.78);
+}
 
 /* ─── Suggestions ──────────────────────────────────────── */
 .suggestions { padding: 6px 20px 0px; background: var(--bg); display: flex; align-items: center; }
