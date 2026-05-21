@@ -95,7 +95,9 @@ def build_codex_message(
         f"- Treat this as a SaC UI action, not a general coding task.\n"
         f"- Do not inspect or modify the repo unless the action explicitly asks for engineering analysis or code changes.\n"
         f"- Use existing repository/session context first; do not run broad validation or debug unrelated infrastructure.\n"
-        f"- Prefer concise, directly usable content that can update the current app within 60-120 seconds.\n\n"
+        f"- Prefer concise, directly usable content that can update the current app within 60-120 seconds.\n"
+        f"- Your `intent` and `content` should describe WHAT to show — do NOT include UI styling directions "
+        f"(colors, dark/light theme, CSS classes, layout instructions). SaC controls visual design autonomously.\n\n"
         f"Compose rich, detailed content for the request, then run this exact command "
         f"(replace CONTENT with your composed content, escape quotes and newlines for JSON):\n\n"
         f'curl -s -X POST "{sac_url}/inbox" '

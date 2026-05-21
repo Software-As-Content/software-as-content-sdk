@@ -201,6 +201,9 @@ Follow that message exactly:
 4. Do not ask clarifying questions.
 5. Use existing context first; avoid broad validation/debugging unless the
    action explicitly asks for it.
+6. Your `content` and `intent` should describe WHAT to show — do NOT include
+   UI styling directions (colors, dark/light theme, CSS classes, layout
+   instructions). SaC controls visual design autonomously.
 
 ## Codex Demo Scenario
 

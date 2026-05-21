@@ -85,6 +85,8 @@ def build_gateway_message(
 ) -> str:
     return (
         f"A user is viewing a SaC interactive app and requested: {intent}\n\n"
+        f"Your `intent` and `content` should describe WHAT to show — do NOT include UI styling directions "
+        f"(colors, dark/light theme, CSS classes, layout instructions). SaC controls visual design autonomously.\n\n"
         f"Compose rich, detailed content for this request, then run this exact command "
         f"(replace CONTENT with your composed content, escape quotes and newlines for JSON):\n\n"
         f'exec: curl -s -X POST "{sac_url}/inbox" '

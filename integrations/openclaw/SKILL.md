@@ -147,6 +147,9 @@ Follow that message:
    (see "Update Existing App" above) with the same `conversation_id`.
 3. For chat replies → POST a chat message (see "Chat Reply" above).
 4. Do NOT ask clarifying questions — compose the best content you can and execute.
+5. Your `content` and `intent` should describe WHAT to show — do NOT include
+   UI styling directions (colors, dark/light theme, CSS classes, layout
+   instructions). SaC controls visual design autonomously.
 
 ## Example
 

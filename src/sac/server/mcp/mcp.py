@@ -237,7 +237,12 @@ def _post_inbox(base_url: str, payload: dict) -> dict:
         "and interact with the app. Use this when starting a new flow; if "
         "continuing an existing conversation, prefer evolve_app. "
         "Always pass `user_message` with the user's original verbatim input "
-        "before any expansion or rewriting you do on the intent."
+        "before any expansion or rewriting you do on the intent.\n\n"
+        "IMPORTANT: The `intent` field should describe WHAT to build, not HOW "
+        "to style it. Do NOT include CSS/styling directions (e.g. 'use dark "
+        "theme', 'dark code blocks', color schemes) — SaC controls visual "
+        "design autonomously. Only include styling instructions if the user "
+        "explicitly requested a specific visual style."
     ),
 )
 async def generate_app(
@@ -268,7 +273,12 @@ async def generate_app(
         "Requires a conversation_id from a prior generate_app call. The user's "
         "viewer updates in real-time as the new version streams in. "
         "If the user typed a message that triggered this evolution, pass their "
-        "original text as `user_message`."
+        "original text as `user_message`.\n\n"
+        "IMPORTANT: The `intent` field should describe WHAT to show, not HOW "
+        "to style it. Do NOT include CSS/styling directions (e.g. 'use dark "
+        "theme', 'dark code blocks', color schemes) — SaC controls visual "
+        "design autonomously. Only include styling instructions if the user "
+        "explicitly requested a specific visual style."
     ),
 )
 async def evolve_app(conversation_id: str, intent: str, user_message: str | None = None) -> dict:
