@@ -919,6 +919,7 @@ body.is-pending .input-wrapper {
   border-radius: 9px;
   transition: background 0.1s;
 }
+.model-dropdown-item + .model-dropdown-item { margin-top: 2px; }
 .model-dropdown-item:hover { background: rgba(0,0,0,0.04); }
 .model-dropdown-item.active {
   background: rgba(249,115,22,0.07);

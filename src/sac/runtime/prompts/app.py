@@ -35,7 +35,7 @@ AVAILABLE_MODELS: list[ModelOption] = [
     ModelOption(id="deepseek/deepseek-v4-flash", name="DeepSeek V4 Flash", provider="deepseek"),
 ]
 
-DEFAULT_MODEL = "google/gemini-3-flash-preview"
+DEFAULT_MODEL = "openai/gpt-5.4-mini"
 
 # ─── Base System Prompt ────────────────────────────────────────────
 

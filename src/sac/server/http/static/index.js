@@ -1979,36 +1979,40 @@ function scrollChatToBottom() {
   const dropdown = document.getElementById('model-dropdown');
   if (!btn || !dropdown) return;
 
+  const RECOMMENDED_ORDER = [
+    'openai/gpt-5.4-mini',
+    'google/gemini-3-flash-preview',
+    'anthropic/claude-haiku-4.5',
+  ];
+  const RECOMMENDED_IDS = new Set(RECOMMENDED_ORDER);
+
   function renderDropdown() {
     dropdown.innerHTML = '';
-    const groups = {};
-    for (const m of availableModels) {
-      const g = m.provider || 'other';
-      if (!groups[g]) groups[g] = [];
-      groups[g].push(m);
+    const modelMap = Object.fromEntries(availableModels.map(m => [m.id, m]));
+    const recommended = RECOMMENDED_ORDER.map(id => modelMap[id]).filter(Boolean);
+
+    const groupLabel = document.createElement('div');
+    groupLabel.className = 'model-dropdown-group';
+    groupLabel.textContent = 'Recommended';
+    dropdown.appendChild(groupLabel);
+
+    for (const m of recommended) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'model-dropdown-item' + (m.id === currentModel ? ' active' : '');
+      item.innerHTML = '<span class="model-check">' + (m.id === currentModel ? '✓' : '') + '</span>' + m.name;
+      item.addEventListener('click', () => {
+        currentModel = m.id;
+        label.textContent = m.name;
+        dropdown.classList.add('hidden');
+        renderDropdown();
+      });
+      dropdown.appendChild(item);
     }
-    for (const [provider, models] of Object.entries(groups)) {
-      const groupEl = document.createElement('div');
-      groupEl.className = 'model-dropdown-group';
-      groupEl.textContent = provider;
-      dropdown.appendChild(groupEl);
-      for (const m of models) {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'model-dropdown-item' + (m.id === currentModel ? ' active' : '');
-        item.innerHTML = '<span class="model-check">' + (m.id === currentModel ? '✓' : '') + '</span>' + m.name;
-        item.addEventListener('click', () => {
-          currentModel = m.id;
-          label.textContent = m.name;
-          dropdown.classList.add('hidden');
-          renderDropdown();
-        });
-        dropdown.appendChild(item);
-      }
-    }
+
     const hint = document.createElement('div');
     hint.className = 'model-dropdown-hint';
-    hint.innerHTML = 'Customize more models with <span>OpenRouter</span> in <code>src/sac/runtime/prompts/app.py</code>';
+    hint.innerHTML = 'Add more models via <span>OpenRouter</span> in <code>src/sac/runtime/prompts/app.py</code>';
     dropdown.appendChild(hint);
   }
 
