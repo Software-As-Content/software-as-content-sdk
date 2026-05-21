@@ -69,9 +69,11 @@ sac setup claude-code        # registers SaC as an MCP server
 
 Restart Claude Code. Then try:
 
-> *"Create an interactive release-readiness dashboard for this repo using SaC."*
+> *"Help me understand this codebase using a visualized and interactive app."*
 
 Claude Code will generate the app, show you the URL, and enter the interaction loop automatically.
+
+<img src="./docs/example-claudecode.jpg" alt="Claude Code + SaC example" width="800" />
 
 [Setup details →](./integrations/claude-code/)
 
