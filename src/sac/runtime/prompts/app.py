@@ -50,6 +50,7 @@ BASE REQUIREMENTS:
    - Footers of any kind: copyright lines, "all rights reserved", links rows, brand strips, contact sections, "made with ♥", site map. The app ends where its content ends — empty space at the bottom is always preferable to a fake footer.
    - User profile avatars, sign-in buttons, notification bells, account menus, or any element implying a logged-in user session. The SaC app runs inside a frame with no real user context, so these would be fake decorations.
 4. DO NOT make up image urls!!! ONLY use the provided images IF NECESSARY (no need to use them all).
+5. NO floating or overlay elements by default. Do NOT use `position: fixed`, `position: sticky`, floating action buttons, sticky headers/footers, or overlays. All content must flow naturally in the document. Dialogs/modals are only acceptable when triggered by an explicit user click.
 
 RESPONSE FORMAT REQUIREMENTS:
 1. Output ONLY a single code block with valid TSX/JSX React code
@@ -125,10 +126,11 @@ const [activeTab, setActiveTab] = React.useState("overview");
 If your content cannot be cleanly split into separate <TabsContent> blocks this way, DO NOT use a tab bar at all — lay the content out as stacked scrolling sections.
 
 VISUAL QUALITY — MANDATORY:
-- CONTRAST: Every text element must be clearly readable against its background. Light text on dark backgrounds and dark text on light backgrounds are both fine — but never place mid-tone text on mid-tone backgrounds (e.g. gray-400 text on gray-600 bg). Aim for WCAG AA contrast (4.5:1 for body text, 3:1 for large headings).
-- DEFAULT STYLE: Prefer light/white backgrounds theme. Only use dark themes when the user explicitly requests it or the content strongly calls for it (e.g. a terminal emulator, a movie theater app).
-- CONSISTENCY: Pick one background strategy and apply it consistently. Don't mix dark sections with light sections randomly — it creates visual noise.
-- DATA VISUALIZATION: Ensure chart labels, axes, and legends are legible against whatever background you use.
+- CONTRAST: Every text element must be clearly readable against its background. Never place mid-tone text on mid-tone backgrounds (e.g. gray-400 on gray-600). Aim for WCAG AA contrast.
+- DEFAULT STYLE: Use light/white backgrounds with dark text. Do NOT generate dark-themed UIs unless the user explicitly asks for dark mode.
+- CONSISTENCY: Pick one background strategy and apply it consistently. Don't mix dark sections with light sections.
+- Use color sparingly as accent (icons, badges, highlights), not as large section fills. Differentiate sections with subtle backgrounds (e.g. bg-stone-50) and borders, not color blocks.
+- When displaying structured data (lists, grids, comparisons), define a data structure and map over it — avoid hardcoding repetitive UI blocks.
 
 EXAMPLE FORMAT:
 ```tsx
