@@ -507,6 +507,27 @@
         reactRoot.render(boundary);
 
         if (!silent) {
+          // Intercept React 19 DOM nesting warnings (console.error) that
+          // bypass ErrorBoundary. These corrupt the DOM silently — detect
+          // and report them so the parent can show the error notice.
+          var _domNestingDetected = null;
+          var _prevConsoleError = console.error;
+          console.error = function() {
+            var msg = Array.prototype.join.call(arguments, ' ');
+            if (/cannot be a child of|validateDOMNesting/i.test(msg) && !_domNestingDetected) {
+              _domNestingDetected = msg.slice(0, 200);
+            }
+            _prevConsoleError.apply(console, arguments);
+          };
+          // Check after React commits: if nesting error was detected,
+          // report it instead of success.
+          requestAnimationFrame(function() {
+            console.error = _prevConsoleError;
+            if (_domNestingDetected) {
+              window.parent.postMessage({ type: 'render-error', error: { message: _domNestingDetected, type: 'runtime' } }, '*');
+            }
+          });
+
           window.parent.postMessage({ type: 'render-success' }, '*');
           // Report change count so parent can show/hide "Show Changes" button.
           // React 19 concurrent mode: render() doesn't guarantee synchronous
