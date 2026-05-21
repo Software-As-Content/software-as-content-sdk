@@ -72,9 +72,10 @@ Decide how to integrate the new content:
 
 IMPORTANT:
 - Keep ALL existing functionality intact
-- Integrate the new data naturally
 - Maintain consistent styling
 - Output BOTH the JSON decision AND the complete code
+- DATA RENDERING — CRITICAL: When "New Data" is provided above, you MUST render its actual content visually in the UI. Define the data as a JS array/object and map over it to display real values. NEVER just change a button label or add a stub — the user expects to SEE the data on screen. If the data is long, use tabs, accordion, or scrollable sections — but always render it inline in the page, NOT in modals or overlays.
+- BUTTON PRESERVATION: If the current code uses `window.__sac_action(...)` for a button, keep it as `__sac_action` unless the new data fully replaces what that button would fetch. Do NOT convert action buttons into local state toggles unless the data they requested is now rendered inline.
 - Add a small "NEW" badge (e.g. <Badge>NEW</Badge>) next to newly added tabs, sections, or major content blocks so the user can instantly spot what's new. Remove any such badges from previously existing content.
 - CRITICAL: Add the attribute data-sac-changed to the outermost JSX element(s) that are newly added or meaningfully modified. This enables visual change-highlighting. Only add it to elements that actually changed. Example: `<Card data-sac-changed className="...">`. Do NOT add it to unchanged elements."""
 
@@ -146,7 +147,8 @@ Rules for search/replace blocks:
 - For insertions: include the lines just before the insertion point in SEARCH, then include those same lines plus the new lines in REPLACE
 - For deletions: put the lines to delete in SEARCH and leave REPLACE empty
 - Keep ALL existing functionality intact
-- Integrate the new data naturally
 - Maintain consistent styling
+- DATA RENDERING — CRITICAL: When "New Data" is provided above, you MUST render its actual content visually in the UI. Define the data as a JS array/object and map over it to display real values. NEVER just change a button label or add a stub — the user expects to SEE the data on screen. If the data is long, use tabs, accordion, or scrollable sections — but always render it inline in the page, NOT in modals or overlays.
+- BUTTON PRESERVATION: If the current code uses `window.__sac_action(...)` for a button, keep it as `__sac_action` unless the new data fully replaces what that button would fetch. Do NOT convert action buttons into local state toggles unless the data they requested is now rendered inline.
 - Add a small "NEW" badge (e.g. <Badge>NEW</Badge>) next to newly added tabs, sections, or major content blocks
 - CRITICAL — CHANGE MARKERS (you MUST do this for every REPLACE block): Add the attribute data-sac-changed to the outermost JSX element(s) that are newly added or meaningfully modified. This enables visual change-highlighting in the preview. Without it, users cannot see what changed. Only add it to elements that actually changed, NOT to unchanged context lines. Example: `<Card data-sac-changed className="...">` or `<div data-sac-changed>`. Do NOT add data-sac-changed to the SEARCH section."""
