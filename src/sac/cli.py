@@ -324,23 +324,37 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
 
     from sac.runtime.prompts.app import AVAILABLE_MODELS, DEFAULT_MODEL
 
+    # Recommended models per provider (fast, reliable, cost-effective)
+    RECOMMENDED = {
+        "anthropic": "anthropic/claude-haiku-4.5",
+        "openai": "openai/gpt-5.4-mini",
+        "google": "google/gemini-3-flash-preview",
+    }
+
     if provider_choice == "2":
-        anthropic_models = [m for m in AVAILABLE_MODELS if m.provider == "anthropic"]
-        default_model = anthropic_models[0].id if anthropic_models else DEFAULT_MODEL
+        provider_models = [m for m in AVAILABLE_MODELS if m.provider == "anthropic"]
+        default_model = RECOMMENDED["anthropic"]
         print()
         print("Model Selection")
-        print(f"  Available: {', '.join(m.id for m in anthropic_models)}")
+        for m in provider_models:
+            rec = " (recommended)" if m.id == default_model else ""
+            print(f"  - {m.id}{rec}")
     elif provider_choice == "3":
-        openai_models = [m for m in AVAILABLE_MODELS if m.provider == "openai"]
-        default_model = openai_models[0].id if openai_models else DEFAULT_MODEL
+        provider_models = [m for m in AVAILABLE_MODELS if m.provider == "openai"]
+        default_model = RECOMMENDED["openai"]
         print()
         print("Model Selection")
-        print(f"  Available: {', '.join(m.id for m in openai_models)}")
+        for m in provider_models:
+            rec = " (recommended)" if m.id == default_model else ""
+            print(f"  - {m.id}{rec}")
     else:
         default_model = DEFAULT_MODEL
         print()
         print("Model Selection")
-        print(f"  Available: {', '.join(m.id for m in AVAILABLE_MODELS)}")
+        rec_ids = set(RECOMMENDED.values())
+        for m in AVAILABLE_MODELS:
+            rec = " (recommended)" if m.id in rec_ids else ""
+            print(f"  - {m.id}{rec}")
 
     model = input(f"  SAC_MODEL [{default_model}]: ").strip() or default_model
 
