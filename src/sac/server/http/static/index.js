@@ -393,6 +393,7 @@ async function handleSend() {
           return;
         }
         showStatus('Sent to agent, waiting...', 'running');
+        showAgentWorking();
       }
       // On success (non-chat): don't clear pending — wait for SSE event
     } catch (err) {
@@ -448,6 +449,7 @@ async function routeUserIntent(intent, context = null) {
 
   if (conversationId) {
     showStatus('Sent to agent, waiting...', 'running');
+    showAgentWorking();
     try {
       const res = await fetch(`/c/${conversationId}/action`, {
         method: 'POST',
@@ -456,7 +458,7 @@ async function routeUserIntent(intent, context = null) {
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        if (data.type === 'chat') return;  // NL reply via SSE
+        if (data.type === 'chat') { removeAgentWorking(); return; }
         // callback / queued: wait for SSE version event
         return;
       }
@@ -546,6 +548,7 @@ function setupEventSource(convId) {
       setPending(false);
       return;
     }
+    removeAgentWorking();
     addChatMsg(data.role || 'assistant', data.content || '');
     _knownMsgCount++;
     hideStatus();
@@ -555,8 +558,9 @@ function setupEventSource(convId) {
   es.addEventListener('callback_run', (e) => {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
-    // Agent is actively working — cancel the "no agent" timeout
+    // Agent is actively working — cancel the "no agent" timeout and remove waiting indicator
     if (_pendingTimer) { clearTimeout(_pendingTimer); _pendingTimer = null; }
+    removeAgentWorking();
     renderCallbackRun(data);
     if (data.status === 'queued') {
       showStatus(`Callback queued (${adapterLabel(data.adapter)})`, 'running');
@@ -593,8 +597,9 @@ function setupEventSource(convId) {
   es.addEventListener('stage', (e) => {
     let data;
     try { data = JSON.parse(e.data); } catch { return; }
-    // Agent is actively working — cancel the "no agent" timeout
+    // Agent is actively working — cancel the "no agent" timeout and remove waiting indicator
     if (_pendingTimer) { clearTimeout(_pendingTimer); _pendingTimer = null; }
+    removeAgentWorking();
     showStatus(`${data.name}: ${data.status}`, 'running');
     if ((data.status === 'complete' || data.status === 'success') && data.duration) {
       pendingStages.push({ name: data.name, duration: data.duration });
@@ -918,6 +923,7 @@ function handleSSEEvent(eventType, data) {
 // ─── Chat UI helpers ─────────────────────────────────────────
 
 function addChatMsg(role, content) {
+  if (role !== 'user') removeAgentWorking();
   if (role === 'user') lastUserIntent = content;
   const area = document.getElementById('chat-area');
   const msg = document.createElement('div');
@@ -925,6 +931,23 @@ function addChatMsg(role, content) {
   msg.innerHTML = `<div class="chat-bubble">${escHtml(content)}</div>`;
   area.appendChild(msg);
   scrollChatToBottom();
+}
+
+// ─── Agent working indicator ─────────────────────────────
+// Lightweight "waiting" message shown after action dispatch, before pipeline starts.
+function showAgentWorking() {
+  removeAgentWorking();
+  const area = document.getElementById('chat-area');
+  const el = document.createElement('div');
+  el.className = 'chat-msg system agent-working-indicator';
+  el.id = 'agent-working';
+  el.innerHTML = '<div class="chat-bubble">Agent working...</div>';
+  area.appendChild(el);
+  scrollChatToBottom();
+}
+function removeAgentWorking() {
+  const el = document.getElementById('agent-working');
+  if (el) el.remove();
 }
 
 // ─── Processing card (MCP pull mode) ─────────────────────
@@ -1784,6 +1807,7 @@ function hideSuggestions() {
 function beginNewAttempt() {
   hidePreviewNotice();
   removeProcessingCard();
+  removeAgentWorking();
 }
 
 let _pendingTimer = null;
