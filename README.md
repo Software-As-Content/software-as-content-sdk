@@ -4,6 +4,8 @@
 
 ### Interaction layer between you and your agents.
 
+[![PyPI version](https://img.shields.io/pypi/v/sac-sdk.svg)](https://pypi.org/project/sac-sdk/)
+[![Python](https://img.shields.io/pypi/pyversions/sac-sdk.svg)](https://pypi.org/project/sac-sdk/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](./LICENSE)
 
 [Live demo](https://sac.dynsoft.ai) · [Paper](https://arxiv.org/abs/2603.21334)
@@ -159,7 +161,7 @@ src/sac/
 
 ## Project status
 
-Alpha. The core protocol (generate → evolve → callback loop) is stable and runs in production at [sac.dynsoft.ai](https://sac.dynsoft.ai). The SDK surface is being polished toward v1.0.
+`v0.1.0` — alpha. The core protocol (generate → evolve → callback loop) is stable and runs in production at [sac.dynsoft.ai](https://sac.dynsoft.ai). The SDK surface is being polished toward v1.0.
 
 ## Contributing
 
