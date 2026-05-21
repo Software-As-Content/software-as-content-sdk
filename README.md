@@ -14,13 +14,7 @@
 
 ---
 
-SaC (Software as Content) is an **interaction layer** that gives your AI agent the ability to **generate and evolve interactive apps** as part of the conversation. Instead of replying with text or markdown, your agent builds a live React app — a dashboard, a planner, a comparison tool — and the user clicks, types, and explores. The agent then **evolves the same app** in response, preserving all context across turns.
-
-This isn't one-shot UI generation. SaC apps are **stateful, conversational, and evolving** — the agent understands what the user is looking at, what they clicked, and grows the app from there. No existing agent can do this natively.
-
-> **function calling** → agent *does things* &nbsp;·&nbsp;
-> **MCP** → agent *talks to systems* &nbsp;·&nbsp;
-> **SaC** → agent *shows, interacts, and evolves*
+AI agents can reason, code, and call APIs — but when they need to communicate back to you, all they have is text. SaC (Software as Content) is the missing **interaction layer**: your agent responds with a **live, persistent, interactive app** that evolves as the conversation continues. Not a screenshot, not a markdown wall — a real UI you click, explore, and shape together with your agent.
 
 <!-- TODO: add demo GIF here -->
 
@@ -69,9 +63,7 @@ sac setup claude-code        # registers SaC as an MCP server
 
 Restart Claude Code. Then try:
 
-> *"Help me understand this codebase using a visualized and interactive app."*
-
-Claude Code will generate the app, show you the URL, and enter the interaction loop automatically.
+> *"Help me understand this codebase using a visualized and interactive app using SaC MCP."*
 
 <img src="./docs/example-claudecode.jpg" alt="Claude Code + SaC example" width="800" />
 
