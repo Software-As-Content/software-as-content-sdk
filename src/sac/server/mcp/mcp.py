@@ -51,7 +51,7 @@ import threading
 from typing import Any
 
 try:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.fastmcp import Context, FastMCP
 except ImportError as e:  # pragma: no cover
     raise ImportError(
         "MCP server dependencies not installed. Run: pip install sac-sdk[mcp]"
@@ -209,6 +209,22 @@ mcp = FastMCP(
 )
 
 
+async def _heartbeat(ctx: Context, done: asyncio.Event, interval: float = 10.0) -> None:
+    """Send periodic progress notifications to keep MCP client alive."""
+    tick = 0
+    while not done.is_set():
+        try:
+            await ctx.report_progress(tick, None, "generating…")
+        except Exception:
+            pass
+        tick += 1
+        try:
+            await asyncio.wait_for(done.wait(), timeout=interval)
+            break
+        except asyncio.TimeoutError:
+            continue
+
+
 def _post_inbox(base_url: str, payload: dict) -> dict:
     """POST to the embedded HTTP server's /inbox endpoint.
 
@@ -249,6 +265,7 @@ async def generate_app(
     intent: str,
     conversation_id: str | None = None,
     user_message: str | None = None,
+    ctx: Context | None = None,
 ) -> dict:
     base_url = _ensure_http_server()
     payload: dict[str, Any] = {"content": intent, "intent": intent}
@@ -257,7 +274,14 @@ async def generate_app(
     if user_message:
         payload["user_message"] = user_message
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _post_inbox, base_url, payload)
+    done = asyncio.Event()
+    hb = asyncio.create_task(_heartbeat(ctx, done)) if ctx else None
+    try:
+        result = await loop.run_in_executor(None, _post_inbox, base_url, payload)
+    finally:
+        done.set()
+        if hb:
+            await hb
     return {
         "conversation_id": result.get("conversation_id"),
         "version": result.get("version"),
@@ -281,7 +305,7 @@ async def generate_app(
         "explicitly requested a specific visual style."
     ),
 )
-async def evolve_app(conversation_id: str, intent: str, user_message: str | None = None) -> dict:
+async def evolve_app(conversation_id: str, intent: str, user_message: str | None = None, ctx: Context | None = None) -> dict:
     base_url = _ensure_http_server()
     payload: dict[str, Any] = {
         "conversation_id": conversation_id,
@@ -291,7 +315,14 @@ async def evolve_app(conversation_id: str, intent: str, user_message: str | None
     if user_message:
         payload["user_message"] = user_message
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _post_inbox, base_url, payload)
+    done = asyncio.Event()
+    hb = asyncio.create_task(_heartbeat(ctx, done)) if ctx else None
+    try:
+        result = await loop.run_in_executor(None, _post_inbox, base_url, payload)
+    finally:
+        done.set()
+        if hb:
+            await hb
     return {
         "conversation_id": result.get("conversation_id"),
         "version": result.get("version"),
