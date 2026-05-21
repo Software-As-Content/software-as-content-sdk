@@ -200,7 +200,7 @@ export class SaCRenderer {
   _rewriteLucideImports(code) {
     let importIndex = 0;
     return code.replace(
-      /import\s*\{([\s\S]*?)\}\s*from\s*["']lucide-react["'];?/g,
+      /import\s*\{([^}]*)\}\s*from\s*["']lucide-react["'];?/g,
       (_match, specifiers) => {
         const ns = `__SaCLucide${importIndex++}`;
         const bindings = specifiers

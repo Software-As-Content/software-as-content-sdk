@@ -432,14 +432,18 @@
         return;
       }
 
+      if (!silent) console.log('[SaC] render start, code length:', tsxCode.length);
+
       let jsCode;
       try {
         jsCode = window.Babel.transform(tsxCode, {
           presets: ['react', 'typescript'],
           filename: 'App.tsx',
         }).code;
+        if (!silent) console.log('[SaC] babel OK, js length:', jsCode.length);
       } catch(e) {
         if (!silent) {
+          console.error('[SaC] babel FAIL:', e.message);
           window.parent.postMessage({ type: 'render-error', error: { message: e.message, type: 'transpile' } }, '*');
           renderErrorUI('Transpile error: ' + e.message);
           return;
@@ -476,19 +480,26 @@
 
       // Rewrite lucide imports with fallback
       jsCode = rewriteLucideImports(jsCode);
+      if (!silent) console.log('[SaC] imports rewritten');
 
       // Dynamic import the app code
       let appBlob;
       try {
         appBlob = URL.createObjectURL(new Blob([jsCode], { type: 'application/javascript' }));
+        if (!silent) console.log('[SaC] importing module blob...');
         const mod = await import(appBlob);
         URL.revokeObjectURL(appBlob);
+        if (!silent) console.log('[SaC] module loaded, exports:', Object.keys(mod));
 
         const App = mod.default || Object.values(mod).find(v => typeof v === 'function');
         if (!App) {
-          if (!silent) window.parent.postMessage({ type: 'render-error', error: { message: 'No default export found', type: 'module-load' } }, '*');
+          if (!silent) {
+            console.error('[SaC] no default export found');
+            window.parent.postMessage({ type: 'render-error', error: { message: 'No default export found', type: 'module-load' } }, '*');
+          }
           return;
         }
+        if (!silent) console.log('[SaC] App component:', App.name || '(anonymous)');
 
         _renderCounter++;
         const appEl = silent
@@ -504,6 +515,7 @@
 
         _streamingScrollActive = !!silent;
         _silentRenderActive = !!silent;
+        if (!silent) console.log('[SaC] calling reactRoot.render...');
         reactRoot.render(boundary);
 
         if (!silent) {
@@ -520,11 +532,30 @@
             _prevConsoleError.apply(console, arguments);
           };
           // Check after React commits: if nesting error was detected,
-          // report it instead of success.
+          // report it instead of success. Also check for blank render.
           requestAnimationFrame(function() {
             console.error = _prevConsoleError;
             if (_domNestingDetected) {
               window.parent.postMessage({ type: 'render-error', error: { message: _domNestingDetected, type: 'runtime' } }, '*');
+              return;
+            }
+            // Blank-render detection: if the root has no visible content
+            // after React commits, something went wrong silently.
+            var rootText = (rootEl.textContent || '').trim();
+            var rootChildren = rootEl.querySelectorAll('*').length;
+            console.log('[SaC] post-render check: children=' + rootChildren + ', textLen=' + rootText.length);
+            if (rootChildren < 2 && rootText.length === 0) {
+              console.warn('[SaC] BLANK RENDER detected — DOM is empty after commit');
+              // Schedule a second check after React concurrent flush
+              setTimeout(function() {
+                var t2 = (rootEl.textContent || '').trim();
+                var c2 = rootEl.querySelectorAll('*').length;
+                console.log('[SaC] deferred check: children=' + c2 + ', textLen=' + t2.length);
+                if (c2 < 2 && t2.length === 0) {
+                  console.error('[SaC] CONFIRMED blank render');
+                  window.parent.postMessage({ type: 'render-error', error: { message: 'Component rendered but produced no visible output', type: 'runtime' } }, '*');
+                }
+              }, 300);
             }
           });
 
@@ -556,6 +587,7 @@
       } catch(err) {
         if (appBlob) URL.revokeObjectURL(appBlob);
         if (!silent) {
+          console.error('[SaC] module/render CATCH:', err.message, err.stack);
           window.parent.postMessage({ type: 'render-error', error: { message: err.message, type: 'module-load', stack: err.stack || '' } }, '*');
           renderErrorUI(err.message);
         }
