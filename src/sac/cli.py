@@ -60,6 +60,22 @@ def main() -> None:
         "--remove", action="store_true",
         help="Remove the SaC MCP server from Claude Code",
     )
+    codex_parser = setup_sub.add_parser(
+        "codex",
+        help="Install the SaC skill for Codex",
+    )
+    codex_parser.add_argument(
+        "--remove", action="store_true",
+        help="Remove the SaC skill from Codex",
+    )
+    openclaw_parser = setup_sub.add_parser(
+        "openclaw",
+        help="Install the SaC skill for OpenClaw",
+    )
+    openclaw_parser.add_argument(
+        "--remove", action="store_true",
+        help="Remove the SaC skill from OpenClaw",
+    )
 
     # sac publish
     pub_parser = subparsers.add_parser(
@@ -109,6 +125,8 @@ def main() -> None:
     elif args.command == "setup":
         if args.platform == "claude-code":
             _setup_claude_code(args)
+        elif args.platform in ("codex", "openclaw"):
+            _setup_skill(args.platform, remove=args.remove)
         else:
             setup_parser.print_help()
 
@@ -117,6 +135,35 @@ def main() -> None:
 
     else:
         parser.print_help()
+
+
+def _setup_skill(platform: str, *, remove: bool = False) -> None:
+    """Install or remove a SaC SKILL.md for Codex or OpenClaw."""
+    from sac._skills import SKILL_TARGETS
+
+    target = SKILL_TARGETS[platform]
+    dest = Path(target["dest"]).expanduser()
+    label = target["label"]
+
+    if remove:
+        skill_dir = dest.parent
+        if skill_dir.exists():
+            import shutil
+            shutil.rmtree(skill_dir)
+            print(f"  ✓ Removed SaC skill from {label} ({skill_dir})")
+        else:
+            print(f"  ✗ No SaC skill found for {label}")
+        return
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(target["content"], encoding="utf-8")
+    print()
+    print(f"  ✓ SaC skill installed for {label}")
+    print(f"    {dest}")
+    print()
+    print(f"  Make sure the SaC server is running:")
+    print(f"    sac serve")
+    print()
 
 
 def _get_desktop_config_path() -> Path | None:

@@ -1093,7 +1093,6 @@ def run(host: str = "0.0.0.0", port: int = 18420) -> None:
         )
         sys.exit(1)
 
-    _warn_if_not_repo_root()
     app = create_app()
     uvicorn.run(app, host=host, port=port)
 

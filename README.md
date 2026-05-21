@@ -77,9 +77,8 @@ Claude Code will generate the app, show you the URL, and enter the interaction l
 
 ```bash
 pip install sac-sdk
+sac setup codex              # installs the SaC skill
 sac serve                    # keep running in a terminal
-mkdir -p ~/.codex/skills/sac-interaction
-cp integrations/codex/SKILL.md ~/.codex/skills/sac-interaction/
 ```
 
 [Setup details →](./integrations/codex/)
@@ -88,9 +87,8 @@ cp integrations/codex/SKILL.md ~/.codex/skills/sac-interaction/
 
 ```bash
 pip install sac-sdk
+sac setup openclaw           # installs the SaC skill
 sac serve                    # keep running in a terminal
-mkdir -p ~/.openclaw/workspace/skills/sac-interaction
-cp integrations/openclaw/SKILL.md ~/.openclaw/workspace/skills/sac-interaction/
 ```
 
 [Setup details →](./integrations/openclaw/)
