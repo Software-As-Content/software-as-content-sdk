@@ -61,6 +61,8 @@ sac setup codex              # installs the SaC skill
 sac serve                    # keep running in a terminal
 ```
 
+<img src="./docs/example-codex.jpg" alt="Codex + SaC example" width="800" />
+
 [Setup details →](./integrations/codex/)
 
 ### OpenClaw (Skill)
@@ -70,6 +72,8 @@ pip install sac-sdk
 sac setup openclaw           # installs the SaC skill
 sac serve                    # keep running in a terminal
 ```
+
+<img src="./docs/example-openclaw.jpg" alt="OpenClaw + SaC example" width="800" />
 
 [Setup details →](./integrations/openclaw/)
 
