@@ -276,7 +276,7 @@ def create_app(sac: SaC | None = None) -> FastAPI:
       - SAC_SEARCH_API_KEY (optional) — Tavily API key
       - SAC_MODEL (optional) — default model
     """
-    data_dir = os.environ.get("SAC_DATA_DIR", ".sac")
+    data_dir = os.environ.get("SAC_DATA_DIR") or str(Path.home() / ".sac")
     if sac is None:
         api_key = os.environ.get("SAC_API_KEY", "")
         if not api_key:

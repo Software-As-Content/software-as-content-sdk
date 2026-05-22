@@ -57,6 +57,8 @@ except ImportError as e:  # pragma: no cover
         "MCP server dependencies not installed. Run: pip install sac-sdk[mcp]"
     ) from e
 
+from pathlib import Path
+
 from sac.runtime.prompts.app import DEFAULT_MODEL
 from sac.runtime.store.file import FileStore
 from sac.sac import SaC
@@ -85,7 +87,7 @@ def _get_sac() -> SaC:
             api_base=os.environ.get("SAC_API_BASE"),
             search_api_key=os.environ.get("SAC_SEARCH_API_KEY"),
             model=os.environ.get("SAC_MODEL", DEFAULT_MODEL),
-            store=FileStore(os.environ.get("SAC_DATA_DIR", ".sac")),
+            store=FileStore(os.environ.get("SAC_DATA_DIR") or str(Path.home() / ".sac")),
         )
     return _SAC
 
