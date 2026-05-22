@@ -432,6 +432,17 @@
         return;
       }
 
+      // Escape URL template variables like /{id} → /{'{id}'} to prevent
+      // "id is not defined" runtime errors from bare JSX text expressions.
+      // First protect already-escaped {'...'} / {"..."} expressions, then fix, then restore.
+      var _protected = [];
+      tsxCode = tsxCode.replace(/\{(?:'[^']*'|"[^"]*")\}/g, function(m) {
+        _protected.push(m);
+        return '__SAC_P' + (_protected.length - 1) + '__';
+      });
+      tsxCode = tsxCode.replace(/\/\{([a-zA-Z_]\w*)\}(?=[ /)<,.'"])/g, "/{'{$1}'}");
+      tsxCode = tsxCode.replace(/__SAC_P(\d+)__/g, function(_, i) { return _protected[parseInt(i)]; });
+
       if (!silent) console.log('[SaC] render start, code length:', tsxCode.length);
 
       let jsCode;

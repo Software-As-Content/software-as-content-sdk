@@ -172,6 +172,17 @@ export class SaCRenderer {
       }
     }
 
+    // Escape URL template variables like /{id} → /{'{id}'} to prevent
+    // "id is not defined" runtime errors from bare JSX text expressions.
+    // Protect already-escaped {'...'} / {"..."} expressions first.
+    const _protected = [];
+    processed = processed.replace(/\{(?:'[^']*'|"[^"]*")\}/g, (m) => {
+      _protected.push(m);
+      return `__SAC_P${_protected.length - 1}__`;
+    });
+    processed = processed.replace(/\/\{([a-zA-Z_]\w*)\}(?=[ /)<,.'"])/g, "/{'{$1}'}");
+    processed = processed.replace(/__SAC_P(\d+)__/g, (_, i) => _protected[parseInt(i)]);
+
     processed = this._rewriteLucideImports(processed);
 
     // Rewrite @/components/ui/* and @/lib/utils imports → shim
