@@ -266,7 +266,11 @@ def main() -> None:
     )
     pub_parser.add_argument(
         "--callback-format", default=None,
-        help="Callback format (e.g. codex_exec_resume)",
+        help="Callback format (e.g. codex_exec_resume, openclaw_gateway)",
+    )
+    pub_parser.add_argument(
+        "--callback-auth", default=None,
+        help="Callback auth header (e.g. 'Bearer TOKEN')",
     )
 
     args = parser.parse_args()
@@ -304,6 +308,32 @@ def main() -> None:
         parser.print_help()
 
 
+def _read_openclaw_gateway_config() -> dict:
+    """Read gateway port and token from ~/.openclaw/openclaw.json."""
+    import json as _json
+
+    config_path = Path.home() / ".openclaw" / "openclaw.json"
+    result: dict = {}
+    if not config_path.exists():
+        print("  ⚠ ~/.openclaw/openclaw.json not found — callback token will need manual setup")
+        return result
+    try:
+        data = _json.loads(config_path.read_text(encoding="utf-8"))
+        gw = data.get("gateway", {})
+        port = gw.get("port", 18789)
+        token = gw.get("auth", {}).get("token", "")
+        if port:
+            result["gateway_port"] = port
+        if token:
+            result["gateway_token"] = token
+            print(f"  ✓ Gateway token found (port {port})")
+        else:
+            print("  ⚠ No gateway token in openclaw.json — callback will need manual setup")
+    except Exception as exc:
+        print(f"  ⚠ Could not read openclaw.json: {exc}")
+    return result
+
+
 def _setup_skill(platform: str, *, remove: bool = False) -> None:
     """Install or remove a SaC SKILL.md for Codex or OpenClaw."""
     from sac._skills import SKILL_TARGETS
@@ -322,8 +352,18 @@ def _setup_skill(platform: str, *, remove: bool = False) -> None:
             print(f"  ✗ No SaC skill found for {label}")
         return
 
+    # Generate skill content — static for most platforms, dynamic for OpenClaw
+    content_fn = target.get("content_fn")
+    if content_fn is not None:
+        kwargs: dict = {}
+        if platform == "openclaw":
+            kwargs = _read_openclaw_gateway_config()
+        content = content_fn(**kwargs)
+    else:
+        content = target["content"]
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(target["content"], encoding="utf-8")
+    dest.write_text(content, encoding="utf-8")
     print()
     print(f"  ✓ SaC skill installed for {label}")
     print(f"    {dest}")
@@ -624,6 +664,8 @@ def _publish(args: argparse.Namespace) -> None:
         payload["callback_url"] = args.callback_url
     if args.callback_format:
         payload["callback_format"] = args.callback_format
+    if args.callback_auth:
+        payload["callback_auth"] = args.callback_auth
 
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     url = f"{server}/inbox"

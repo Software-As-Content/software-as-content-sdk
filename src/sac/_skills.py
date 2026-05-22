@@ -245,17 +245,44 @@ window.__sac_action("Inspect Codex integration path", {
 
 # ── OpenClaw SKILL.md ──────────────────────────────────────────
 
-OPENCLAW_SKILL_MD = r"""---
+
+def openclaw_skill_md(gateway_port: int = 18789, gateway_token: str = "") -> str:
+    """Generate OpenClaw SKILL.md with pre-filled gateway credentials.
+
+    Called by ``sac setup openclaw`` which reads ~/.openclaw/openclaw.json
+    and injects the real values so the agent never needs to discover them.
+    """
+    # Build callback dict fields
+    if gateway_token:
+        cb_fields = (
+            f'    "callback_url": "ws://127.0.0.1:{gateway_port}?session=agent:main:main",\n'
+            f'    "callback_format": "openclaw_gateway",\n'
+            f'    "callback_auth": "Bearer {gateway_token}",'
+        )
+        callback_note = ""
+    else:
+        cb_fields = (
+            '    "callback_url": "ws://127.0.0.1:18789?session=agent:main:main",\n'
+            '    "callback_format": "openclaw_gateway",\n'
+            '    "callback_auth": "Bearer YOUR_GATEWAY_TOKEN",'
+        )
+        callback_note = (
+            "\n\n> **Note:** Replace YOUR_GATEWAY_TOKEN with the value of "
+            "`gateway.auth.token` from `~/.openclaw/openclaw.json`."
+        )
+
+    return f"""\
+---
 name: sac-interaction
 description: "Render interactive apps via the SaC (Software as Content) interaction layer. Use when the user wants to create, view, or interact with a visual UI, dashboard, or interactive page."
 metadata:
-  {
+  {{
     "openclaw":
-      {
+      {{
         "emoji": "✦",
-        "requires": { "bins": ["curl"] },
-      },
-  }
+        "requires": {{ "bins": ["python3"] }},
+      }},
+  }}
 ---
 
 # SaC Interaction Skill
@@ -294,93 +321,91 @@ If `/inbox` is unreachable (connection refused), tell the user:
 SaC runs locally at **`http://127.0.0.1:18420`**. Always use this exact
 URL and port. Do not use any other port.
 
-## Setup (automatic, first time only)
+## How to Publish (python3 helper)
 
-Before your first SaC call, read the OpenClaw config to get the gateway token:
+All SaC operations go through a single python3 helper script. Write
+your markdown content to `/tmp/sac_content.md` first, then run one of
+the scripts below. **python3 is always available** — do not use `sac`
+CLI or `curl` (they may not be in PATH).
 
-```
-Read ~/.openclaw/openclaw.json
-```
+### New App
 
-Extract `gateway.auth.token` and `gateway.port` (default 18789). You will need these for the `callback_url` and `callback_auth` fields below.
+Compose substantive markdown content first. Prefer structured sections,
+tables, data, and actionable items.
 
-## New App
+**Publish in exactly one call.** Do not send a probe / draft POST —
+the first POST becomes app v1.
 
-Compose substantive markdown content first. Prefer structured sections, tables, data, and actionable items.
-
-**Publish in exactly one POST.** Do not send a probe / draft POST to
-"test the endpoint" — the first POST becomes app v1.
-
-Write content to a temp file to avoid shell-escaping issues:
+Step 1 — write content to a temp file:
 
 ```bash
 cat > /tmp/sac_content.md << 'CONTENT_EOF'
 YOUR MARKDOWN CONTENT HERE
 CONTENT_EOF
-
-cat > /tmp/sac_payload.json << PAYLOAD_EOF
-{"content": "$(cat /tmp/sac_content.md | python3 -c "import sys,json; print(json.dumps(sys.stdin.read())[1:-1])")", "intent": "INTENT", "callback_url": "ws://127.0.0.1:GATEWAY_PORT?session=agent:main:main", "callback_format": "openclaw_gateway", "callback_auth": "Bearer GATEWAY_TOKEN"}
-PAYLOAD_EOF
-
-curl -s -X POST "http://127.0.0.1:18420/inbox" \
-  -H "Content-Type: application/json" \
-  --data-binary @/tmp/sac_payload.json
 ```
 
-Where:
-- **INTENT**: Short description of what you are creating.
-- **GATEWAY_PORT**: From `gateway.port` in openclaw.json (default: 18789).
-- **GATEWAY_TOKEN**: From `gateway.auth.token` in openclaw.json.
-
-The response is JSON:
-```json
-{"conversation_id": "abc-123", "url": "http://127.0.0.1:18420/c/abc-123", "version": 1, "type": "ui"}
-```
-
-**Always show the user the `url` from the response so they can open it in their browser.**
-
-Save the `conversation_id` — you need it for updates.
-
-## Update Existing App
-
-For follow-up changes, publish updated content with the existing `conversation_id`:
+Step 2 — publish via python3:
 
 ```bash
-cat > /tmp/sac_content.md << 'CONTENT_EOF'
-UPDATED CONTENT
-CONTENT_EOF
-
-cat > /tmp/sac_payload.json << PAYLOAD_EOF
-{"conversation_id": "THE_SAVED_ID", "content": "$(cat /tmp/sac_content.md | python3 -c "import sys,json; print(json.dumps(sys.stdin.read())[1:-1])")", "intent": "what changed"}
-PAYLOAD_EOF
-
-curl -s -X POST "http://127.0.0.1:18420/inbox" \
-  -H "Content-Type: application/json" \
-  --data-binary @/tmp/sac_payload.json
+python3 -c "
+import urllib.request, json
+content = open('/tmp/sac_content.md').read()
+payload = json.dumps({{
+    'content': content,
+    'intent': 'INTENT',
+{cb_fields}
+}})
+req = urllib.request.Request('http://127.0.0.1:18420/inbox',
+    data=payload.encode(), headers={{'Content-Type': 'application/json'}})
+resp = urllib.request.urlopen(req, timeout=300)
+print(resp.read().decode())
+"
 ```
 
-Callback fields are only needed on the first call. Updates only need `conversation_id`, `content`, and `intent`.
+Replace `INTENT` with a short description (e.g. "Tokyo travel guide").{callback_note}
 
-## Chat Reply (no UI change)
+The response is JSON with `url` and `conversation_id`. **Always show the
+`url` to the user.** Save `conversation_id` for updates.
+
+### Update Existing App
+
+```bash
+python3 -c "
+import urllib.request, json
+content = open('/tmp/sac_content.md').read()
+payload = json.dumps({{
+    'conversation_id': 'THE_SAVED_ID',
+    'content': content,
+    'intent': 'what changed',
+}})
+req = urllib.request.Request('http://127.0.0.1:18420/inbox',
+    data=payload.encode(), headers={{'Content-Type': 'application/json'}})
+resp = urllib.request.urlopen(req, timeout=300)
+print(resp.read().decode())
+"
+```
+
+Callback fields are only needed on the first call.
+
+### Chat Reply (no UI change)
 
 When the user's action is conversational — a greeting, question, or
-clarification — do **not** evolve the app. Instead, POST a chat message:
+clarification — do **not** evolve the app. Send a chat-only message:
 
 ```bash
-cat > /tmp/sac_chat.json << 'CHAT_EOF'
-{"conversation_id": "abc-123", "content": "YOUR_REPLY", "type": "chat"}
-CHAT_EOF
-
-curl -s -X POST "http://127.0.0.1:18420/inbox" \
-  -H "Content-Type: application/json" \
-  --data-binary @/tmp/sac_chat.json
+python3 -c "
+import urllib.request, json
+payload = json.dumps({{'conversation_id': 'THE_SAVED_ID', 'content': 'YOUR_REPLY', 'type': 'chat'}})
+req = urllib.request.Request('http://127.0.0.1:18420/inbox',
+    data=payload.encode(), headers={{'Content-Type': 'application/json'}})
+urllib.request.urlopen(req, timeout=30)
+"
 ```
-
-This shows an assistant bubble in the viewer without touching the app UI.
 
 ## Handle SaC App Actions
 
-When a user clicks a button or sends a message in the SaC app, you will receive a message like:
+When a user clicks a button or sends a message in the SaC app, you will
+receive a message like:
 
 ```text
 A user is viewing a SaC interactive app and requested: [action]
@@ -388,25 +413,23 @@ A user is viewing a SaC interactive app and requested: [action]
 
 Follow that message:
 
-1. Decide: does the request need a **UI change** (new analysis, fix, feature)
-   or a **chat reply** (greeting, question, explanation)?
-2. For UI changes → compose the requested content and publish an update
-   (see "Update Existing App" above) with the same `conversation_id`.
-3. For chat replies → POST a chat message (see "Chat Reply" above).
-4. Do NOT ask clarifying questions — compose the best content you can and execute.
-5. Your `content` and `intent` should describe WHAT to show — do NOT include
-   UI styling directions (colors, dark/light theme, CSS classes, layout
-   instructions). SaC controls visual design autonomously.
+1. Decide: does the request need a **UI change** or a **chat reply**?
+2. For UI changes → compose updated content → write to `/tmp/sac_content.md`
+   → run the **Update** script with the same `conversation_id`.
+3. For chat replies → run the **Chat Reply** script.
+4. Do NOT ask clarifying questions — compose the best content you can.
+5. Your `content` and `intent` should describe WHAT to show — do NOT
+   include UI styling directions (colors, CSS, layout). SaC handles design.
 
 ## Example
 
 User: "Create a travel guide for Tokyo"
 
-1. Read `~/.openclaw/openclaw.json` to get gateway token and port
-2. Compose rich content about Tokyo (attractions, food, transport, tips)
-3. Write content to temp file and POST to `http://127.0.0.1:18420/inbox`
-4. Show the user the URL from the response
-""".lstrip()
+1. Compose rich content about Tokyo (attractions, food, transport, tips)
+2. Write to `/tmp/sac_content.md`
+3. Run the **New App** python3 script with `intent` set to "Tokyo travel guide"
+4. Show the user the `url` from the response
+"""
 
 
 # ── Helpers ────────────────────────────────────────────────────
@@ -418,7 +441,8 @@ SKILL_TARGETS: dict[str, dict] = {
         "label": "Codex",
     },
     "openclaw": {
-        "content": OPENCLAW_SKILL_MD,
+        "content": None,  # Generated dynamically by openclaw_skill_md()
+        "content_fn": openclaw_skill_md,
         "dest": "~/.openclaw/workspace/skills/sac-interaction/SKILL.md",
         "label": "OpenClaw",
     },
