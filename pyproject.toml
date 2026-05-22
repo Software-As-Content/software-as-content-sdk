@@ -47,9 +47,9 @@ sac = "sac.cli:main"
 
 [project.urls]
 Homepage = "https://sac.dynsoft.ai"
-Repository = "https://github.com/Software-As-Content/software-as-content-sdk"
-Documentation = "https://github.com/Software-As-Content/software-as-content-sdk#readme"
-Issues = "https://github.com/Software-As-Content/software-as-content-sdk/issues"
+Repository = "https://github.com/dynsoft-lab/software-as-content-sdk"
+Documentation = "https://github.com/dynsoft-lab/software-as-content-sdk#readme"
+Issues = "https://github.com/dynsoft-lab/software-as-content-sdk/issues"
 Paper = "https://arxiv.org/abs/2603.21334"
 
 [tool.hatch.build]
