@@ -63,6 +63,7 @@ RESPONSE FORMAT REQUIREMENTS:
 5. Do NOT use <style> tags, styled-jsx, or any extra CSS files
 6. Use lucide-react for icons (import from "lucide-react")
 7. Include ALL necessary useState/useEffect hooks for interactivity
+8. ESCAPE curly braces in text content: In JSX, `{x}` is a JS expression. To display literal braces in text (e.g. URL templates like `/api/{id}`), wrap them in a string expression: `{'/api/{id}'}`. Never leave bare `{word}` in JSX text — it will throw "word is not defined".
 8. Allowed imports: React, lucide-react, recharts, pigeon-maps, and "@/components/ui/*" (and "@/lib/utils" only if needed for cn)
 9. Do NOT include any explanation, just the code
 
