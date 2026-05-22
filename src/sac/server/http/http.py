@@ -279,7 +279,12 @@ def create_app(sac: SaC | None = None) -> FastAPI:
     if sac is None:
         api_key = os.environ.get("SAC_API_KEY", "")
         if not api_key:
-            raise ValueError("SAC_API_KEY environment variable is required")
+            raise ValueError(
+                "SAC_API_KEY not set. Either:\n"
+                "  1. Run: export SAC_API_KEY=your-key\n"
+                "  2. Create ~/.sac/.env with SAC_API_KEY=your-key\n"
+                "  3. Run: sac setup claude-code (writes config automatically)"
+            )
         sac = SaC(
             api_key=api_key,
             api_base=os.environ.get("SAC_API_BASE"),

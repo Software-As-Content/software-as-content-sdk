@@ -16,16 +16,180 @@ from sac import __version__
 
 
 def _load_dotenv() -> None:
-    """Load .env file from current working directory if it exists."""
-    env_file = Path.cwd() / ".env"
-    if not env_file.exists():
-        return
-    for line in env_file.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip())
+    """Load .env file, searching multiple locations by priority.
+
+    Order: cwd/.env → ~/.sac/.env → ~/.env
+    First file found wins. Uses setdefault so real env vars take precedence.
+    """
+    candidates = [
+        Path.cwd() / ".env",
+        Path.home() / ".sac" / ".env",
+        Path.home() / ".env",
+    ]
+    for env_file in candidates:
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                os.environ.setdefault(key.strip(), value.strip())
+            return  # stop after first file found
+
+
+def _prompt_llm_config() -> dict[str, str]:
+    """Shared interactive LLM configuration flow.
+
+    Used by both `sac serve` (first run) and `sac setup claude-code`.
+    Returns dict with keys: api_key, api_base, model, search_key, data_dir.
+    """
+    from sac.runtime.prompts.app import AVAILABLE_MODELS, DEFAULT_MODEL
+
+    # Provider selection
+    print()
+    print("LLM Provider (used by SaC to generate apps locally, not your agent)")
+    print()
+    print("  1) OpenRouter (default) — one key, all models")
+    print("  2) Anthropic — Claude models directly")
+    print("  3) OpenAI — GPT models directly")
+    print("  4) Custom — any OpenAI-compatible endpoint")
+    provider_choice = input("  Choose [1]: ").strip() or "1"
+
+    api_base = ""
+    key_label = "OpenRouter"
+    if provider_choice == "2":
+        key_label = "Anthropic"
+    elif provider_choice == "3":
+        api_base = "https://api.openai.com/v1/chat/completions"
+        key_label = "OpenAI"
+    elif provider_choice == "4":
+        api_base = input("  Endpoint URL: ").strip()
+        if not api_base:
+            print("  ✗ Endpoint URL is required for custom provider")
+            sys.exit(1)
+        key_label = "Custom"
+
+    # API key
+    print()
+    api_key = os.environ.get("SAC_API_KEY", "")
+    if api_key:
+        masked = api_key[:8] + "..." + api_key[-4:]
+        use_env = input(f"  API key found in env: {masked}. Use it? [Y/n] ").strip().lower()
+        if use_env in ("n", "no"):
+            api_key = ""
+
+    if not api_key:
+        api_key = input(f"  API key ({key_label}): ").strip()
+        if not api_key:
+            print("  ✗ API key is required to generate apps.")
+            sys.exit(1)
+
+    # Search key (optional)
+    search_key = os.environ.get("SAC_SEARCH_API_KEY", "")
+    if not search_key:
+        search_key = input("  Tavily search key (Enter to skip): ").strip()
+
+    # Data dir
+    default_dir = str(Path.home() / ".sac")
+    data_dir = os.environ.get("SAC_DATA_DIR", "")
+    if not data_dir:
+        data_dir = input(f"  Data directory [{default_dir}]: ").strip() or default_dir
+
+    # Model selection
+    RECOMMENDED = {
+        "anthropic": "anthropic/claude-haiku-4.5",
+        "openai": "openai/gpt-5.4-mini",
+        "google": "google/gemini-3-flash-preview",
+    }
+
+    if provider_choice == "2":
+        provider_models = [m for m in AVAILABLE_MODELS if m.provider == "anthropic"]
+        default_model = RECOMMENDED["anthropic"]
+    elif provider_choice == "3":
+        provider_models = [m for m in AVAILABLE_MODELS if m.provider == "openai"]
+        default_model = RECOMMENDED["openai"]
+    else:
+        provider_models = AVAILABLE_MODELS
+        default_model = DEFAULT_MODEL
+
+    print()
+    print("Model (for app generation)")
+    rec_ids = set(RECOMMENDED.values())
+    # Sort: recommended first, then others
+    rec_models = [m for m in provider_models if m.id in rec_ids]
+    other_models = [m for m in provider_models if m.id not in rec_ids]
+    sorted_models = rec_models + other_models
+
+    print()
+    print("  Fast & sufficient for most apps:")
+    default_idx = 1
+    idx = 1
+    for m in rec_models:
+        print(f"    {idx}) {m.id}")
+        if m.id == default_model:
+            default_idx = idx
+        idx += 1
+    if other_models:
+        print()
+        print("  Other models (may be slower):")
+        for m in other_models:
+            print(f"    {idx}) {m.id}")
+            if m.id == default_model:
+                default_idx = idx
+            idx += 1
+    print()
+    print(f"  Edit models in src/sac/runtime/prompts/app.py")
+    model_choice = input(f"  Choose [{default_idx}]: ").strip() or str(default_idx)
+    try:
+        model = sorted_models[int(model_choice) - 1].id
+    except (ValueError, IndexError):
+        model = default_model
+
+    return {
+        "api_key": api_key,
+        "api_base": api_base,
+        "model": model,
+        "search_key": search_key,
+        "data_dir": data_dir,
+    }
+
+
+def _save_global_env(config: dict[str, str]) -> None:
+    """Persist config to ~/.sac/.env."""
+    sac_dir = Path.home() / ".sac"
+    sac_dir.mkdir(parents=True, exist_ok=True)
+    env_lines = [
+        "# SaC SDK configuration",
+        f"SAC_API_KEY={config['api_key']}",
+        f"SAC_DATA_DIR={config['data_dir']}",
+        f"SAC_MODEL={config['model']}",
+    ]
+    if config.get("api_base"):
+        env_lines.append(f"SAC_API_BASE={config['api_base']}")
+    if config.get("search_key"):
+        env_lines.append(f"SAC_SEARCH_API_KEY={config['search_key']}")
+    (sac_dir / ".env").write_text("\n".join(env_lines) + "\n", encoding="utf-8")
+
+
+def _ensure_config() -> None:
+    """Interactively configure SaC on first run, then persist."""
+    print()
+    print("First time? Let's configure SaC (saved to ~/.sac/.env).")
+    config = _prompt_llm_config()
+    _save_global_env(config)
+
+    # Set in current process so serve can proceed
+    os.environ["SAC_API_KEY"] = config["api_key"]
+    os.environ["SAC_DATA_DIR"] = config["data_dir"]
+    os.environ["SAC_MODEL"] = config["model"]
+    if config.get("api_base"):
+        os.environ["SAC_API_BASE"] = config["api_base"]
+    if config.get("search_key"):
+        os.environ["SAC_SEARCH_API_KEY"] = config["search_key"]
+
+    print()
+    print("  ✓ Saved to ~/.sac/.env")
+    print()
 
 
 def main() -> None:
@@ -116,6 +280,9 @@ def main() -> None:
                 sys.exit(1)
             run_stdio()
             return
+        # Interactive setup if SAC_API_KEY is missing
+        if not os.environ.get("SAC_API_KEY"):
+            _ensure_config()
         from sac.server.http import run
         run(host=args.host, port=args.port)
 
@@ -160,8 +327,18 @@ def _setup_skill(platform: str, *, remove: bool = False) -> None:
     print()
     print(f"  ✓ SaC skill installed for {label}")
     print(f"    {dest}")
+
+    # Ensure LLM is configured (needed for `sac serve`)
+    if not os.environ.get("SAC_API_KEY"):
+        print()
+        print("SaC server needs an LLM to generate apps. Let's configure it.")
+        config = _prompt_llm_config()
+        _save_global_env(config)
+        print()
+        print("  ✓ Saved to ~/.sac/.env")
+
     print()
-    print(f"  Make sure the SaC server is running:")
+    print(f"  Start the SaC server:")
     print(f"    sac serve")
     print()
 
@@ -266,97 +443,12 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
         sys.exit(1)
     print(f"  ✓ sac CLI: {sac_path}")
 
-    # Provider selection
-    print()
-    print("LLM Provider (used by SaC to generate/update apps, not your agent)")
-    print()
-    print("  1) OpenRouter (default) — one key, all models")
-    print("  2) Anthropic — Claude models directly")
-    print("  3) OpenAI — GPT models directly")
-    print("  4) Custom — any OpenAI-compatible endpoint")
-    provider_choice = input("  Choose [1]: ").strip() or "1"
-
-    api_base = ""
-    key_label = "OpenRouter"
-    if provider_choice == "2":
-        key_label = "Anthropic"
-    elif provider_choice == "3":
-        api_base = "https://api.openai.com/v1/chat/completions"
-        key_label = "OpenAI"
-    elif provider_choice == "4":
-        api_base = input("  Endpoint URL: ").strip()
-        if not api_base:
-            print("  ✗ Endpoint URL is required for custom provider")
-            sys.exit(1)
-        key_label = "Custom"
-
-    print()
-    print("API Keys")
-    print()
-
-    api_key = os.environ.get("SAC_API_KEY", "")
-    if api_key:
-        masked = api_key[:8] + "..." + api_key[-4:]
-        use_env = input(f"  SAC_API_KEY found in env: {masked}. Use it? [Y/n] ").strip().lower()
-        if use_env in ("n", "no"):
-            api_key = ""
-
-    if not api_key:
-        api_key = input(f"  SAC_API_KEY ({key_label}): ").strip()
-        if not api_key:
-            print("  ✗ SAC_API_KEY is required")
-            sys.exit(1)
-
-    search_key = os.environ.get("SAC_SEARCH_API_KEY", "")
-    if search_key:
-        masked = search_key[:8] + "..." + search_key[-4:]
-        use_env = input(f"  SAC_SEARCH_API_KEY found in env: {masked}. Use it? [Y/n] ").strip().lower()
-        if use_env in ("n", "no"):
-            search_key = ""
-
-    if not search_key:
-        search_key = input("  SAC_SEARCH_API_KEY (Tavily, Enter to skip): ").strip()
-
-    data_dir = os.environ.get("SAC_DATA_DIR", "")
-    if not data_dir:
-        default_dir = str(Path.home() / ".sac")
-        data_dir = input(f"  SAC_DATA_DIR [{default_dir}]: ").strip() or default_dir
-
-    from sac.runtime.prompts.app import AVAILABLE_MODELS, DEFAULT_MODEL
-
-    # Recommended models per provider (fast, reliable, cost-effective)
-    RECOMMENDED = {
-        "anthropic": "anthropic/claude-haiku-4.5",
-        "openai": "openai/gpt-5.4-mini",
-        "google": "google/gemini-3-flash-preview",
-    }
-
-    if provider_choice == "2":
-        provider_models = [m for m in AVAILABLE_MODELS if m.provider == "anthropic"]
-        default_model = RECOMMENDED["anthropic"]
-        print()
-        print("Model Selection")
-        for m in provider_models:
-            rec = " (recommended)" if m.id == default_model else ""
-            print(f"  - {m.id}{rec}")
-    elif provider_choice == "3":
-        provider_models = [m for m in AVAILABLE_MODELS if m.provider == "openai"]
-        default_model = RECOMMENDED["openai"]
-        print()
-        print("Model Selection")
-        for m in provider_models:
-            rec = " (recommended)" if m.id == default_model else ""
-            print(f"  - {m.id}{rec}")
-    else:
-        default_model = DEFAULT_MODEL
-        print()
-        print("Model Selection")
-        rec_ids = set(RECOMMENDED.values())
-        for m in AVAILABLE_MODELS:
-            rec = " (recommended)" if m.id in rec_ids else ""
-            print(f"  - {m.id}{rec}")
-
-    model = input(f"  SAC_MODEL [{default_model}]: ").strip() or default_model
+    llm_config = _prompt_llm_config()
+    api_key = llm_config["api_key"]
+    api_base = llm_config.get("api_base", "")
+    search_key = llm_config.get("search_key", "")
+    data_dir = llm_config["data_dir"]
+    model = llm_config["model"]
 
     # Build server entry
     env = {"SAC_API_KEY": api_key, "SAC_DATA_DIR": data_dir, "SAC_MODEL": model}
@@ -461,6 +553,13 @@ def _setup_claude_code(args: argparse.Namespace) -> None:
         print(f"  ✓ Preview config (.claude/launch.json)")
     except Exception as exc:
         print(f"  ⚠ Preview config skipped: {exc}")
+
+    # Write ~/.sac/.env so `sac serve` works from any directory
+    try:
+        _save_global_env(llm_config)
+        print(f"  ✓ Global env (~/.sac/.env)")
+    except Exception as exc:
+        print(f"  ⚠ Global env skipped: {exc}")
 
     print()
     print("Done! Restart Claude Code to activate SaC tools:")

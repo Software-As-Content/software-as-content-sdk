@@ -26,29 +26,13 @@ AI agents can reason, code, and call APIs — but when they need to communicate 
 pip install sac-sdk
 ```
 
-### 2. Configure your LLM
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and add your API key. SaC uses an LLM to generate the apps — any OpenAI-compatible provider works:
-
-```bash
-# OpenRouter (default), Anthropic, OpenAI, Ollama, etc.
-SAC_API_KEY=sk-or-v1-your-key-here
-
-# Optional: custom endpoint for OpenAI direct, Ollama, vLLM, etc.
-# SAC_API_BASE=https://api.openai.com/v1/chat/completions
-```
-
-### 3. Run
+### 2. Run
 
 ```bash
 sac serve
 ```
 
-Open **http://localhost:18420**, type *"3-day Tokyo trip planner with budget"*, and watch a live React app stream in. Click buttons. Ask it to evolve. This is SaC running a built-in agent loop — no external agent needed.
+First time? It'll ask for your API key and save it. Then open **http://localhost:18420**, type *"3-day Tokyo trip planner with budget"*, and watch a live React app stream in. Click buttons. Ask it to evolve. This is SaC running a built-in agent loop — no external agent needed.
 
 ## Connect to your agent
 
