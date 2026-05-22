@@ -80,7 +80,8 @@ class _PubSub:
                 q.put_nowait(payload)
             except asyncio.QueueFull:
                 # Slow consumer — drop silently rather than block agent flow.
-                logger.warning("PubSub queue full: conv=%s event=%s", conv_id, event_type)
+                # Use debug level to avoid flooding logs with chunk drops.
+                logger.debug("PubSub queue full: conv=%s event=%s", conv_id, event_type)
 
 
 class _ActionQueue:
