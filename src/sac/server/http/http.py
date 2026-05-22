@@ -89,12 +89,18 @@ class _ActionQueue:
     When no callback_url is registered, user actions from the viewer are
     queued here instead of dispatched. MCP tools (wait_for_action) or the
     /c/{id}/wait-action endpoint consume from this queue.
+
+    Only ONE consumer per conversation is allowed at a time. If a new
+    wait() call arrives while an old one is still active (e.g. zombie
+    from a cancelled MCP tool call), the old one is evicted and returns
+    None immediately.
     """
 
     def __init__(self) -> None:
         self._queues: dict[str, asyncio.Queue] = {}
         self._listeners: set[str] = set()  # conv_ids with active wait()
         self._pending: dict[str, dict[str, Any]] = {}  # conv_id -> last pushed action
+        self._evict_events: dict[str, asyncio.Event] = {}  # signal old waiter to stop
 
     def _get_queue(self, conv_id: str) -> asyncio.Queue:
         if conv_id not in self._queues:
@@ -121,17 +127,40 @@ class _ActionQueue:
         self._pending[conv_id] = action
 
     async def wait(self, conv_id: str, timeout: float = 300.0) -> dict[str, Any] | None:
+        # Evict any previous waiter on this conversation so zombie polls
+        # from cancelled MCP tool calls don't compete for queue items.
+        old_evict = self._evict_events.get(conv_id)
+        if old_evict:
+            old_evict.set()  # signal old waiter to bail out
+        evict = asyncio.Event()
+        self._evict_events[conv_id] = evict
+
         q = self._get_queue(conv_id)
         self._listeners.add(conv_id)
         try:
-            result = await asyncio.wait_for(q.get(), timeout=timeout)
-            # Action consumed — clear pending
-            self._pending.pop(conv_id, None)
-            return result
-        except asyncio.TimeoutError:
+            # Race: either we get an action, or we're evicted by a newer waiter.
+            get_task = asyncio.ensure_future(q.get())
+            evict_task = asyncio.ensure_future(evict.wait())
+            done, pending = await asyncio.wait(
+                {get_task, evict_task},
+                timeout=timeout,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for p in pending:
+                p.cancel()
+
+            if get_task in done:
+                result = get_task.result()
+                self._pending.pop(conv_id, None)
+                return result
+
+            # Evicted or timed out — return None
             return None
         finally:
             self._listeners.discard(conv_id)
+            # Only clean up evict event if we're still the current waiter
+            if self._evict_events.get(conv_id) is evict:
+                self._evict_events.pop(conv_id, None)
 
     def is_pending(self, conv_id: str) -> bool:
         """True if an action was pushed but not yet consumed by wait()."""
