@@ -200,6 +200,14 @@ mcp = FastMCP(
         "5. Go back to step 3 — keep looping until the user ends the conversation\n\n"
         "If `wait_for_action` times out, call it again — the user may not have "
         "interacted yet.\n\n"
+        "Interrupting and resuming:\n"
+        "- The user may interrupt you while `wait_for_action` is blocking. "
+        "This is normal — it cancels the current wait.\n"
+        "- To resume listening, simply call `wait_for_action` again with the "
+        "same `conversation_id`. The new call cleanly replaces any stale "
+        "listeners.\n"
+        "- If the user asks you to stop the SaC loop, just stop calling "
+        "`wait_for_action`. The app stays live at its URL.\n\n"
         "The returned `code` field contains runnable TSX (React 19 + Tailwind + "
         "lucide-react + recharts). Hold onto `conversation_id` across turns.\n\n"
         "Always pass the user's original verbatim message as `user_message` — "
@@ -258,7 +266,11 @@ def _post_inbox(base_url: str, payload: dict) -> dict:
         "to style it. Do NOT include CSS/styling directions (e.g. 'use dark "
         "theme', 'dark code blocks', color schemes) — SaC controls visual "
         "design autonomously. Only include styling instructions if the user "
-        "explicitly requested a specific visual style."
+        "explicitly requested a specific visual style.\n\n"
+        "After showing the URL, briefly tell the user: they can interact with "
+        "the app in the viewer, and you'll be listening for their actions. "
+        "If they want to pause the loop, they can interrupt you — and to "
+        "resume, just ask you to wait_for_action again."
     ),
 )
 async def generate_app(
