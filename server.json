@@ -1,0 +1,51 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "ai.dynsoft/sac",
+  "title": "SaC — Software as Content",
+  "description": "Give your AI agent the ability to respond with live, interactive apps that evolve.",
+  "repository": {
+    "url": "https://github.com/Software-As-Content/software-as-content-sdk",
+    "source": "github"
+  },
+  "version": "0.1.2",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "sac-sdk",
+      "version": "0.1.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SAC_API_KEY",
+          "description": "API key for the LLM provider (OpenRouter, Anthropic, OpenAI, etc.)",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SAC_API_BASE",
+          "description": "Custom API endpoint for OpenAI-compatible providers",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SAC_MODEL",
+          "description": "Override the default generation model",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SAC_SEARCH_API_KEY",
+          "description": "Tavily API key for web search in generated apps",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

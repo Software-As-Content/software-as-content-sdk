@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sac-sdk"
-version = "0.1.1"
+version = "0.1.2"
 description = "Software as Content — Conversations that produce evolving software. An open-source Python SDK that gives any agent the ability to generate and evolve interactive apps through conversation."
 readme = "README.md"
 license = "Apache-2.0"

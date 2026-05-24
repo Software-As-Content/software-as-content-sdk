@@ -1,3 +1,4 @@
+<!-- mcp-name: ai.dynsoft/sac -->
 <div align="center">
 
 # SaC SDK
@@ -143,7 +144,7 @@ src/sac/
 
 ## Project status
 
-`v0.1.0` — alpha. The core protocol (generate → evolve → callback loop) is stable and runs in production at [sac.dynsoft.ai](https://sac.dynsoft.ai). The SDK surface is being polished toward v1.0.
+`v0.1.2` — alpha. The core protocol (generate → evolve → callback loop) is stable and runs in production at [sac.dynsoft.ai](https://sac.dynsoft.ai). The SDK surface is being polished toward v1.0.
 
 ## Contributing
 
